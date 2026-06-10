@@ -47,4 +47,73 @@ def StepPreservesInv : Prop :=
     PartiallyMeets env «module» stepIdx initial []
       (fun st _ => CounterInv st)
 
+@[proves Project.HostCounter.Spec.StepPreservesInv]
+theorem step_preserves_inv : StepPreservesInv := by
+  intro env initial hSat hInv
+  apply TerminatesWith.toPartiallyMeets
+  apply TerminatesWith.of_wp_entry_for
+      (f := ⟨[], [], func0, []⟩) rfl
+  unfold func0
+  simp only [Function.toLocals, Function.numParams, List.length_nil,
+    List.take, List.reverse_nil, List.map]
+  apply wp_block_cons
+  obtain ⟨hfG, cG, hEnvG, hCG, hInvG⟩ := hSat 0 (by decide)
+  obtain ⟨hfI, cI, hEnvI, hCI, hInvI⟩ := hSat 1 (by decide)
+  have hCGid : counterSpec.contracts[0]? = some getContract := rfl
+  rw [hCGid] at hCG; injection hCG with hCG'; subst hCG'
+  have hCIid : counterSpec.contracts[1]? = some incContract := rfl
+  rw [hCIid] at hCI; injection hCI with hCI'; subst hCI'
+  refine wp_call_host_cons
+    (imp := ⟨"env", "host_get", [], [.i32]⟩) (hf := hfG)
+    rfl hEnvG ?_ ?_
+  · intro vs st' hRet
+    simp at hRet
+    have hG := hInvG initial []
+    unfold getContract at hG
+    obtain ⟨_, hRes⟩ := hG
+    rw [hRet] at hRes
+    injection hRes with hvs hst
+    subst vs; subst st'
+    simp [wp_simp]
+    by_cases hgt : UInt32.ofNat initial.host.counter > (9 : UInt32)
+    · simp [hgt]
+      exact hInv
+    · simp [hgt]
+      refine wp_call_host_cons
+        (imp := ⟨"env", "host_inc", [], []⟩) (hf := hfI)
+        rfl hEnvI ?_ ?_
+      · intro vs2 st2 hRet2
+        simp at hRet2
+        have hI := hInvI initial []
+        unfold incContract at hI
+        obtain ⟨_, hRes2⟩ := hI
+        rw [hRet2] at hRes2
+        injection hRes2 with hvs2 hst2
+        subst vs2; subst st2
+        simp [wp_simp]
+        unfold CounterInv
+        unfold CounterInv at hInv
+        dsimp only []
+        have hle9 : initial.host.counter ≤ 9 := by
+          by_contra h
+          push Not at h
+          have h10 : initial.host.counter = 10 := by omega
+          rw [h10] at hgt
+          exact hgt (by decide)
+        omega
+      · intro st2 msg2 hTrap2
+        simp at hTrap2
+        have hI := hInvI initial []
+        unfold incContract at hI
+        obtain ⟨_, hRes2⟩ := hI
+        rw [hTrap2] at hRes2
+        cases hRes2
+  · intro st' msg hTrap
+    simp at hTrap
+    have hG := hInvG initial []
+    unfold getContract at hG
+    obtain ⟨_, hRes⟩ := hG
+    rw [hTrap] at hRes
+    cases hRes
+
 end Project.HostCounter.Spec
