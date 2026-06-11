@@ -414,7 +414,12 @@ structure Ctx where
   to the parsed signature, so multi-value block-types declared via the
   type table are decoded with their correct arity. Defaults to "always
   none" — callers without a type table behave exactly as before. -/
-  resolveBlockType : BlockTypeResolver := fun _ => none
+  resolveBlockType    : BlockTypeResolver := fun _ => none
+  /-- Number of imported globals that precede the declared globals in the
+  Wasm spec global index space. A numeric `global.get k` in WAT refers to
+  the k-th entry in the unified spec space; this count is subtracted to
+  obtain the declared-only 0-based index used at runtime. -/
+  importedGlobalCount : Nat := 0
 
 def Ctx.empty : Ctx := { funcIds := {}, localIds := {} }
 
@@ -838,6 +843,19 @@ private def parseOneOptTableIdx (ctx : Ctx)
     else .ok (0, .atom a :: rest)
   | rest => .ok (0, rest)
 
+/-- Resolve a global identifier: `$name` looks up the 0-based declared
+index in `ctx.globalIds`; a bare number `k` translates from the Wasm spec
+index space (imports first) to the declared-only 0-based index by
+subtracting `ctx.importedGlobalCount`. -/
+private def resolveGlobal (ctx : Ctx) (s : String) : Except Err Nat :=
+  if s.startsWith "$" then
+    match ctx.globalIds[(s.drop 1).toString]? with
+    | some i => .ok i
+    | none => .error s!"unknown global id: {s}"
+  else do
+    let k ← parseNat s
+    .ok (k - ctx.importedGlobalCount)
+
 mutual
 
 private partial def parseInstr (ctx : Ctx) (toks : List Sexpr)
@@ -856,8 +874,8 @@ private partial def parseInstr (ctx : Ctx) (toks : List Sexpr)
     | "local.get" => parseImmediateNat (resolveNamed ctx.localIds "local") .localGet op rest
     | "local.set" => parseImmediateNat (resolveNamed ctx.localIds "local") .localSet op rest
     | "local.tee" => parseLocalTee ctx rest
-    | "global.get" => parseImmediateNat (resolveNamed ctx.globalIds "global") .globalGet op rest
-    | "global.set" => parseImmediateNat (resolveNamed ctx.globalIds "global") .globalSet op rest
+    | "global.get" => parseImmediateNat (resolveGlobal ctx) .globalGet op rest
+    | "global.set" => parseImmediateNat (resolveGlobal ctx) .globalSet op rest
     | "br"        => parseImmediateNat (resolveLabel ctx) .br op rest
     | "br_if"     => parseImmediateNat (resolveLabel ctx) .br_if op rest
     | "br_table"  => parseBrTable ctx rest
@@ -961,10 +979,10 @@ private partial def parseFolded (ctx : Ctx) (xs : List Sexpr)
         (fun i => [.localSet i, .localGet i]) rest
     | "global.get" =>
       match rest with
-      | [.atom n] => do .ok [.globalGet (← resolveNamed ctx.globalIds "global" n)]
+      | [.atom n] => do .ok [.globalGet (← resolveGlobal ctx n)]
       | _ => .error "folded global.get expects exactly one immediate atom"
     | "global.set" =>
-      foldedWithImmediate ctx (resolveNamed ctx.globalIds "global") (fun i => [.globalSet i]) rest
+      foldedWithImmediate ctx (resolveGlobal ctx) (fun i => [.globalSet i]) rest
     | "br"    => foldedWithImmediate ctx (resolveLabel ctx) (fun n => [.br n]) rest
     | "br_if" => foldedWithImmediate ctx (resolveLabel ctx) (fun n => [.br_if n]) rest
     | "br_table" => foldedBrTable ctx rest
@@ -1403,7 +1421,9 @@ private def decodeWatString (s : String) : String :=
 private def parseFunc (funcIds : Std.HashMap String Nat)
     (globalIds : Std.HashMap String Nat)
     (tableNames : Std.HashMap String Nat)
-    (types : Array TypeEntry) (xs : List Sexpr)
+    (types : Array TypeEntry)
+    (importedGlobalCount : Nat)
+    (xs : List Sexpr)
     : Except Err FuncDecl := do
   let mut paramTypes : List Wasm.ValueType := []
   let mut resultTypes : List Wasm.ValueType := []
@@ -1514,7 +1534,8 @@ private def parseFunc (funcIds : Std.HashMap String Nat)
     match resolveTypeRef types ref with
     | .ok sig  => some sig
     | .error _ => none
-  let ctx : Ctx := { funcIds, localIds, globalIds, types, tableNames, resolveBlockType }
+  let ctx : Ctx := { funcIds, localIds, globalIds, types, tableNames, resolveBlockType,
+                     importedGlobalCount }
   let instrs ← parseInstrSeq ctx rest
   return { symId, inlineExports,
            func := {
@@ -1549,14 +1570,17 @@ private def collectFuncNames (fields : List Sexpr)
     | _ => pure ()
   return idOf
 
--- TODO: imported globals are not counted here, so the index space is wrong
--- when imports are present. Wasm places imported globals first (indices
--- 0 … N-1) and declared globals after (indices N … N+M-1). This function
--- assigns 0 … M-1 to declared globals, so any `global.get`/`global.set`
--- that references a declared global will be off by N and will likely trap
--- at runtime. The fix is to count the `(import … (global …))` forms first
--- and start `i` at that offset. Rust's wasm32-unknown-unknown target never
--- imports globals, so the corpus is unaffected for now.
+/-- Count `(import "mod" "name" (global …))` forms at module level.
+Wasm places imported globals at indices 0 … N-1 in the spec global index
+space; declared globals follow at N … N+M-1.  Numeric `global.get k` in
+WAT encodes the spec index, so subtracting this count gives the
+declared-only 0-based index the runtime uses. -/
+private def countGlobalImports (fields : List Sexpr) : Nat :=
+  fields.foldl (fun n f =>
+    match f with
+    | .list (.atom "import" :: _ :: _ :: [.list (.atom "global" :: _)]) => n + 1
+    | _ => n) 0
+
 private def collectGlobalNames (fields : List Sexpr)
     : Except Err (Std.HashMap String Nat) := do
   let mut idOf : Std.HashMap String Nat := {}
@@ -1939,6 +1963,7 @@ def parseModule (xs : List Sexpr) : Except Err Wasm.Module := do
   for (name, idx) in inModuleFuncIds.toList do
     funcIds := funcIds.insert name (idx + imports.length)
   let globalIds ← collectGlobalNames rest
+  let importedGlobalCount := countGlobalImports rest
   let tableNames := collectTableNames rest
   let mut decls : Array FuncDecl := #[]
   let mut topExports : Array (String × String) := #[]
@@ -1951,7 +1976,7 @@ def parseModule (xs : List Sexpr) : Except Err Wasm.Module := do
   for f in rest do
     match f with
     | .list (.atom "func" :: body) =>
-      decls := decls.push (← parseFunc funcIds globalIds tableNames types body)
+      decls := decls.push (← parseFunc funcIds globalIds tableNames types importedGlobalCount body)
     | .list (.atom "export" :: tail) =>
       match tail with
       | [.atom name, .list [.atom "func", .atom ref]] =>
