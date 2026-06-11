@@ -23,6 +23,7 @@ import Interpreter.Wasm.Examples.Switch
 import Interpreter.Wasm.Examples.SelectMin
 import Interpreter.Wasm.Examples.RefIsNull
 import Interpreter.Wasm.Examples.TableDispatch
+import Interpreter.Wasm.Examples.TableSet
 import Interpreter.Wasm.Examples.EarlyReturn
 import Interpreter.Wasm.Examples.EarlyBr
 import Interpreter.Wasm.Examples.EarlyBrInvalid
