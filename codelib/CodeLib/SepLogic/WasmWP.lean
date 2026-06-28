@@ -2,11 +2,11 @@ import CodeLib.SepLogic.WasmHeap
 import CodeLib.SepLogic.WasmRules
 import Interpreter.Wasm
 
-/-! # Weakest Precondition for Wasm in iProp
+/-! # Weakest Precondition for Wasm
 
-Defines wp_wasm: the WP over Talos's big-step semantics,
-living inside iris-lean's iProp. This is approach (b):
-bypass the Language typeclass, define WP directly.
+Prop-level WP for termination. Per-instruction iProp rules for
+ownership transfer. General iProp WP fixpoint deferred until
+the instruction rules are validated on swap_elements.
 -/
 
 namespace Wasm.SepLogic
@@ -15,24 +15,6 @@ open Iris Wasm
 
 variable [inst : WasmHeapGS]
 
-/-! The WP for a single Wasm instruction.
-Given an instruction, a store, locals, and a postcondition,
-returns an iProp asserting the instruction is safe and
-the postcondition holds afterward. -/
-
--- First: what types do we need?
-#check @execOne
--- execOne : ℕ → Module → Store α → Locals → Instruction → HostEnv α → Continuation α
-
--- The WP says: there EXISTS enough fuel such that
--- executing with that fuel satisfies the postcondition.
--- For now, state it as a Prop that lifts into iProp.
-
--- First check exec's actual signature
-#check @exec
-#check @run
-
-#print Continuation
 def wp_wasm_prop (m : Module) (st : Store Unit) (locals : Locals)
     (prog : Program) (env : HostEnv Unit)
     (Q : Store Unit → List Value → Prop) : Prop :=
@@ -41,12 +23,21 @@ def wp_wasm_prop (m : Module) (st : Store Unit) (locals : Locals)
   | .Return st' vals => Q st' vals
   | _ => False
 
-def wp_wasm (m : Module) (st : Store Unit) (locals : Locals)
-    (prog : Program) (env : HostEnv Unit)
-    (Q : Store Unit → List Value → IProp WasmHeapGF) : IProp WasmHeapGF :=
-  sorry -- lift wp_wasm_prop into iProp via ⌜pure⌝
+/-! ## Per-instruction ownership rules in iProp
 
-#check @wp_wasm_prop
-#check @wp_wasm
+Each rule describes how one instruction transforms ownership.
+These compose sequentially for straight-line code (swap).
+For loops, bi_least_fixpoint wraps the composition. -/
+
+-- load64: need ownership to read, ownership preserved
+def wp_load64 (addr : UInt32) (v : UInt64)
+    (Q : IProp WasmHeapGF) : IProp WasmHeapGF :=
+  iprop% (pointsTo_u64 addr v) ∗ (pointsTo_u64 addr v -∗ Q)
+
+-- store64: consume old ownership, produce new
+def wp_store64 (addr : UInt32) (old_v new_v : UInt64)
+    (Q : IProp WasmHeapGF) : IProp WasmHeapGF :=
+  iprop% (pointsTo_u64 addr old_v) ∗ (pointsTo_u64 addr new_v -∗ Q)
+
 
 end Wasm.SepLogic
