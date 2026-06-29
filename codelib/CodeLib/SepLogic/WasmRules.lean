@@ -1,11 +1,11 @@
 import CodeLib.SepLogic.WasmHeap
 import Interpreter.Wasm
 
-/-! # Bridge between Talos Mem and iris-lean GenHeap
+/-! # Bridge: Talos Mem ↔ iris-lean GenHeap
 
-The logical heap (ExtTreeMap) tracks OWNERSHIP — which bytes you own.
-The physical memory (Mem.bytes) tracks VALUES — what's actually there.
-The bridge says: wherever you own a byte, the physical memory agrees.
+The state interpretation maintains agreement between
+the abstract GenHeap state σ and physical Mem.bytes.
+We never build σ explicitly — GenHeap tracks it internally.
 -/
 
 namespace Wasm.SepLogic
@@ -14,35 +14,47 @@ open Iris Wasm Std
 
 variable [inst : WasmHeapGS]
 
-/-! The state interpretation: logical heap matches physical memory.
-For every (addr, some v) in the logical heap σ, Mem.bytes has v at addr.
-This is maintained as an invariant throughout execution. -/
+/-! Agreement: wherever GenHeap has an entry, Mem agrees. -/
 
-def memAgrees (mem : Mem) (σ : WasmHeapMap (Option UInt8)) : Prop :=
+def heapAgreesWithMem (σ : WasmHeapMap (Option UInt8)) (mem : Mem) : Prop :=
   ∀ (addr : UInt32) (v : UInt8),
-    σ.get? addr = some (some v) → mem.bytes addr.toNat = v
+    get? σ addr = some (some v) → mem.bytes addr.toNat = v
 
-/-! Now the WP rules. Each rule says:
-    "IF ownership + physical memory agree BEFORE the instruction,
-     THEN ownership + physical memory agree AFTER." -/
+/-! Soundness of load:
+If GenHeap says addr ↦ v and σ agrees with Mem,
+then Mem.read8 addr = v. -/
 
--- load64: reads 8 bytes. Ownership unchanged, value on stack.
--- The rule: if you own addr ↦ᵤ₆₄ v, then load64 returns v.
-theorem load64_spec (mem : Mem) (addr off : UInt32)
-    (h_bounds : addr.toNat + off.toNat + 8 ≤ mem.pages * 65536)
-    (v : UInt64)
-    (h_read : mem.read64 (addr + off) = v) :
-    True := by  -- placeholder, real rule connects to iProp
-  trivial
+theorem load_sound (σ : WasmHeapMap (Option UInt8)) (mem : Mem)
+    (addr : UInt32) (v : UInt8)
+    (h_agree : heapAgreesWithMem σ mem)
+    (h_own : get? σ addr = some (some v)) :
+    mem.bytes addr.toNat = v :=
+  h_agree addr v h_own
 
--- store64: writes 8 bytes. Old ownership consumed, new produced.
--- The rule: if you own addr ↦ᵤ₆₄ old, after store64 you own addr ↦ᵤ₆₄ new.
-theorem store64_spec (mem : Mem) (addr off : UInt32) (old_v new_v : UInt64)
-    (h_bounds : addr.toNat + off.toNat + 8 ≤ mem.pages * 65536)
-    (h_write : mem.write64 (addr + off) new_v = mem') :
-    True := by  -- placeholder, real rule connects to iProp
-  trivial
+/-! Soundness of store:
+After Mem.write8, the updated σ still agrees with new Mem. -/
 
-#check @pointsTo_u64  -- our u64 ownership predicate
+theorem store_sound (σ : WasmHeapMap (Option UInt8)) (mem : Mem)
+    (addr : UInt32) (old_v new_v : UInt8)
+    (h_agree : heapAgreesWithMem σ mem)
+    (h_own : get? σ addr = some (some old_v)) :
+    heapAgreesWithMem (insert σ addr (some new_v))
+      ⟨mem.pages, fun n =>
+        if n = addr.toNat then new_v else mem.bytes n⟩ := by
+  intro addr' v' h_get
+  by_cases h : addr' = addr
+  · subst h
+    simp [get?_insert_eq rfl] at h_get
+    simp [h_get]
+  · simp [get?_insert_ne (Ne.symm h)] at h_get
+    have hne : addr'.toNat ≠ addr.toNat :=
+      fun h' => h (UInt32.ext h')
+    exact (if_neg hne).trans (h_agree addr' v' h_get)
+
+-- GenHeap lemmas for our types:
+#check @genHeap_valid (GF := WasmHeapGF) (L := UInt32)
+    (V := Option UInt8) (H := WasmHeapMap)
+#check @genHeap_update (GF := WasmHeapGF) (L := UInt32)
+    (V := Option UInt8) (H := WasmHeapMap)
 
 end Wasm.SepLogic
