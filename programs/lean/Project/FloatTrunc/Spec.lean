@@ -78,9 +78,8 @@ private theorem i32TruncSatF32S_expand (x : UInt32) :
 `f32Ne x x = !(f == f)` and `Float.isNaN f = !(f == f)` (both opaque externs);
 checked for all 2^32 bit patterns by native evaluation. -/
 private theorem f32Ne_self_iff_isNaN (x : UInt32) :
-    f32Ne x x = (Float32.ofBits x).toFloat.isNaN := by
-  have h : ∀ y : UInt32, f32Ne y y = (Float32.ofBits y).toFloat.isNaN := by native_decide
-  exact h x
+    f32Ne x x = (Float32.ofBits x).toFloat.isNaN :=
+  IEEE32Exec.f32Ne_self_iff_isNaN x
 
 private theorem i32TruncSatF32S_nan {x : UInt32}
     (h : (Float32.ofBits x).toFloat.isNaN) : i32TruncSatF32S x = 0 := by
@@ -92,10 +91,8 @@ Checked for all 2^32 bit patterns by native evaluation. -/
 private theorem i32TruncSatF32S_large_pos {x : UInt32}
     (hnan : f32Ne x x = false)
     (hge : f32Ge x 1325400064 = true) :
-    i32TruncSatF32S x = 0x7FFFFFFF := by
-  have h : ∀ y : UInt32, f32Ne y y = false → f32Ge y 1325400064 = true →
-      i32TruncSatF32S y = 0x7FFFFFFF := by native_decide
-  exact h x hnan hge
+    i32TruncSatF32S x = 0x7FFFFFFF :=
+  IEEE32Exec.i32TruncSatF32S_large_pos hnan hge
 
 /-- `-2^31` as a `Float32` bit pattern is `0xCF000000 = 3472883712`. When
 `f < -2^31`, `ceil f ≤ -2^31 ≤ -2147483648`, so `satI32S` saturates to `MIN`.
@@ -103,10 +100,8 @@ Checked for all 2^32 bit patterns by native evaluation. -/
 private theorem i32TruncSatF32S_large_neg {x : UInt32}
     (hnan : f32Ne x x = false)
     (hlt : f32Lt x 3472883712 = true) :
-    i32TruncSatF32S x = 0x80000000 := by
-  have h : ∀ y : UInt32, f32Ne y y = false → f32Lt y 3472883712 = true →
-      i32TruncSatF32S y = 0x80000000 := by native_decide
-  exact h x hnan hlt
+    i32TruncSatF32S x = 0x80000000 :=
+  IEEE32Exec.i32TruncSatF32S_large_neg hnan hlt
 
 /-! ## Per-function termination -/
 
@@ -114,7 +109,7 @@ theorem func1_terminates (env : HostEnv Unit) (st : Store Unit) (x : UInt32)
     (tail : List Value) :
     TerminatesWith env «module» 1 st ([.f32 x] ++ tail)
       (fun _ rs => rs = [.i32 (i32TruncSatF32S x)] ++ tail) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func1, [.i32]⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func1, [.i32], none⟩) rfl
   unfold func1
   wp_run
   simp
@@ -126,7 +121,7 @@ theorem func0_terminates (env : HostEnv Unit) (x : UInt32) :
   have hg : («module».initialStore : Store Unit).globals.globals[0]? =
       some (.i32 1048576) := rfl
   have hp : («module».initialStore : Store Unit).mem.pages = 17 := rfl
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func0, [.i32]⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func0, [.i32], none⟩) rfl
   unfold func0; wp_run
   simp only [hg]
   apply wp_block_cons; apply wp_block_cons; apply wp_block_cons
@@ -164,7 +159,7 @@ def FloatTruncSpec : Prop :=
 theorem check_correct : FloatTruncSpec := by
   intro env initial x hinit
   subst hinit
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func2, []⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func2, [], none⟩) rfl
   unfold func2
   apply wp_block_cons
   wp_run
