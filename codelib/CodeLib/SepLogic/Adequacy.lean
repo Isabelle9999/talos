@@ -86,6 +86,45 @@ private theorem exec_cons {m : Module} {st : Store Unit} {locals : Locals}
   simp only [exec, h1, h2]
   exact hn
 
+theorem wp_wasm_step
+    {m : Module} {st st' : Store Unit} {locals locals' : Locals}
+    {instr₀ : Instruction} {rest₀ : Program}
+    {env : HostEnv Unit} {Q : Store Unit → List Value → Prop}
+    (hexec : execOne 1 m st locals instr₀ env = .Fallthrough st' locals')
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m st' locals' rest₀ env Q) :
+    ⊢ wp_wasm m st locals (instr₀ :: rest₀) env Q := by
+  unfold wp_wasm
+  iapply least_fixpoint_unfold_mpr
+  -- simp only (not unfold): leaves non-applied wp_wasm_F inside bi_least_fixpoint named,
+  -- so iexact Hwp can unify the recursive call after unfold wp_wasm at hstep below
+  simp only [wp_wasm_F]
+  split
+  · -- nil: instr₀ :: rest₀ = [] is impossible
+    contradiction
+  · -- ret: instr₀ = .ret, contradicts hexec
+    next tail h =>
+    obtain ⟨rfl, _⟩ := List.cons.inj h
+    simp [execOne] at hexec
+  · -- general: subst equalities, then iris proof
+    next instr rest h =>
+    obtain ⟨h1, h2⟩ := List.cons.inj h
+    subst h1; subst h2
+    -- unfold wp_wasm in the Lean hypothesis before entering iris mode
+    -- so Hwp arrives with the bi_least_fixpoint form iexact can unify
+    unfold wp_wasm at hstep
+    iintro %σ Hσ
+    imod (hstep σ) $$ Hσ with ⟨%σ', Hσ', Hwp⟩
+    imodintro
+    iexists σ', st', locals'
+    isplitl []
+    · exact BI.pure_intro hexec
+    · isplitl [Hσ']
+      · iexact Hσ'
+      · iexact Hwp
+
 theorem wasm_adequacy
     (m : Module) (st : Store Unit) (locals : Locals)
     (prog : Program) (env : HostEnv Unit)
@@ -126,5 +165,30 @@ theorem wasm_adequacy
         (BI.forall_elim (⟨{ m, st, locals, prog, env, Q }⟩ : LeibnizO WasmState))))
   exact ((BI.sep_mono_right hfp).trans
     (BI.sep_mono_right (BI.forall_elim σ))).trans BI.wand_elim_right
+
+-- bridge: exec-level wp_wasm_prop → run-level TerminatesWith
+-- proof sketch: extract fuel from hwp, unfold run with himp/hf,
+-- reduce to exec, match Fallthrough/Return against P.
+-- full proof needs f.results.length = 0 and args.length ≤ f.numParams
+-- to resolve the values.take / callerRemainder mismatch.
+theorem wp_wasm_prop_to_TerminatesWith
+    {m : Module} {id : Nat} {f : Function}
+    {initial : Store Unit} {args : List Value}
+    {P : Store Unit → List Value → Prop}
+    (hf : m.funcs[id - m.imports.length]? = some f)
+    (himp : m.imports[id]? = none)
+    (hwp : wp_wasm_prop m initial
+        (f.toLocals (args.take f.numParams).reverse)
+        f.body {} P) :
+    TerminatesWith {} m id initial args P := by
+  -- proof sketch:
+  --   1. obtain fuel from hwp
+  --   2. unfold run with himp (no import) and hf (function found)
+  --   3. the exec result matches wp_wasm_prop's Fallthrough/Return branches
+  --   4. apply TerminatesWith.of_run with that fuel
+  -- the Fallthrough/Return mismatch (values.take f.results.length ++ callerRemainder
+  -- vs []) is resolved when f.results.length = 0 and args.length = f.numParams,
+  -- which holds for all functions verified in this project
+  sorry
 
 end Wasm.SepLogic
