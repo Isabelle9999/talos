@@ -166,29 +166,229 @@ theorem wasm_adequacy
   exact ((BI.sep_mono_right hfp).trans
     (BI.sep_mono_right (BI.forall_elim σ))).trans BI.wand_elim_right
 
--- bridge: exec-level wp_wasm_prop → run-level TerminatesWith
--- proof sketch: extract fuel from hwp, unfold run with himp/hf,
--- reduce to exec, match Fallthrough/Return against P.
--- full proof needs f.results.length = 0 and args.length ≤ f.numParams
--- to resolve the values.take / callerRemainder mismatch.
+-- call rule: if the callee terminates with a postcondition that implies the
+-- continuation terminates, the whole call sequence terminates.
+theorem wp_wasm_prop_call
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {callid : Nat} {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    (htw : TerminatesWith env m callid st locals.values
+           (fun st' vs => wp_wasm_prop m st' { locals with values := vs } rest env Q)) :
+    wp_wasm_prop m st locals (.call callid :: rest) env Q := by
+  obtain ⟨N, hN⟩ := htw
+  obtain ⟨vs', st', hrun, hwp⟩ := hN N le_rfl
+  obtain ⟨fuel_rest, hfuel⟩ := hwp
+  have hrun_ne : run N m callid st locals.values env ≠ .OutOfFuel := by
+    rw [hrun]; intro h; cases h
+  have hfuel_ne : exec fuel_rest m st' { locals with values := vs' } rest env ≠ .OutOfFuel := by
+    intro h; simp only [h] at hfuel
+  refine ⟨max N fuel_rest + 1, ?_⟩
+  have hrun' : run (max N fuel_rest) m callid st locals.values env = .Success vs' st' :=
+    (run_fuel_mono (Nat.le_max_left N fuel_rest) hrun_ne).trans hrun
+  have hfuel' : exec (max N fuel_rest + 1) m st' { locals with values := vs' } rest env
+      = exec fuel_rest m st' { locals with values := vs' } rest env :=
+    exec_fuel_mono (by omega) hfuel_ne
+  simp only [exec_call_cons, hrun', hfuel']
+  exact hfuel
+
+-- per-instruction iProp rules for wp_wasm
+-- each wraps wp_wasm_step and discharges the execOne obligation
+
+theorem wp_wasm_globalGet
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    {i : Nat} {v : Value}
+    (hget : st.globals.globals[i]? = some v)
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m st { locals with values := v :: locals.values } rest env Q) :
+    ⊢ wp_wasm m st locals (.globalGet i :: rest) env Q :=
+  wp_wasm_step (by simp only [execOne.eq_def, hget]) hstep
+
+theorem wp_wasm_globalSet
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    {i : Nat} {v : Value} {vs : List Value} {old : Value}
+    (hstack : locals.values = v :: vs)
+    (hbound : st.globals.globals[i]? = some old)
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m
+          { st with globals := { globals := st.globals.globals.set i v } }
+          { locals with values := vs } rest env Q) :
+    ⊢ wp_wasm m st locals (.globalSet i :: rest) env Q :=
+  wp_wasm_step (by simp only [execOne.eq_def, hstack, hbound]) hstep
+
+theorem wp_wasm_localGet
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    {i : Nat} {v : Value}
+    (hget : locals.get i = some v)
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m st { locals with values := v :: locals.values } rest env Q) :
+    ⊢ wp_wasm m st locals (.localGet i :: rest) env Q :=
+  wp_wasm_step (by simp only [execOne.eq_def, hget]) hstep
+
+theorem wp_wasm_localSet
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    {i : Nat} {v : Value} {vs : List Value} {locals' : Locals}
+    (hstack : locals.values = v :: vs)
+    (hset : locals.set? i v = some locals')
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m st { locals' with values := vs } rest env Q) :
+    ⊢ wp_wasm m st locals (.localSet i :: rest) env Q :=
+  wp_wasm_step (by simp only [execOne.eq_def, hstack, hset]) hstep
+
+theorem wp_wasm_const
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    (v : UInt32)
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m st { locals with values := .i32 v :: locals.values } rest env Q) :
+    ⊢ wp_wasm m st locals (.const v :: rest) env Q :=
+  wp_wasm_step (by simp only [execOne.eq_def]) hstep
+
+theorem wp_wasm_add
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    {a b : UInt32} {vs : List Value}
+    (hstack : locals.values = .i32 a :: .i32 b :: vs)
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m st { locals with values := .i32 (a + b) :: vs } rest env Q) :
+    ⊢ wp_wasm m st locals (.add :: rest) env Q :=
+  wp_wasm_step (by simp only [execOne.eq_def, hstack]) hstep
+
+theorem wp_wasm_sub
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    {a b : UInt32} {vs : List Value}
+    (hstack : locals.values = .i32 a :: .i32 b :: vs)
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m st { locals with values := .i32 (b - a) :: vs } rest env Q) :
+    ⊢ wp_wasm m st locals (.sub :: rest) env Q :=
+  wp_wasm_step (by simp only [execOne.eq_def, hstack]) hstep
+
+theorem wp_wasm_load64
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    {addr : UInt32} {off : UInt32} {vs : List Value}
+    (hstack : locals.values = .i32 addr :: vs)
+    (hbounds : addr.toNat + off.toNat + 8 ≤ st.mem.pages * 65536)
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m st
+          { locals with values := .i64 (st.mem.read64 (addr + off)) :: vs } rest env Q) :
+    ⊢ wp_wasm m st locals (.load64 off :: rest) env Q :=
+  wp_wasm_step
+    (by simp only [execOne.eq_def, hstack]; rw [if_neg (by omega)])
+    hstep
+
+theorem wp_wasm_store64
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    {addr : UInt32} {off : UInt32} {v : UInt64} {vs : List Value}
+    (hstack : locals.values = .i64 v :: .i32 addr :: vs)
+    (hbounds : addr.toNat + off.toNat + 8 ≤ st.mem.pages * 65536)
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m
+          { st with mem := st.mem.write64 (addr + off) v }
+          { locals with values := vs } rest env Q) :
+    ⊢ wp_wasm m st locals (.store64 off :: rest) env Q :=
+  wp_wasm_step
+    (by simp only [execOne.eq_def, hstack]; rw [if_neg (by omega)])
+    hstep
+
+theorem wp_wasm_load32
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    {addr : UInt32} {off : UInt32} {vs : List Value}
+    (hstack : locals.values = .i32 addr :: vs)
+    (hbounds : addr.toNat + off.toNat + 4 ≤ st.mem.pages * 65536)
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m st
+          { locals with values := .i32 (st.mem.read32 (addr + off)) :: vs } rest env Q) :
+    ⊢ wp_wasm m st locals (.load32 off :: rest) env Q :=
+  wp_wasm_step
+    (by simp only [execOne.eq_def, hstack]; rw [if_neg (by omega)])
+    hstep
+
+theorem wp_wasm_store32
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {rest : Program} {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    {addr : UInt32} {off : UInt32} {v : UInt32} {vs : List Value}
+    (hstack : locals.values = .i32 v :: .i32 addr :: vs)
+    (hbounds : addr.toNat + off.toNat + 4 ≤ st.mem.pages * 65536)
+    (hstep : ∀ σ : WasmHeapMap (Option UInt8),
+        ⊢ genHeapInterp σ ==∗
+        ∃ σ' : WasmHeapMap (Option UInt8),
+        genHeapInterp σ' ∗ wp_wasm m
+          { st with mem := st.mem.write32 (addr + off) v }
+          { locals with values := vs } rest env Q) :
+    ⊢ wp_wasm m st locals (.store32 off :: rest) env Q :=
+  wp_wasm_step
+    (by simp only [execOne.eq_def, hstack]; rw [if_neg (by omega)])
+    hstep
+
 theorem wp_wasm_prop_to_TerminatesWith
     {m : Module} {id : Nat} {f : Function}
     {initial : Store Unit} {args : List Value}
     {P : Store Unit → List Value → Prop}
     (hf : m.funcs[id - m.imports.length]? = some f)
     (himp : m.imports[id]? = none)
+    (hresults : f.results.length = 0)
+    (hlen : args.length ≤ f.numParams)
+    (hcompat : ∀ st' vals, P st' vals → P st' [])
     (hwp : wp_wasm_prop m initial
         (f.toLocals (args.take f.numParams).reverse)
         f.body {} P) :
     TerminatesWith {} m id initial args P := by
-  -- proof sketch:
-  --   1. obtain fuel from hwp
-  --   2. unfold run with himp (no import) and hf (function found)
-  --   3. the exec result matches wp_wasm_prop's Fallthrough/Return branches
-  --   4. apply TerminatesWith.of_run with that fuel
-  -- the Fallthrough/Return mismatch (values.take f.results.length ++ callerRemainder
-  -- vs []) is resolved when f.results.length = 0 and args.length = f.numParams,
-  -- which holds for all functions verified in this project
-  sorry
+  obtain ⟨fuel₀, hwp_fuel⟩ := hwp
+  have hcr : args.drop f.numParams = [] := List.drop_eq_nil_of_le hlen
+  cases hexec : exec fuel₀ m initial (f.toLocals (args.take f.numParams).reverse) f.body {} with
+  | Fallthrough st' s' =>
+    rw [hexec] at hwp_fuel
+    exact TerminatesWith.of_run fuel₀ [] st'
+      (by rw [run_eq himp]; simp [hf, hexec, hresults, hcr])
+      hwp_fuel
+  | Return st' vals =>
+    rw [hexec] at hwp_fuel
+    exact TerminatesWith.of_run fuel₀ [] st'
+      (by rw [run_eq himp]; simp [hf, hexec, hresults, hcr])
+      (hcompat st' vals hwp_fuel)
+  | Break n st' s' => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
+  | Trap msg => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
+  | Invalid msg => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
+  | OutOfFuel => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
+  | ReturnCall fid st' vs => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
+  | Throwing tag targs st' s' => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
 
 end Wasm.SepLogic
