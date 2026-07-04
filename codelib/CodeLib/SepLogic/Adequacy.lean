@@ -391,4 +391,27 @@ theorem wp_wasm_prop_to_TerminatesWith
   | ReturnCall fid st' vs => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
   | Throwing tag targs st' s' => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
 
+-- Bridge: iProp wp_wasm proof → Prop wp_wasm_prop
+-- Creates ghost state internally via genHeap_init_names,
+-- applies the iProp proof, then extracts the pure result.
+-- This is HeapLang's heap_adequacy pattern.
+theorem wasm_heap_adequacy
+    (m : Module) (st : Store Unit) (locals : Locals)
+    (prog : Program) (env : HostEnv Unit)
+    (Q : Store Unit → List Value → Prop)
+    (hwp : ∀ [inst : WasmHeapGS], ⊢ wp_wasm m st locals prog env Q) :
+    wp_wasm_prop m st locals prog env Q := by
+  apply pure_soundness (PROP := IProp WasmHeapGF)
+  have hbupd : emp ⊢ (|==> ⌜wp_wasm_prop m st locals prog env Q⌝ : IProp WasmHeapGF) := by
+    refine (genHeap_init (L := UInt32) (V := Option UInt8)
+        (GF := WasmHeapGF) (H := WasmHeapMap) ∅).trans ?_
+    apply bupd_mono
+    apply BI.exists_elim
+    intro G
+    letI inst : WasmHeapGS := WasmHeapGS.mk (togenHeapGS := G)
+    apply BI.sep_elim_left.trans
+    apply (BI.sep_intro_emp_valid_right .rfl hwp).trans
+    exact wasm_adequacy m st locals prog env Q ∅
+  exact hbupd.trans bupd_elim
+
 end Wasm.SepLogic
