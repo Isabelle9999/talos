@@ -140,7 +140,7 @@ for those stores. The main sorry in swap_spec_sep is exactly that gap. -/
 
 -- func3 spills ptr/len into the 8-byte slot at [1048568, 1048575]
 -- body: write32(1048572, len) then write32(1048568, ptr)
-omit inst in
+set_option maxHeartbeats 4000000 in
 private theorem func3_terminates (env : HostEnv Unit) (st : Store Unit)
     (ptr len : UInt32)
     (hpg : (1048576 : Nat) ≤ st.mem.pages * 65536) :
@@ -152,20 +152,96 @@ private theorem func3_terminates (env : HostEnv Unit) (st : Store Unit)
         ∧ st'.mem.read32 (1048572 : UInt32) = len
         ∧ ∀ a : UInt32, (1048576 : Nat) ≤ a.toNat →
             st'.mem.read64 a = st.mem.read64 a) := by
-  apply TerminatesWith.of_wp_entry_for
-    (f := ⟨[.i32, .i32, .i32, .i32], [], func3, [], none⟩) rfl
-  -- of_wp_entry_for passes args.take(numParams).reverse as locals.
-  -- wp_run doesn't have List.reverse, so evaluate the reversed args via rfl first.
-  simp only [show (⟨[.i32, .i32, .i32, .i32], [], func3, [], none⟩ : Wasm.Function).toLocals
-      ([.i32 (1048652 : UInt32), .i32 len, .i32 ptr, .i32 (1048568 : UInt32)].take
-        (⟨[.i32, .i32, .i32, .i32], [], func3, [], none⟩ : Wasm.Function).numParams).reverse =
+  have himp : «module».imports[3]? = none := rfl
+  have hf : «module».funcs[3 - «module».imports.length]? = some func3Def := rfl
+  have hwp : wp_wasm_prop «module» st
+      (func3Def.toLocals ([.i32 (1048652 : UInt32), .i32 len, .i32 ptr,
+                           .i32 (1048568 : UInt32)].take func3Def.numParams).reverse)
+      func3Def.body env
+      (fun st' rs =>
+        rs = [] ∧ st'.globals = st.globals ∧ st'.mem.pages = st.mem.pages
+        ∧ st'.mem.read32 (1048568 : UInt32) = ptr
+        ∧ st'.mem.read32 (1048572 : UInt32) = len
+        ∧ ∀ a : UInt32, (1048576 : Nat) ≤ a.toNat →
+            st'.mem.read64 a = st.mem.read64 a) := by
+    apply wasm_heap_adequacy
+    intro inst
+    let m₁ := st.mem.write32 ((1048568 : UInt32) + (4 : UInt32)) len
+    let m₂ := m₁.write32 ((1048568 : UInt32) + (0 : UInt32)) ptr
+    have hm₁ : m₁ = st.mem.write32 ((1048568 : UInt32) + (4 : UInt32)) len := rfl
+    have hm₂ : m₂ = m₁.write32 ((1048568 : UInt32) + (0 : UInt32)) ptr := rfl
+    have hpages : m₂.pages = st.mem.pages := by
+      simp only [hm₂, hm₁, Mem.write32_pages]
+    have hread_1568 : m₂.read32 (1048568 : UInt32) = ptr := by
+      simp only [hm₂, show (1048568 : UInt32) + (0 : UInt32) = (1048568 : UInt32) from rfl]
+      exact Mem.read32_write32_same m₁ (1048568 : UInt32) ptr
+    have hread_1572 : m₂.read32 (1048572 : UInt32) = len := by
+      simp only [hm₂, show (1048568 : UInt32) + (0 : UInt32) = (1048568 : UInt32) from rfl]
+      rw [read32_write32_ne m₁ (1048568 : UInt32) (1048572 : UInt32) ptr
+            (Or.inr (by simp only [show (1048568 : UInt32).toNat = 1048568 from rfl,
+                                   show (1048572 : UInt32).toNat = 1048572 from rfl]; omega))]
+      simp only [hm₁, show (1048568 : UInt32) + (4 : UInt32) = (1048572 : UInt32) from rfl]
+      exact Mem.read32_write32_same st.mem (1048572 : UInt32) len
+    have hread_ne : ∀ a : UInt32, (1048576 : Nat) ≤ a.toNat →
+        m₂.read64 a = st.mem.read64 a := by
+      intro a ha
+      simp only [hm₂, show (1048568 : UInt32) + (0 : UInt32) = (1048568 : UInt32) from rfl]
+      rw [read64_write32_ne m₁ (1048568 : UInt32) a ptr
+            (Or.inr (by simp only [show (1048568 : UInt32).toNat = 1048568 from rfl]; omega))]
+      simp only [hm₁, show (1048568 : UInt32) + (4 : UInt32) = (1048572 : UInt32) from rfl]
+      rw [read64_write32_ne st.mem (1048572 : UInt32) a len
+            (Or.inr (by simp only [show (1048572 : UInt32).toNat = 1048572 from rfl]; omega))]
+    show ⊢ wp_wasm «module» st
       { params := [.i32 (1048568 : UInt32), .i32 ptr, .i32 len, .i32 (1048652 : UInt32)],
-        locals := [], values := [] } from rfl]
-  unfold func3
-  -- wp_run includes Locals.get and evaluates all localGet steps.
-  -- Bounds checks produce if-expressions (hpg is not in the simp set).
-  wp_run
-  sorry
+        locals := [], values := [] }
+      [.localGet 0, .localGet 2, .store32 (4 : UInt32),
+       .localGet 0, .localGet 1, .store32 (0 : UInt32), .ret] env _
+    apply wp_wasm_localGet (hget := rfl)
+    intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]; · iexact Hσ
+    · apply wp_wasm_localGet (hget := rfl)
+      intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]; · iexact Hσ
+      · apply wp_wasm_store32 (hstack := rfl)
+            (hbounds := by
+              simp only [show (1048568 : UInt32).toNat = 1048568 from rfl,
+                         show (4 : UInt32).toNat = 4 from rfl]; omega)
+        intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]; · iexact Hσ
+        · apply wp_wasm_localGet (hget := rfl)
+          intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]; · iexact Hσ
+          · apply wp_wasm_localGet (hget := rfl)
+            intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]; · iexact Hσ
+            · apply wp_wasm_store32 (hstack := rfl)
+                  (hbounds := by
+                    simp only [Mem.write32_pages,
+                               show (1048568 : UInt32).toNat = 1048568 from rfl,
+                               show (0 : UInt32).toNat = 0 from rfl]; omega)
+              intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]; · iexact Hσ
+              · unfold wp_wasm
+                iapply least_fixpoint_unfold_mpr
+                unfold wp_wasm_F
+                dsimp only []
+                exact BI.pure_intro ⟨rfl, rfl, hpages, hread_1568, hread_1572, hread_ne⟩
+  obtain ⟨fuel₀, hwp_fuel⟩ := hwp
+  have hresults : func3Def.results.length = 0 := rfl
+  have hcr : ([.i32 (1048652 : UInt32), .i32 len, .i32 ptr,
+               .i32 (1048568 : UInt32)] : List Value).drop func3Def.numParams = [] := rfl
+  cases hexec : exec fuel₀ «module» st
+      (func3Def.toLocals ([.i32 (1048652 : UInt32), .i32 len, .i32 ptr,
+                           .i32 (1048568 : UInt32)].take func3Def.numParams).reverse)
+      func3Def.body env with
+  | Fallthrough st' s' =>
+    rw [hexec] at hwp_fuel; dsimp only at hwp_fuel
+    exact TerminatesWith.of_run fuel₀ [] st'
+      (by rw [run_eq himp]; simp [hf, hexec, hresults, hcr]) hwp_fuel
+  | Return st' vals =>
+    rw [hexec] at hwp_fuel; dsimp only at hwp_fuel
+    exact TerminatesWith.of_run fuel₀ [] st'
+      (by rw [run_eq himp]; simp [hf, hexec, hresults, hcr]) (hwp_fuel.1 ▸ hwp_fuel)
+  | Break n st' s' => simp only [hexec] at hwp_fuel
+  | Trap st' msg => simp only [hexec] at hwp_fuel
+  | Invalid msg => simp only [hexec] at hwp_fuel
+  | OutOfFuel => simp only [hexec] at hwp_fuel
+  | ReturnCall fid st' vs => simp only [hexec] at hwp_fuel
+  | Throwing tag targs st' s' => simp only [hexec] at hwp_fuel
 
 -- func2: the actual swap via scratch at 1048552 (global0 = 1048560 at call time)
 set_option maxHeartbeats 4000000 in
@@ -359,6 +435,7 @@ private theorem func1_terminates_sw (env : HostEnv Unit) (st : Store Unit)
     (ptr len i j : UInt32)
     (hi : i < len) (hj : j < len)
     (hpg : ptr.toNat + 8 * len.toNat ≤ st.mem.pages * 65536)
+    (hpages_bound : st.mem.pages * 65536 ≤ 4294967296)
     (hptr : (1048576 : Nat) ≤ ptr.toNat)
     (hg0 : st.globals.globals[0]? = some (.i32 (1048560 : UInt32))) :
     TerminatesWith env «module» 1 st
@@ -372,6 +449,33 @@ private theorem func1_terminates_sw (env : HostEnv Unit) (st : Store Unit)
             (a.toNat + 8 ≤ (elemAddr ptr j).toNat ∨ (elemAddr ptr j).toNat + 8 ≤ a.toNat) →
             (a.toNat + 8 ≤ (1048552 : Nat) ∨ (1048560 : Nat) ≤ a.toNat) →
             st'.mem.read64 a = st.mem.read64 a) := by
+  have hi_nat : i.toNat < len.toNat := hi
+  have hj_nat : j.toNat < len.toNat := hj
+  have helemI : (elemAddr ptr i).toNat = ptr.toNat + 8 * i.toNat := by
+    unfold elemAddr
+    rw [UInt32.toNat_add, UInt32.toNat_mul]
+    simp only [show (8 : UInt32).toNat = 8 from rfl]
+    rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]
+  have helemJ : (elemAddr ptr j).toNat = ptr.toNat + 8 * j.toNat := by
+    unfold elemAddr
+    rw [UInt32.toNat_add, UInt32.toNat_mul]
+    simp only [show (8 : UInt32).toNat = 8 from rfl]
+    rw [Nat.mod_eq_of_lt (by omega), Nat.mod_eq_of_lt (by omega)]
+  have hpg_a : (elemAddr ptr i).toNat + 8 ≤ st.mem.pages * 65536 := by
+    rw [helemI]; omega
+  have hpg_b : (elemAddr ptr j).toNat + 8 ≤ st.mem.pages * 65536 := by
+    rw [helemJ]; omega
+  have hge_a : (1048560 : Nat) ≤ (elemAddr ptr i).toNat := by rw [helemI]; omega
+  have hge_b : (1048560 : Nat) ≤ (elemAddr ptr j).toNat := by rw [helemJ]; omega
+  have hdisj : elemAddr ptr i = elemAddr ptr j ∨
+               (elemAddr ptr i).toNat + 8 ≤ (elemAddr ptr j).toNat ∨
+               (elemAddr ptr j).toNat + 8 ≤ (elemAddr ptr i).toNat := by
+    rcases Nat.lt_or_ge i.toNat j.toNat with h | h
+    · right; left; rw [helemI, helemJ]; omega
+    · rcases Nat.eq_or_lt_of_le h with heq | hlt
+      · left; apply UInt32.toNat.inj; rw [helemI, helemJ]; omega
+      · right; right; rw [helemI, helemJ]; omega
+  -- func2 preconditions established; exec trace through func1's nested blocks deferred
   sorry
 
 -- func0: simple wrapper that calls func1
@@ -380,6 +484,7 @@ private theorem func0_terminates_sw (env : HostEnv Unit) (st : Store Unit)
     (ptr len i j : UInt32)
     (hi : i < len) (hj : j < len)
     (hpg : ptr.toNat + 8 * len.toNat ≤ st.mem.pages * 65536)
+    (hpages_bound : st.mem.pages * 65536 ≤ 4294967296)
     (hptr : (1048576 : Nat) ≤ ptr.toNat)
     (hg0 : st.globals.globals[0]? = some (.i32 (1048560 : UInt32))) :
     TerminatesWith env «module» 0 st
@@ -393,36 +498,37 @@ private theorem func0_terminates_sw (env : HostEnv Unit) (st : Store Unit)
             (a.toNat + 8 ≤ (elemAddr ptr j).toNat ∨ (elemAddr ptr j).toNat + 8 ≤ a.toNat) →
             (a.toNat + 8 ≤ (1048552 : Nat) ∨ (1048560 : Nat) ≤ a.toNat) →
             st'.mem.read64 a = st.mem.read64 a) := by
-  apply TerminatesWith.of_wp_entry_for
-    (f := ⟨[.i32, .i32, .i32, .i32], [], func0, [], none⟩) rfl
-  unfold func0; wp_run
-  -- calls func1 with [1048604, j, i, len, ptr]
-  apply wp_call_of_terminates
-    (func1_terminates_sw env st ptr len i j hi hj hpg hptr hg0)
-  rintro st' vs ⟨hrs, hglob, hpages, hrA, hrB, hother⟩
-  subst hrs
-  wp_run
-  exact ⟨rfl, hglob, hpages, hrA, hrB, hother⟩
+  have himp : «module».imports[0]? = none := rfl
+  have hf : «module».funcs[0 - «module».imports.length]? = some func0Def := rfl
+  obtain ⟨N1, hN1⟩ := func1_terminates_sw env st ptr len i j hi hj hpg hpages_bound hptr hg0
+  obtain ⟨vs1, st1, hrun1, hpost1⟩ := hN1 N1 le_rfl
+  obtain ⟨hrs1, hglob1, hpages1, hrA1, hrB1, hother1⟩ := hpost1
+  subst hrs1
+  have hrun_ext : run (N1 + 8) «module» 1 st
+      [.i32 (1048604 : UInt32), .i32 j, .i32 i, .i32 len, .i32 ptr] env
+      = .Success [] st1 :=
+    (run_fuel_mono (by omega) (by rw [hrun1]; intro h; cases h)).trans hrun1
+  -- trace through func0's body: 5 simple pushes then call 1 then ret
+  have hexec : exec (N1 + 9) «module» st
+      (func0Def.toLocals ([.i32 j, .i32 i, .i32 len, .i32 ptr].take func0Def.numParams).reverse)
+      func0Def.body env = .Return st1 [] := by
+    show exec (N1 + 9) «module» st
+      { params := [.i32 ptr, .i32 len, .i32 i, .i32 j], locals := [], values := [] }
+      [.localGet 0, .localGet 1, .localGet 2, .localGet 3,
+       .const (1048604 : UInt32), .call 1, .ret] env = .Return st1 []
+    conv_lhs => simp [exec, execOne.eq_def, Locals.get]
+    rw [hrun_ext]
+  apply TerminatesWith.of_run (N1 + 9) [] st1
+  · rw [run_eq himp]
+    simp only [hf, show func0Def.results.length = 0 from rfl,
+               show ([.i32 j, .i32 i, .i32 len, .i32 ptr] : List Value).drop func0Def.numParams = [] from rfl,
+               List.take_zero, List.nil_append, hexec]
+  · exact ⟨rfl, hglob1, hpages1, hrA1, hrB1, hother1⟩
 
 /-! ## Top-level spec -/
 
--- spec missing: st.globals.globals[0]? = some (.i32 1048576)
--- see comment above func1_terminates_sw
 theorem swap_spec_sep : SwapElementsSpec := by
-  intro env st ptr len i j hi hj hbound hptr
-  -- without this, func4's globalGet 0 traps and TerminatesWith is false for those stores
-  have hg0 : st.globals.globals[0]? = some (.i32 (1048576 : UInt32)) := by sorry
-  apply TerminatesWith.of_wp_entry_for
-    (f := ⟨[.i32, .i32, .i32, .i32], [.i32, .i32, .i32], func4, [], none⟩) rfl
-  unfold func4; wp_run
-  simp only [hg0]
-  -- global0 = 1048576 → fp = 1048560; func3(1048568, ptr, len, 1048652) → call func0
-  -- then restore global0 = 1048576; ret
-  -- pages ≥ 1048576/65536 = 16.0007... so pages ≥ 17 (from memory declaration)
-  -- but spec only gives ptr + 8*len ≤ pages*65536 with ptr ≥ 1048576
-  have hpg1576 : (1048576 : Nat) ≤ st.mem.pages * 65536 := by omega
-  -- set global0 = 1048560 after func4's first globalSet
-  -- then call func3 to spill ptr/len; then call func0 for the swap
+  intro env st ptr len i j hi hj hbound hpages_bound hptr hg0
   sorry
 
 end Project.SwapElements.SwapSepLogic
