@@ -191,6 +191,160 @@ theorem wp_wasm_prop_call
   simp only [exec_call_cons, hrun', hfuel']
   exact hfuel
 
+-- block rule: body either falls through or breaks to label 0;
+-- both cases produce the same trimmed continuation locals.
+theorem wp_wasm_prop_block
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {bt bl : Nat} {body : Program} {rest : Program}
+    {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    (hbody : ∃ N, ∀ fuel ≥ N,
+      (∃ st' s', exec fuel m st locals body env = .Fallthrough st' s' ∧
+        wp_wasm_prop m st' { s' with values := s'.values.take bl ++ locals.values.drop bt }
+          rest env Q) ∨
+      (∃ st' s', exec fuel m st locals body env = .Break 0 st' s' ∧
+        wp_wasm_prop m st' { s' with values := s'.values.take bl ++ locals.values.drop bt }
+          rest env Q)) :
+    wp_wasm_prop m st locals (.block bt bl body :: rest) env Q := by
+  obtain ⟨N, hN⟩ := hbody
+  rcases hN N le_rfl with ⟨st', s', hbody_result, hwp⟩ | ⟨st', s', hbody_result, hwp⟩ <;> {
+    obtain ⟨fuel_rest, hfuel⟩ := hwp
+    have hbody_ne : exec N m st locals body env ≠ .OutOfFuel := by
+      rw [hbody_result]; intro h; cases h
+    have hfuel_ne : exec fuel_rest m st'
+        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env ≠ .OutOfFuel := by
+      intro h; simp only [h] at hfuel
+    refine ⟨max N fuel_rest + 1, ?_⟩
+    have hbody' : exec (max N fuel_rest) m st locals body env = exec N m st locals body env :=
+      exec_fuel_mono (Nat.le_max_left N fuel_rest) hbody_ne
+    have hfuel' : exec (max N fuel_rest + 1) m st'
+        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env =
+        exec fuel_rest m st'
+        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env :=
+      exec_fuel_mono (by omega) hfuel_ne
+    simp only [exec_block_cons, hbody', hbody_result, hfuel']
+    exact hfuel }
+
+-- loop rule: invariant I and measure μ; body either falls through (exit) or
+-- breaks to label 0 (re-enter) with I re-established and μ decreased.
+theorem wp_wasm_prop_loop
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {ps rs : Nat} {body : Program} {rest : Program}
+    {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    (I : Store Unit → Locals → Prop)
+    (μ : Store Unit → Locals → Nat)
+    (hinit : I st locals)
+    (hstep : ∀ stA locA, I stA locA →
+      ∃ N, ∀ fuel ≥ N,
+        (∃ stB sB, exec fuel m stA locA body env = .Fallthrough stB sB ∧
+          wp_wasm_prop m stB { sB with values := sB.values.take rs ++ locA.values.drop ps }
+            rest env Q) ∨
+        (∃ stB sB, exec fuel m stA locA body env = .Break 0 stB sB ∧
+          I stB { sB with values := sB.values.take ps ++ locA.values.drop ps } ∧
+          μ stB { sB with values := sB.values.take ps ++ locA.values.drop ps } < μ stA locA)) :
+    wp_wasm_prop m st locals (.loop ps rs body :: rest) env Q := by
+  -- restate exec_loop_cons_unfold (private in Loop.lean) using execOne_loop_succ
+  have exec_loop_unfold : ∀ (f : Nat) (stA : Store Unit) (sA : Locals),
+      exec (f + 1) m stA sA (.loop ps rs body :: rest) env =
+      match exec f m stA sA body env with
+      | .Fallthrough r' s' =>
+        exec (f + 1) m r' { s' with values := s'.values.take rs ++ sA.values.drop ps } rest env
+      | .Break 0 r' s' =>
+        match execOne f m r' { s' with values := s'.values.take ps ++ sA.values.drop ps }
+            (.loop ps rs body) env with
+        | .Fallthrough r'' s'' => exec (f + 1) m r'' s'' rest env
+        | other => other
+      | .Break (k + 1) r' s' => .Break k r' s'
+      | other => other := by
+    intro f stA sA
+    simp only [exec, execOne_loop_succ]
+    rcases exec f m stA sA body env with
+      ⟨_, _⟩ | ⟨n, _, _⟩ | ⟨_, _⟩ | _ | _ | _ | ⟨_, _, _⟩ | ⟨_, _, _, _⟩
+    · rfl
+    · cases n with
+      | zero =>
+        simp only
+        rcases execOne f m _ _ (.loop ps rs body) env with
+          ⟨_, _⟩ | ⟨_, _, _⟩ | ⟨_, _⟩ | _ | _ | _ | ⟨_, _, _⟩ | ⟨_, _, _, _⟩ <;> rfl
+      | succ _ => rfl
+    all_goals rfl
+  suffices key : ∀ n, ∀ stA : Store Unit, ∀ sA : Locals,
+      I stA sA → μ stA sA = n →
+      wp_wasm_prop m stA sA (.loop ps rs body :: rest) env Q by
+    exact key _ st locals hinit rfl
+  intro n
+  induction n using Nat.strong_induction_on with
+  | _ n IH =>
+    intro stA sA hI hμ
+    obtain ⟨N, hN⟩ := hstep stA sA hI
+    rcases hN N le_rfl with ⟨stB, sB, hbody, hwp⟩ | ⟨stB, sB, hbody, hI', hμ'⟩
+    · -- Fallthrough: body exits, compose fuels for body and rest
+      obtain ⟨fuel_rest, hfuel⟩ := hwp
+      have hbody_ne : exec N m stA sA body env ≠ .OutOfFuel := by
+        rw [hbody]; intro h; cases h
+      have hfuel_ne : exec fuel_rest m stB
+          { sB with values := sB.values.take rs ++ sA.values.drop ps } rest env ≠ .OutOfFuel := by
+        intro h; simp only [h] at hfuel
+      have hbody' : exec (max N fuel_rest) m stA sA body env = .Fallthrough stB sB :=
+        (exec_fuel_mono (Nat.le_max_left N fuel_rest) hbody_ne).trans hbody
+      have hfuel' : exec (max N fuel_rest + 1) m stB
+          { sB with values := sB.values.take rs ++ sA.values.drop ps } rest env =
+          exec fuel_rest m stB
+          { sB with values := sB.values.take rs ++ sA.values.drop ps } rest env :=
+        exec_fuel_mono (by omega) hfuel_ne
+      refine ⟨max N fuel_rest + 1, ?_⟩
+      have heq : exec (max N fuel_rest + 1) m stA sA (.loop ps rs body :: rest) env =
+          exec fuel_rest m stB { sB with values := sB.values.take rs ++ sA.values.drop ps } rest env := by
+        simp only [exec_loop_unfold (max N fuel_rest) stA sA, hbody', hfuel']
+      rw [heq]; exact hfuel
+    · -- Break 0: re-entry; apply IH at the smaller measure
+      set trimmed : Locals :=
+        { sB with values := sB.values.take ps ++ sA.values.drop ps } with htrimmed
+      have hμ_lt : μ stB trimmed < n := hμ ▸ hμ'
+      obtain ⟨fuel_loop, hfuel_loop⟩ := IH (μ stB trimmed) hμ_lt stB trimmed hI' rfl
+      have hbody_ne : exec N m stA sA body env ≠ .OutOfFuel := by
+        rw [hbody]; intro h; cases h
+      have hfuel_ne : exec fuel_loop m stB trimmed (.loop ps rs body :: rest) env ≠ .OutOfFuel := by
+        intro h; simp only [h] at hfuel_loop
+      have hexecOne_ne : execOne fuel_loop m stB trimmed (.loop ps rs body) env ≠ .OutOfFuel := by
+        intro h; exact hfuel_ne (by simp only [exec, h])
+      have hbody' : exec (max N fuel_loop) m stA sA body env = .Break 0 stB sB :=
+        (exec_fuel_mono (Nat.le_max_left N fuel_loop) hbody_ne).trans hbody
+      have hexecOne_mono : execOne (max N fuel_loop) m stB trimmed (.loop ps rs body) env =
+          execOne fuel_loop m stB trimmed (.loop ps rs body) env :=
+        execOne_fuel_mono (Nat.le_max_right N fuel_loop) hexecOne_ne
+      have hexecOne_ne2 : execOne (max N fuel_loop) m stB trimmed (.loop ps rs body) env ≠ .OutOfFuel := by
+        rwa [hexecOne_mono]
+      have hexecOne_succ : execOne (max N fuel_loop + 1) m stB trimmed (.loop ps rs body) env =
+          execOne (max N fuel_loop) m stB trimmed (.loop ps rs body) env :=
+        execOne_fuel_mono (Nat.le_succ _) hexecOne_ne2
+      -- execOne at (stA, sA) agrees with execOne at (stB, trimmed):
+      -- body takes Break 0 at stA landing exactly at trimmed
+      have hexecOne_eq : execOne (max N fuel_loop + 1) m stA sA (.loop ps rs body) env =
+          execOne (max N fuel_loop + 1) m stB trimmed (.loop ps rs body) env := by
+        conv_lhs => rw [execOne_loop_succ]
+        simp only [hbody', ← htrimmed]
+        exact hexecOne_succ.symm
+      -- both exec calls on (.loop :: rest) reduce via the same execOne
+      have heq : exec (max N fuel_loop + 1) m stA sA (.loop ps rs body :: rest) env =
+          exec (max N fuel_loop + 1) m stB trimmed (.loop ps rs body :: rest) env := by
+        simp only [exec, hexecOne_eq]
+      refine ⟨max N fuel_loop + 1, ?_⟩
+      rw [heq,
+        exec_fuel_mono (Nat.le_trans (Nat.le_max_right N fuel_loop) (Nat.le_succ _)) hfuel_ne]
+      exact hfuel_loop
+
+-- toy: empty-body loop always exits immediately, validating wp_wasm_prop_loop
+private example (m : Module) (st : Store Unit) (locals : Locals) :
+    wp_wasm_prop m st locals [.loop 0 0 []] {} (fun _ _ => True) := by
+  apply wp_wasm_prop_loop (I := fun _ _ => True) (μ := fun _ _ => 0)
+  · trivial
+  · intro stA sA _
+    refine ⟨0, fun fuel _ => Or.inl ⟨stA, sA, ?_, ⟨0, ?_⟩⟩⟩
+    · simp only [exec]
+    · simp only [List.take_zero, List.nil_append, List.drop_zero, exec]
+
 -- per-instruction iProp rules for wp_wasm
 -- each wraps wp_wasm_step and discharges the execOne obligation
 
