@@ -1,5 +1,6 @@
 import Project.SwapElements.Program
 import Project.SwapElements.Spec
+import CodeLib.SepLogic.Adequacy
 import CodeLib.SepLogic.WasmWP
 import CodeLib.Entry
 import CodeLib.RustStd.Frame
@@ -167,7 +168,7 @@ private theorem func3_terminates (env : HostEnv Unit) (st : Store Unit)
   sorry
 
 -- func2: the actual swap via scratch at 1048552 (global0 = 1048560 at call time)
-omit inst in
+set_option maxHeartbeats 4000000 in
 private theorem func2_terminates (env : HostEnv Unit) (st : Store Unit)
     (ptr_a ptr_b : UInt32)
     (hg0 : st.globals.globals[0]? = some (.i32 (1048560 : UInt32)))
@@ -190,7 +191,166 @@ private theorem func2_terminates (env : HostEnv Unit) (st : Store Unit)
             (a.toNat + 8 ≤ ptr_b.toNat ∨ ptr_b.toNat + 8 ≤ a.toNat) →
             (a.toNat + 8 ≤ (1048552 : Nat) ∨ (1048560 : Nat) ≤ a.toNat) →
             st'.mem.read64 a = st.mem.read64 a) := by
-  sorry
+  have himp : «module».imports[2]? = none := rfl
+  have hf : «module».funcs[2 - «module».imports.length]? = some func2Def := rfl
+  have hwp : wp_wasm_prop «module» st
+      (func2Def.toLocals ([.i32 ptr_b, .i32 ptr_a].take func2Def.numParams).reverse)
+      func2Def.body env
+      (fun st' rs =>
+        rs = [] ∧ st'.globals = st.globals ∧ st'.mem.pages = st.mem.pages
+        ∧ st'.mem.read64 ptr_a = st.mem.read64 ptr_b
+        ∧ st'.mem.read64 ptr_b = st.mem.read64 ptr_a
+        ∧ ∀ a : UInt32,
+            (a.toNat + 8 ≤ ptr_a.toNat ∨ ptr_a.toNat + 8 ≤ a.toNat) →
+            (a.toNat + 8 ≤ ptr_b.toNat ∨ ptr_b.toNat + 8 ≤ a.toNat) →
+            (a.toNat + 8 ≤ (1048552 : Nat) ∨ (1048560 : Nat) ≤ a.toNat) →
+            st'.mem.read64 a = st.mem.read64 a) := by
+    apply wasm_heap_adequacy
+    intro inst
+    -- pre-prove memory postcondition on the exact write64 chain used by the wp steps
+    -- addresses: 1048560-16+8, ptr_a+0, ptr_b+0 (offset immediates not yet reduced)
+    have h1552_nat : (1048552 : UInt32).toNat = 1048552 := rfl
+    have hne_a : (1048552 : UInt32).toNat + 8 ≤ ptr_a.toNat := by omega
+    have hne_b : (1048552 : UInt32).toNat + 8 ≤ ptr_b.toNat := by omega
+    have ha0 : ptr_a + (0 : UInt32) = ptr_a := by simp
+    have hb0 : ptr_b + (0 : UInt32) = ptr_b := by simp
+    have h1552eq : ((1048560 : UInt32) - 16 + 8) = (1048552 : UInt32) := rfl
+    let m₁ := st.mem.write64 ((1048560 : UInt32) - 16 + 8) (st.mem.read64 (ptr_a + 0))
+    let m₂ := m₁.write64 (ptr_a + 0) (m₁.read64 (ptr_b + 0))
+    let m₃ := m₂.write64 (ptr_b + 0) (m₂.read64 ((1048560 : UInt32) - 16 + 8))
+    have hm₁ : m₁ = st.mem.write64 ((1048560 : UInt32) - 16 + 8) (st.mem.read64 (ptr_a + 0)) := rfl
+    have hm₂ : m₂ = m₁.write64 (ptr_a + 0) (m₁.read64 (ptr_b + 0)) := rfl
+    have hm₃ : m₃ = m₂.write64 (ptr_b + 0) (m₂.read64 ((1048560 : UInt32) - 16 + 8)) := rfl
+    have hpages : m₃.pages = st.mem.pages := by
+      simp only [hm₃, hm₂, hm₁, Mem.write64_pages]
+    have hread_a : m₃.read64 ptr_a = st.mem.read64 ptr_b := by
+      simp only [hm₃, hm₂, hm₁, ha0, hb0, h1552eq]
+      rcases hdisj with rfl | h | h
+      · rw [Mem.read64_write64_same,
+            read64_write64_ne _ ptr_a _ _ (Or.inl hne_a),
+            Mem.read64_write64_same]
+      · rw [read64_write64_ne _ ptr_b _ _ (Or.inl h),
+            Mem.read64_write64_same,
+            read64_write64_ne _ (1048552 : UInt32) _ _ (Or.inr hne_b)]
+      · rw [read64_write64_ne _ ptr_b _ _ (Or.inr h),
+            Mem.read64_write64_same,
+            read64_write64_ne _ (1048552 : UInt32) _ _ (Or.inr hne_b)]
+    have hread_b : m₃.read64 ptr_b = st.mem.read64 ptr_a := by
+      simp only [hm₃, hm₂, hm₁, ha0, hb0, h1552eq]
+      rw [Mem.read64_write64_same,
+          read64_write64_ne _ ptr_a _ _ (Or.inl hne_a),
+          Mem.read64_write64_same]
+    have hread_ne : ∀ a : UInt32,
+        (a.toNat + 8 ≤ ptr_a.toNat ∨ ptr_a.toNat + 8 ≤ a.toNat) →
+        (a.toNat + 8 ≤ ptr_b.toNat ∨ ptr_b.toNat + 8 ≤ a.toNat) →
+        (a.toNat + 8 ≤ (1048552 : Nat) ∨ (1048560 : Nat) ≤ a.toNat) →
+        m₃.read64 a = st.mem.read64 a := by
+      intro a h1 h2 h3
+      simp only [hm₃, hm₂, hm₁, ha0, hb0, h1552eq]
+      rw [read64_write64_ne _ ptr_b _ _ h2,
+          read64_write64_ne _ ptr_a _ _ h1,
+          read64_write64_ne _ (1048552 : UInt32) _ _
+            (by rcases h3 with h | h
+                · exact Or.inl (by omega)
+                · exact Or.inr (by omega))]
+    show ⊢ wp_wasm «module» st
+      { params := [.i32 ptr_a, .i32 ptr_b], locals := [.i32 (0 : UInt32)], values := [] }
+      [.globalGet 0, .const (16 : UInt32), .sub, .localSet 2, .localGet 2, .localGet 0,
+       .load64 (0 : UInt32), .store64 (8 : UInt32), .localGet 0, .localGet 1,
+       .load64 (0 : UInt32), .store64 (0 : UInt32), .localGet 1, .localGet 2,
+       .load64 (8 : UInt32), .store64 (0 : UInt32), .ret] env _
+    apply wp_wasm_globalGet (hget := hg0)
+    intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+    · iexact Hσ
+    · apply wp_wasm_const (16 : UInt32)
+      intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+      · iexact Hσ
+      · apply wp_wasm_sub (hstack := rfl)
+        intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+        · iexact Hσ
+        · apply wp_wasm_localSet (hstack := rfl) (hset := rfl)
+          intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+          · iexact Hσ
+          · apply wp_wasm_localGet (hget := rfl)
+            intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+            · iexact Hσ
+            · apply wp_wasm_localGet (hget := rfl)
+              intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+              · iexact Hσ
+              · apply wp_wasm_load64 (hstack := rfl)
+                    (hbounds := by
+                      simp only [show (0 : UInt32).toNat = 0 from rfl]; omega)
+                intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+                · iexact Hσ
+                · apply wp_wasm_store64 (hstack := rfl)
+                      (hbounds := by
+                        simp only [show (1048560 - 16 : UInt32).toNat = 1048544 from rfl,
+                                   show (8 : UInt32).toNat = 8 from rfl]; omega)
+                  intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+                  · iexact Hσ
+                  · apply wp_wasm_localGet (hget := rfl)
+                    intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+                    · iexact Hσ
+                    · apply wp_wasm_localGet (hget := rfl)
+                      intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+                      · iexact Hσ
+                      · apply wp_wasm_load64 (hstack := rfl)
+                            (hbounds := by
+                              simp only [Mem.write64_pages,
+                                show (0 : UInt32).toNat = 0 from rfl]; omega)
+                        intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+                        · iexact Hσ
+                        · apply wp_wasm_store64 (hstack := rfl)
+                              (hbounds := by
+                                simp only [Mem.write64_pages,
+                                  show (0 : UInt32).toNat = 0 from rfl]; omega)
+                          intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+                          · iexact Hσ
+                          · apply wp_wasm_localGet (hget := rfl)
+                            intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+                            · iexact Hσ
+                            · apply wp_wasm_localGet (hget := rfl)
+                              intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+                              · iexact Hσ
+                              · apply wp_wasm_load64 (hstack := rfl)
+                                    (hbounds := by
+                                      simp only [Mem.write64_pages,
+                                        show (1048560 - 16 : UInt32).toNat = 1048544 from rfl,
+                                        show (8 : UInt32).toNat = 8 from rfl]; omega)
+                                intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+                                · iexact Hσ
+                                · apply wp_wasm_store64 (hstack := rfl)
+                                      (hbounds := by
+                                        simp only [Mem.write64_pages,
+                                          show (0 : UInt32).toNat = 0 from rfl]; omega)
+                                  intro σ; iintro Hσ; imodintro; iexists σ; isplitl [Hσ]
+                                  · iexact Hσ
+                                  · -- ret
+                                    unfold wp_wasm
+                                    iapply least_fixpoint_unfold_mpr
+                                    unfold wp_wasm_F
+                                    dsimp only []
+                                    exact BI.pure_intro ⟨rfl, rfl, hpages, hread_a, hread_b, hread_ne⟩
+  obtain ⟨fuel₀, hwp_fuel⟩ := hwp
+  have hresults : func2Def.results.length = 0 := rfl
+  have hcr : ([.i32 ptr_b, .i32 ptr_a] : List Value).drop func2Def.numParams = [] := rfl
+  cases hexec : exec fuel₀ «module» st
+      (func2Def.toLocals ([.i32 ptr_b, .i32 ptr_a].take func2Def.numParams).reverse)
+      func2Def.body env with
+  | Fallthrough st' s' =>
+    rw [hexec] at hwp_fuel; dsimp only at hwp_fuel
+    exact TerminatesWith.of_run fuel₀ [] st'
+      (by rw [run_eq himp]; simp [hf, hexec, hresults, hcr]) hwp_fuel
+  | Return st' vals =>
+    rw [hexec] at hwp_fuel; dsimp only at hwp_fuel
+    exact TerminatesWith.of_run fuel₀ [] st'
+      (by rw [run_eq himp]; simp [hf, hexec, hresults, hcr]) (hwp_fuel.1 ▸ hwp_fuel)
+  | Break n st' s' => simp only [hexec] at hwp_fuel
+  | Trap st' msg => simp only [hexec] at hwp_fuel
+  | Invalid msg => simp only [hexec] at hwp_fuel
+  | OutOfFuel => simp only [hexec] at hwp_fuel
+  | ReturnCall fid st' vs => simp only [hexec] at hwp_fuel
+  | Throwing tag targs st' s' => simp only [hexec] at hwp_fuel
 
 -- func1: bounds-check i < len and j < len, compute addresses, call func2
 -- called from func0 with args [.i32 1048604, .i32 j, .i32 i, .i32 len, .i32 ptr]
