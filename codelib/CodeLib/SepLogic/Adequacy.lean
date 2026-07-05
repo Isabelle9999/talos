@@ -242,7 +242,9 @@ theorem wp_wasm_prop_loop
             rest env Q) ∨
         (∃ stB sB, exec fuel m stA locA body env = .Break 0 stB sB ∧
           I stB { sB with values := sB.values.take ps ++ locA.values.drop ps } ∧
-          μ stB { sB with values := sB.values.take ps ++ locA.values.drop ps } < μ stA locA)) :
+          μ stB { sB with values := sB.values.take ps ++ locA.values.drop ps } < μ stA locA) ∨
+        (∃ stB vs, exec fuel m stA locA body env = .Return stB vs ∧
+          Q stB vs)) :
     wp_wasm_prop m st locals (.loop ps rs body :: rest) env Q := by
   -- restate exec_loop_cons_unfold (private in Loop.lean) using execOne_loop_succ
   have exec_loop_unfold : ∀ (f : Nat) (stA : Store Unit) (sA : Locals),
@@ -279,6 +281,7 @@ theorem wp_wasm_prop_loop
     intro stA sA hI hμ
     obtain ⟨N, hN⟩ := hstep stA sA hI
     rcases hN N le_rfl with ⟨stB, sB, hbody, hwp⟩ | ⟨stB, sB, hbody, hI', hμ'⟩
+        | ⟨stB, vs, hbody, hQ⟩
     · -- Fallthrough: body exits, compose fuels for body and rest
       obtain ⟨fuel_rest, hfuel⟩ := hwp
       have hbody_ne : exec N m stA sA body env ≠ .OutOfFuel := by
@@ -334,6 +337,10 @@ theorem wp_wasm_prop_loop
       rw [heq,
         exec_fuel_mono (Nat.le_trans (Nat.le_max_right N fuel_loop) (Nat.le_succ _)) hfuel_ne]
       exact hfuel_loop
+    · -- Return: body exits via .Return; the loop's "other => other" arm propagates it straight out
+      refine ⟨N + 1, ?_⟩
+      simp only [exec_loop_unfold N stA sA, hbody]
+      exact hQ
 
 -- toy: empty-body loop always exits immediately, validating wp_wasm_prop_loop
 private example (m : Module) (st : Store Unit) (locals : Locals) :
