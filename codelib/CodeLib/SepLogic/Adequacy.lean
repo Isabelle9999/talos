@@ -191,6 +191,40 @@ theorem wp_wasm_prop_call
   simp only [exec_call_cons, hrun', hfuel']
   exact hfuel
 
+-- block rule: body either falls through or breaks to label 0;
+-- both cases produce the same trimmed continuation locals.
+theorem wp_wasm_prop_block
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {bt bl : Nat} {body : Program} {rest : Program}
+    {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    (hbody : ∃ N, ∀ fuel ≥ N,
+      (∃ st' s', exec fuel m st locals body env = .Fallthrough st' s' ∧
+        wp_wasm_prop m st' { s' with values := s'.values.take bl ++ locals.values.drop bt }
+          rest env Q) ∨
+      (∃ st' s', exec fuel m st locals body env = .Break 0 st' s' ∧
+        wp_wasm_prop m st' { s' with values := s'.values.take bl ++ locals.values.drop bt }
+          rest env Q)) :
+    wp_wasm_prop m st locals (.block bt bl body :: rest) env Q := by
+  obtain ⟨N, hN⟩ := hbody
+  rcases hN N le_rfl with ⟨st', s', hbody_result, hwp⟩ | ⟨st', s', hbody_result, hwp⟩ <;> {
+    obtain ⟨fuel_rest, hfuel⟩ := hwp
+    have hbody_ne : exec N m st locals body env ≠ .OutOfFuel := by
+      rw [hbody_result]; intro h; cases h
+    have hfuel_ne : exec fuel_rest m st'
+        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env ≠ .OutOfFuel := by
+      intro h; simp only [h] at hfuel
+    refine ⟨max N fuel_rest + 1, ?_⟩
+    have hbody' : exec (max N fuel_rest) m st locals body env = exec N m st locals body env :=
+      exec_fuel_mono (Nat.le_max_left N fuel_rest) hbody_ne
+    have hfuel' : exec (max N fuel_rest + 1) m st'
+        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env =
+        exec fuel_rest m st'
+        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env :=
+      exec_fuel_mono (by omega) hfuel_ne
+    simp only [exec_block_cons, hbody', hbody_result, hfuel']
+    exact hfuel }
+
 -- per-instruction iProp rules for wp_wasm
 -- each wraps wp_wasm_step and discharges the execOne obligation
 
