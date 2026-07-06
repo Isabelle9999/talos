@@ -23,4 +23,22 @@ def wp_wasm_prop (m : Module) (st : Store Unit) (locals : Locals)
   | .Return st' vals => Q st' vals
   | _ => False
 
+/-! ## Per-instruction ownership rules in iProp
+
+Each rule describes how one instruction transforms ownership.
+These compose sequentially for straight-line code (swap).
+For loops, bi_least_fixpoint wraps the composition. -/
+
+variable [inst : WasmHeapGS]
+
+-- load64: need ownership to read, ownership preserved
+def wp_load64 (addr : UInt32) (v : UInt64)
+    (Q : IProp WasmHeapGF) : IProp WasmHeapGF :=
+  iprop% (pointsTo_u64 addr v) ∗ (pointsTo_u64 addr v -∗ Q)
+
+-- store64: consume old ownership, produce new
+def wp_store64 (addr : UInt32) (old_v new_v : UInt64)
+    (Q : IProp WasmHeapGF) : IProp WasmHeapGF :=
+  iprop% (pointsTo_u64 addr old_v) ∗ (pointsTo_u64 addr new_v -∗ Q)
+
 end Wasm.SepLogic
