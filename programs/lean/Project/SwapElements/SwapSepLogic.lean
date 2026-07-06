@@ -120,7 +120,8 @@ private theorem read32_write32_ne (m : Mem) (a b : UInt32) (v : UInt32)
 /-! ## Function termination lemmas
 
 Call chain: func4 → func0 → func1 → func2.
-Each is proved with TerminatesWith and composed via wp_call_of_terminates.
+Each is proved through the iris-lean pipeline (wasm_heap_adequacy +
+per-instruction iProp rules) and composed via wp_wasm_prop_call.
 
 Key memory facts after the swap:
   final_mem = (st.mem
@@ -136,7 +137,8 @@ are unchanged by all these writes.
 
 Spec gap: SwapElementsSpec does not require st.globals.globals[0]? = some (.i32 1048576).
 Without that precondition, func4's globalGet 0 may trap and TerminatesWith is false
-for those stores. The main sorry in swap_spec_sep is exactly that gap. -/
+for those stores. The spec now includes the global0 and pages-bound preconditions,
+added because func4's globalGet 0 would otherwise trap on arbitrary stores. -/
 
 -- func3 spills ptr/len into the 8-byte slot at [1048568, 1048575]
 -- body: write32(1048572, len) then write32(1048568, ptr)
@@ -430,7 +432,6 @@ private theorem func2_terminates (env : HostEnv Unit) (st : Store Unit)
 
 -- func1: bounds-check i < len and j < len, compute addresses, call func2
 -- called from func0 with args [.i32 1048604, .i32 j, .i32 i, .i32 len, .i32 ptr]
-omit inst in
 private theorem func1_terminates_sw (env : HostEnv Unit) (st : Store Unit)
     (ptr len i j : UInt32)
     (hi : i < len) (hj : j < len)
@@ -475,11 +476,61 @@ private theorem func1_terminates_sw (env : HostEnv Unit) (st : Store Unit)
     · rcases Nat.eq_or_lt_of_le h with heq | hlt
       · left; apply UInt32.toNat.inj; rw [helemI, helemJ]; omega
       · right; right; rw [helemI, helemJ]; omega
-  -- func2 preconditions established; exec trace through func1's nested blocks deferred
-  sorry
+  -- Call func2 and build the exec trace through func1's nested blocks
+  obtain ⟨N2, hN2⟩ := func2_terminates env st (elemAddr ptr i) (elemAddr ptr j)
+      hg0 (by omega) hpg_a hpg_b hge_a hge_b hdisj
+  obtain ⟨_, st2, hrun2, hpost2⟩ := hN2 N2 le_rfl
+  obtain ⟨hrs2, hglob2, hpages2, hrA2, hrB2, hother2⟩ := hpost2
+  subst hrs2
+  have himp₁ : «module».imports[1]? = none := rfl
+  have hf₁ : «module».funcs[1 - «module».imports.length]? = some func1Def := rfl
+  have hrun2_ext : run (N2 + 51) «module» 2 st
+      [.i32 (elemAddr ptr j), .i32 (elemAddr ptr i)] env = .Success [] st2 :=
+    (run_fuel_mono (by omega) (by rw [hrun2]; intro h; cases h)).trans hrun2
+  -- Connect shl-computed addresses to elemAddr
+  have haddr_i : (i : UInt32) <<< (3 : UInt32) + ptr = elemAddr ptr i := by
+    unfold elemAddr
+    apply UInt32.toNat.inj
+    simp only [UInt32.toNat_add, UInt32.toNat_shiftLeft,
+               show (3 : UInt32).toNat = 3 from rfl, Nat.shiftLeft_eq,
+               UInt32.toNat_mul, show (8 : UInt32).toNat = 8 from rfl,
+               show UInt32.size = 4294967296 from rfl,
+               show (3 : Nat) % 32 = 3 from rfl, show (2 : Nat) ^ 3 = 8 from rfl]
+    omega
+  have haddr_j : (j : UInt32) <<< (3 : UInt32) + ptr = elemAddr ptr j := by
+    unfold elemAddr
+    apply UInt32.toNat.inj
+    simp only [UInt32.toNat_add, UInt32.toNat_shiftLeft,
+               show (3 : UInt32).toNat = 3 from rfl, Nat.shiftLeft_eq,
+               UInt32.toNat_mul, show (8 : UInt32).toNat = 8 from rfl,
+               show UInt32.size = 4294967296 from rfl,
+               show (3 : Nat) % 32 = 3 from rfl, show (2 : Nat) ^ 3 = 8 from rfl]
+    omega
+  have hrun2_shl : run (N2 + 51) «module» 2 st
+      [.i32 ((j : UInt32) <<< (3 : UInt32) + ptr),
+       .i32 ((i : UInt32) <<< (3 : UInt32) + ptr)] env = .Success [] st2 := by
+    rw [haddr_j, haddr_i]; exact hrun2_ext
+  -- Exec trace: three nested blocks (happy path) + rest ending in call 2 + ret
+  have hexec₁ : exec (N2 + 53) «module» st
+      (func1Def.toLocals ([.i32 (1048604 : UInt32), .i32 j, .i32 i, .i32 len, .i32 ptr].take
+        func1Def.numParams).reverse)
+      func1Def.body env = .Return st2 [] := by
+    show exec (N2 + 53) «module» st
+      { params := [.i32 ptr, .i32 len, .i32 i, .i32 j, .i32 (1048604 : UInt32)],
+        locals := [.i32 (0 : UInt32)], values := [] }
+      func1 env = .Return st2 []
+    simp only [func1]
+    conv_lhs => simp [exec, execOne.eq_def, Locals.get, Locals.set?, hi, hj]
+    rw [hrun2_shl]
+  apply TerminatesWith.of_run (N2 + 53) [] st2
+  · rw [run_eq himp₁]
+    simp only [hf₁, show func1Def.results.length = 0 from rfl,
+               show ([.i32 (1048604 : UInt32), .i32 j, .i32 i, .i32 len, .i32 ptr] : List Value).drop
+                 func1Def.numParams = [] from rfl,
+               List.take_zero, List.nil_append, hexec₁]
+  · exact ⟨rfl, hglob2, hpages2, hrA2, hrB2, hother2⟩
 
 -- func0: simple wrapper that calls func1
-omit inst in
 private theorem func0_terminates_sw (env : HostEnv Unit) (st : Store Unit)
     (ptr len i j : UInt32)
     (hi : i < len) (hj : j < len)
@@ -529,6 +580,122 @@ private theorem func0_terminates_sw (env : HostEnv Unit) (st : Store Unit)
 
 theorem swap_spec_sep : SwapElementsSpec := by
   intro env st ptr len i j hi hj hbound hpages_bound hptr hg0
-  sorry
+  have himp₄ : «module».imports[4]? = none := rfl
+  have hf₄ : «module».funcs[4 - «module».imports.length]? = some func4Def := rfl
+  -- Shadow-stack descend: global0 goes from 1048576 → 1048560
+  let stg : Store Unit :=
+    { st with globals := { st.globals with globals := st.globals.globals.set 0 (.i32 1048560) } }
+  have hpg3 : (1048576 : Nat) ≤ stg.mem.pages * 65536 := by simp only [stg]; omega
+  -- func3 spills ptr and len onto the shadow stack
+  obtain ⟨N3, hN3⟩ := func3_terminates env stg ptr len hpg3
+  obtain ⟨_, st3, hrun3, hpost3⟩ := hN3 N3 le_rfl
+  obtain ⟨hrs3, hglob3, hpages3, hread3_1568, hread3_1572, hread3_ne⟩ := hpost3
+  subst hrs3
+  -- Derive global0 = 1048560 in st3 (func3 preserved globals; globals is a List)
+  have hg0_3 : st3.globals.globals[0]? = some (.i32 (1048560 : UInt32)) := by
+    rw [hglob3]
+    simp only [stg]
+    match hnn : st.globals.globals with
+    | [] => simp [hnn] at hg0
+    | _ :: _ => simp [List.set]
+  -- func0 performs the actual swap on the loaded ptr/len
+  have hst3_pages : st3.mem.pages = st.mem.pages := by rw [hpages3]
+  have hpg_st3 : ¬ (st3.mem.pages * 65536 < (1048576 : Nat)) := by
+    have h1 : st3.mem.pages * 65536 = st.mem.pages * 65536 := by rw [hst3_pages]
+    have h2 : (1048576 : Nat) ≤ st.mem.pages * 65536 := hpg3
+    omega
+  have hpg_st3_lo : ¬ (st3.mem.pages * 65536 < (1048572 : Nat)) := by
+    have h1 : st3.mem.pages * 65536 = st.mem.pages * 65536 := by rw [hst3_pages]
+    have h2 : (1048576 : Nat) ≤ st.mem.pages * 65536 := hpg3
+    omega
+  obtain ⟨N0, hN0⟩ := func0_terminates_sw env st3 ptr len i j hi hj
+      (by rw [hst3_pages]; exact hbound)
+      (by rw [hst3_pages]; exact hpages_bound)
+      hptr hg0_3
+  obtain ⟨_, st0, hrun0, hpost0⟩ := hN0 N0 le_rfl
+  obtain ⟨hrs0, hglob0, hpages0, hrA0, hrB0, hother0⟩ := hpost0
+  subst hrs0
+  have hg0_st0 : st0.globals.globals[0]? = some (.i32 (1048560 : UInt32)) := hglob0 ▸ hg0_3
+  -- Lift runs to the shared fuel level
+  have hrun3_ext : run (N3 + N0 + 14) «module» 3 stg
+      [.i32 (1048652 : UInt32), .i32 len, .i32 ptr, .i32 (1048568 : UInt32)] env
+      = .Success [] st3 :=
+    (run_fuel_mono (f₁ := N3) (f₂ := N3 + N0 + 14)
+      (by omega) (by rw [hrun3]; intro h; cases h)).trans hrun3
+  have hrun0_ext : run (N3 + N0 + 14) «module» 0 st3
+      [.i32 j, .i32 i, .i32 len, .i32 ptr] env
+      = .Success [] st0 :=
+    (run_fuel_mono (f₁ := N0) (f₂ := N3 + N0 + 14)
+      (by omega) (by rw [hrun0]; intro h; cases h)).trans hrun0
+  -- Connect load32 addresses to func3's spilled values
+  have hread_len : st3.mem.read32 (1048572 : UInt32) = len := hread3_1572
+  have hread_ptr : st3.mem.read32 (1048568 : UInt32) = ptr := hread3_1568
+  -- Helper for helemI/helemJ/helemK proofs
+  have helem_toNat : ∀ k : UInt32, k < len →
+      (elemAddr ptr k).toNat = ptr.toNat + 8 * k.toNat := by
+    intro k hk
+    have hk_nat : k.toNat < len.toNat := hk
+    unfold elemAddr
+    simp only [UInt32.toNat_add, UInt32.toNat_mul,
+               show (8 : UInt32).toNat = 8 from rfl,
+               show UInt32.size = 4294967296 from rfl]
+    omega
+  have helemI := helem_toNat i hi
+  have helemJ := helem_toNat j hj
+  -- Final store after restoring global0 = 1048576
+  let stf : Store Unit :=
+    { st0 with globals := { st0.globals with globals := st0.globals.globals.set 0 (.i32 1048576) } }
+  -- Exec trace for func4: globalGet/sub/set, func3 call, load32s, func0 call, globalSet, ret
+  have hexec₄ : exec (N3 + N0 + 15) «module» st
+      (func4Def.toLocals ([.i32 j, .i32 i, .i32 len, .i32 ptr].take func4Def.numParams).reverse)
+      func4Def.body env = .Return stf [] := by
+    show exec (N3 + N0 + 15) «module» st
+      { params := [.i32 ptr, .i32 len, .i32 i, .i32 j],
+        locals := [.i32 (0 : UInt32), .i32 (0 : UInt32), .i32 (0 : UInt32)], values := [] }
+      func4 env = .Return stf []
+    simp only [func4]
+    -- Phase 1: reduce from start up to call 3
+    conv_lhs => simp [exec, execOne.eq_def, Locals.get, Locals.set?, hg0, stg]
+    rw [hrun3_ext]
+    -- Phase 2: reduce from after call 3 up to call 0
+    conv_lhs => simp [exec, execOne.eq_def, Locals.get, Locals.set?, hread_len, hread_ptr,
+                      hpg_st3, hpg_st3_lo]
+    rw [hrun0_ext]
+    -- Phase 3: reduce globalSet 0 = 1048576 + ret
+    simp [exec, execOne.eq_def, Locals.get, Locals.set?, hg0_st0, stf]
+  apply TerminatesWith.of_run (N3 + N0 + 15) [] stf
+  · rw [run_eq himp₄]
+    simp only [hf₄, show func4Def.results.length = 0 from rfl,
+               show ([.i32 j, .i32 i, .i32 len, .i32 ptr] : List Value).drop func4Def.numParams = [] from rfl,
+               List.take_zero, List.nil_append, hexec₄]
+  · refine ⟨rfl, ?_, ?_, ?_⟩
+    · -- stf.mem.read64 (elemAddr ptr i) = st.mem.read64 (elemAddr ptr j)
+      -- stf.mem = st0.mem (globalSet only changes globals)
+      -- st0 got: read64 (elemAddr ptr i) = st3.mem.read64 (elemAddr ptr j)  [hrA0]
+      -- st3 got: read64 (elemAddr ptr j) = stg.mem.read64 (elemAddr ptr j)  [hread3_ne]
+      -- stg.mem = st.mem  [globals-only change]
+      rw [hrA0, hread3_ne (elemAddr ptr j) (by rw [helemJ]; omega)]
+    · -- stf.mem.read64 (elemAddr ptr j) = st.mem.read64 (elemAddr ptr i)
+      rw [hrB0, hread3_ne (elemAddr ptr i) (by rw [helemI]; omega)]
+    · -- ∀ k < len, k ≠ i, k ≠ j → stf.mem.read64 (elemAddr ptr k) = st.mem.read64 (elemAddr ptr k)
+      intro k hk hki hkj
+      have helemK := helem_toNat k hk
+      trans st3.mem.read64 (elemAddr ptr k)
+      · apply hother0
+        · -- disjoint with elemAddr ptr i
+          rcases Nat.lt_or_ge k.toNat i.toNat with h | h
+          · left; rw [helemK, helemI]; omega
+          · rcases Nat.eq_or_lt_of_le h with heq | hlt
+            · exact absurd (UInt32.toNat.inj heq.symm) hki
+            · right; rw [helemK, helemI]; omega
+        · -- disjoint with elemAddr ptr j
+          rcases Nat.lt_or_ge k.toNat j.toNat with h | h
+          · left; rw [helemK, helemJ]; omega
+          · rcases Nat.eq_or_lt_of_le h with heq | hlt
+            · exact absurd (UInt32.toNat.inj heq.symm) hkj
+            · right; rw [helemK, helemJ]; omega
+        · -- above scratch region
+          right; rw [helemK]; omega
+      · rw [hread3_ne (elemAddr ptr k) (by rw [helemK]; omega)]
 
 end Project.SwapElements.SwapSepLogic
