@@ -242,13 +242,9 @@ theorem wp_wasm_prop_loop
             rest env Q) ∨
         (∃ stB sB, exec fuel m stA locA body env = .Break 0 stB sB ∧
           I stB { sB with values := sB.values.take ps ++ locA.values.drop ps } ∧
-          μ stB { sB with values := sB.values.take ps ++ locA.values.drop ps } < μ stA locA) ∨
-        -- Break (d+1) exit arm: body breaks out d+1 levels; the loop instruction
-        -- propagates this as Break d to the enclosing context (block/loop catches it).
-        -- The s'.values.take (d+1) are the d+1 result values carried by the break.
-        (∃ stB sB d, exec fuel m stA locA body env = .Break (d + 1) stB sB ∧
-          wp_wasm_prop m stB { sB with values := sB.values.take (d + 1) ++ locA.values.drop ps }
-            rest env Q)) :
+          μ stB { sB with values := sB.values.take ps ++ locA.values.drop ps } < μ stA locA)):
+
+
     wp_wasm_prop m st locals (.loop ps rs body :: rest) env Q := by
   -- restate exec_loop_cons_unfold (private in Loop.lean) using execOne_loop_succ
   have exec_loop_unfold : ∀ (f : Nat) (stA : Store Unit) (sA : Locals),
@@ -285,7 +281,6 @@ theorem wp_wasm_prop_loop
     intro stA sA hI hμ
     obtain ⟨N, hN⟩ := hstep stA sA hI
     rcases hN N le_rfl with ⟨stB, sB, hbody, hwp⟩ | ⟨stB, sB, hbody, hI', hμ'⟩
-      | ⟨stB, sB, d, hbody, hwp⟩
     · -- Fallthrough: body exits, compose fuels for body and rest
       obtain ⟨fuel_rest, hfuel⟩ := hwp
       have hbody_ne : exec N m stA sA body env ≠ .OutOfFuel := by
@@ -341,20 +336,6 @@ theorem wp_wasm_prop_loop
       rw [heq,
         exec_fuel_mono (Nat.le_trans (Nat.le_max_right N fuel_loop) (Nat.le_succ _)) hfuel_ne]
       exact hfuel_loop
-    · -- Break (d+1): exec_loop_unfold maps body's .Break (d+1) stB sB to .Break d stB sB
-      -- from the loop instruction, and exec of (.loop :: rest) returns .Break d directly
-      -- (the `other => other` arm; `rest` is NOT executed).  The match in wp_wasm_prop
-      -- therefore hits `_ => False`, making the conclusion unprovable by this path alone.
-      --
-      -- The `hwp` hypothesis (wp_wasm_prop m stB ... rest env Q) provides Q through an
-      -- independent execution of `rest` from the post-break state, but there is no fuel
-      -- at which exec of (.loop :: rest) from (stA, sA) gives Fallthrough or Return —
-      -- it always gives .Break d for fuel ≥ N.
-      --
-      -- Closing this case requires either (a) extending wp_wasm_prop with a Break clause,
-      -- or (b) propagating the Break d to an enclosing block rule that absorbs it.
-      -- The enclosing block/loop catches Break d at the call site.
-      sorry
 
 -- toy: empty-body loop always exits immediately, validating wp_wasm_prop_loop
 private example (m : Module) (st : Store Unit) (locals : Locals) :
