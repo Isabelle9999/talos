@@ -106,33 +106,45 @@ theorem func6_terminates
   · simp [Function.numParams, func6Def]
   -- hcompat: postcondition closed under swapping vals to []
   · intro _ _ _; trivial
-  -- ⊢ wp_wasm_prop «module» st
-  --     (func6Def.toLocals [.i32 left_ptr, .i32 n_left, .i32 right_ptr,
-  --                          .i32 n_right, .i32 out_ptr, .i32 n_out])
-  --     func6 {} (fun _ _ => True)
+  -- Post-setup state.
+  --   frame = sp − 32 (new stack frame pointer)
+  --   st₁   = store after globalSet 0 and six memory writes (i/j/k zeroed)
+  --   loc₁  = locals after the 27 preamble: params unchanged, local[0] = frame
+  let frame   : UInt32     := sp - 32
+  let loc_init : Locals    :=
+    func6Def.toLocals ([.i32 n_out, .i32 out_ptr, .i32 n_right, .i32 right_ptr,
+                         .i32 n_left, .i32 left_ptr].take 6).reverse
+  let loc₁    : Locals     :=
+    { loc_init with locals := loc_init.locals.set 0 (.i32 frame) }
+  let st₁     : Store Unit :=
+    { st with
+      globals := { st.globals with globals := st.globals.globals.set 0 (.i32 frame) }
+      mem     := st.mem
+                  |>.write32 (frame + 20) 0 |>.write32 (frame + 24) 0
+                  |>.write32 (frame + 28) 0 |>.write32 (frame + 8)  0
+                  |>.write32 (frame + 12) 0 |>.write32 (frame + 16) 0 }
+  -- Phase 2+3: the suffix func6.drop 27 = [.block [.loop mainMerge], .loop drain, error]
+  -- terminates from (st₁, loc₁) with the trivial postcondition.
   --
-  -- === Phase 1: Frame setup ===
-  -- The 28 preamble instructions are straight-line; any fuel ≥ 1 suffices to
-  -- execute each execOne.  After they run:
-  --   local 6 = frame = sp − 32
-  --   global 0 = frame
-  --   mem[frame+8] = 0   (i₀)
-  --   mem[frame+12] = 0  (j₀)
-  --   mem[frame+16] = 0  (k₀)
-  --
-  -- === Phase 2: Main merge loop ===
-  -- Apply main_merge_loop_spec with MergeLoopInv at i₀ = j₀ = k₀ = 0.
-  -- Postcondition: mem[frame+8] = n_left ∨ mem[frame+12] = n_right.
-  --
-  -- === Phase 3: Outer drain loop ===
-  -- Apply wp_wasm_prop_loop with the OuterDrainInv invariant:
-  --   • Measure μ = n_left.toNat − mem[frame+8].toNat
-  --   • Break-0 arm (i < n_left): copy step, μ decreases by 1.
-  --   • Return arm  (i = n_left): run [.loop 0 0 rightDrainBody] via
-  --     right_drain_spec with DrainInv at j₀ = current j, k₀ = current k.
-  --     The right-drain loop exits via .ret (Return) regardless of j.
-  -- The outer loop always exits via Return; the Fallthrough arm is vacuous.
-  --
-  -- === Postcondition ===
-  -- Trivially True.
-  sorry
+  -- Proof outline:
+  --   Phase 2: construct MergeLoopInv at (i₀,j₀,k₀)=(0,0,0) from st₁/loc₁ and the
+  --            theorem preconditions; apply main_merge_loop_spec.
+  --   Phase 3: apply wp_wasm_prop_loop for the outer drain loop; the Return arm runs
+  --            [.loop 0 0 rightDrainBody] via right_drain_spec (DrainInv at current j/k).
+  have h_main : wp_wasm_prop «module» st₁ loc₁ (func6.drop 27) {} (fun _ _ => True) := by
+    sorry
+  obtain ⟨N, hN⟩ := h_main
+  -- Phase 1: after running the 27 flat (non-block/loop) preamble instructions the
+  -- exec result is unchanged (only the store and locals evolve).
+  -- Because exec uses the SAME fuel for all flat instructions (fuel only decrements
+  -- inside execOne for block/loop entries), stepping through k flat instructions via
+  -- exec_cons reduces fuel by k.  Hence:
+  --   exec (N + 27) func6 at (st, loc_init)  =  exec N (func6.drop 27) at (st₁, loc₁).
+  have h_setup : exec (N + 27) «module» st
+      (func6Def.toLocals (List.take func6Def.numParams
+          [.i32 n_out, .i32 out_ptr, .i32 n_right, .i32 right_ptr,
+           .i32 n_left, .i32 left_ptr]).reverse)
+      func6Def.body {} =
+      exec N «module» st₁ loc₁ (func6.drop 27) {} := by
+    sorry
+  exact ⟨N + 27, by rw [h_setup]; exact hN⟩
