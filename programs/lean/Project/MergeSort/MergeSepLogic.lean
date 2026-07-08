@@ -247,7 +247,7 @@ theorem main_merge_loop_spec
              hframe_left_disj, hframe_right_disj, hframe_out_disj⟩ := hI
     by_cases hlt_i : i < n_left.toNat
     · by_cases hlt_j : j < n_right.toNat
-      · -- ── iteration: i < n_left, j < n_right ────────────────────────────────
+      · -- iteration: i < n_left, j < n_right
         -- Case-split on comparison left[i] ≤ right[j].
         -- Each path: exec trace through 14 nested blocks sorry'd;
         -- invariant restoration and measure decrease proven; IH applied.
@@ -1746,7 +1746,7 @@ theorem main_merge_loop_spec
             · cases n with | zero => simp [exec, locB_out_B, locB_out_locs] | succ k => rfl
             all_goals rfl
           exact ⟨max f_B f_rest + 2, by rw [heq, hblock_mono]; exact hf_rest⟩
-      · -- ── exit: j = n_right ──────────────────────────────────────────────────
+      · -- exit: j = n_right
         -- body's second br_if 1 fires: exec 1 body = Break 1 → exec 2 loop = Break 0
         -- → exec 3 block = Fallthrough.  Q: stA.mem.read32(frame+12) = n_right.
         have hj_eq : j = n_right.toNat := Nat.le_antisymm hj_hi (Nat.not_lt.mp hlt_j)
@@ -1789,7 +1789,7 @@ theorem main_merge_loop_spec
           apply UInt32.toNat_inj.mp
           simp
         exact ⟨3, by simp only [h_block_exit_j]; exact Or.inr hQ_j⟩
-    · -- ── exit: i = n_left ────────────────────────────────────────────────────
+    · -- exit: i = n_left
       -- body's first br_if 1 fires immediately: exec 1 body = Break 1 → exec 2 loop = Break 0
       -- → exec 3 block = Fallthrough.  Q: stA.mem.read32(frame+8) = n_left.
       have hi_eq : i = n_left.toNat := Nat.le_antisymm hi_hi (Nat.not_lt.mp hlt_i)

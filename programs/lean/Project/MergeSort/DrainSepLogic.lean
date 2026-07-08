@@ -149,7 +149,7 @@ theorem right_drain_spec
                    hpages, hk_global, hright_global, hout_global, hpages_u32,
                    hright_out_disj, hframe_right_disj, hframe_out_disj⟩
     by_cases hlt : j < n_right.toNat
-    · -- ── Break-0 case (j < n_right): one copy step then loop restart ──────────
+    · -- break-0: copy step, loop restart
       -- Abbreviations
       let k := k₀ + (j - j₀)
       have hk_lt : k < n_out.toNat := by
@@ -190,7 +190,7 @@ theorem right_drain_spec
         { locA17 with locals := locA17.locals.set 12 (.i32 (UInt32.ofNat k)) }
       -- sB: locals at Break 0 (copy unchanged the params/locals structure)
       let sB : Locals := { locA18 with values := locA.values }
-      -- ─── Exec trace ───────────────────────────────────────────────────────
+      -- exec trace
       -- condBody at fuel 3: br_if 0 fires (value = 1) → Break 0 stA locA
       have h_cond : exec 3 m stA locA [
           .localGet 6, .load32 (12 : UInt32),
@@ -579,7 +579,7 @@ theorem right_drain_spec
             .localGet 6, .const (32 : UInt32), .add, .globalSet 0, .ret
           ] :: _) env = _
         rw [h_condblock, show (4 : Nat) = 3 + 1 from rfl, exec_block_cons, h_bco_body]
-      -- ─── Present the Break-0 witness ───────────────────────────────────────
+      --  break-0 witness
       refine ⟨4, fun fuel hfuel => Or.inr (Or.inl ⟨stC, sB, ?_, ?_, ?_⟩)⟩
       · -- exec result
         have hne : exec 4 m stA locA rightDrainBody env ≠ .OutOfFuel := by
@@ -748,7 +748,7 @@ theorem right_drain_spec
         have := n_right.toNat_lt
         omega
 
-    · -- ── Return case (j = n_right): exit via .ret ──────────────────────────
+    · -- return: j = n_right, exit
       have hj_eq : j = n_right.toNat := Nat.le_antisymm hj_hi (Nat.not_lt.mp hlt)
       have hj_nlt : ¬(UInt32.ofNat j < n_right) := by
         rw [UInt32.lt_iff_toNat_lt_toNat, UInt32.toNat_ofNat']
