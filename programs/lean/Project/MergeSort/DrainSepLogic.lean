@@ -75,7 +75,7 @@ private def rightDrainBody : Program := [
     the partial copy result, local-structure constraints, and disjointness
     conditions needed for framing during the copy step.  `st_init` is fixed at
     the initial store so `hcopy` and `hright` can refer to the original source. -/
-private def DrainInv
+def DrainInv
     (frame out_ptr right_ptr n_right n_out : UInt32)
     (j₀ k₀ : Nat)
     (st_init : Store Unit)
@@ -827,7 +827,7 @@ private def leftDrainBody : Program := [
   .localGet 21, .localGet 5, .const (1048696 : UInt32), .call 87, .unreachable
 ]
 
-private def LeftDrainInv
+def LeftDrainInv
     (frame out_ptr left_ptr n_left n_out : UInt32)
     (i₀ k₀ : Nat)
     (st_init : Store Unit)

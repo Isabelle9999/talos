@@ -149,7 +149,7 @@ private def mainMergeBody : Program := [
     Tracks current i, j and k = k₀ + (i - i₀) + (j - j₀), with local-structure
     constraints and disjointness conditions.  `st_init` is fixed so future
     content-invariant fields can refer to original source values. -/
-private def MergeLoopInv
+def MergeLoopInv
     (frame out_ptr left_ptr right_ptr n_left n_right n_out : UInt32)
     (i₀ j₀ k₀ : Nat) (st_init : Store Unit)
     (stA : Store Unit) (locA : Locals) : Prop :=
