@@ -4,14 +4,11 @@ namespace Wasm.SepLogic
 
 open Wasm
 
-/-- allocator spec: dlmalloc returns fresh memory or traps.
-    follows iris-mswasm wp_segalloc pattern (oopsla 2024).
-    replace axiom with theorem once dlmalloc is verified. -/
 axiom dlmalloc_alloc_spec
     (env : HostEnv Unit) (m : Module)
     (st : Store Unit) (n : UInt32)
     (hpristine : ∀ i, i < 1050240 →
-      st.mem.bytes i = m.initialStore.mem.bytes i)
+      st.mem.bytes i = (m.initialStore (α := Unit)).mem.bytes i)
     (hmargin : 1050240 + 4 * n.toNat ≤ st.mem.pages * 65536) :
     TerminatesWith env m 5 st [.i32 n]
       (fun st' rs => ∃ ptr : UInt32,

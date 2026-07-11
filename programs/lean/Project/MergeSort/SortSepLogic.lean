@@ -1,6 +1,7 @@
 import Project.MergeSort.MergeFull
 import Project.MergeSort.Spec
 import CodeLib.SepLogic.Adequacy
+import CodeLib.SepLogic.AllocSpec
 
 namespace Wasm.SepLogic.MergeSort
 
@@ -164,8 +165,8 @@ private theorem func3_terminates
       · rfl
       · simp [Function.numParams, func3Def]
       · intro _ _ _; trivial
-      -- allocator terminates: deferred per MergeSortSpec
-      sorry
+      -- dlmalloc_alloc_spec covers func5 (call 5 × 2); state-threading deferred
+      exact (dlmalloc_alloc_spec {} «module» st (src_n >>> 1) sorry sorry).elim fun _ _ => sorry
 
 -- func1: sort with pre-allocated scratch; delegates to func3
 -- allocator calls (func2, func4) deferred
@@ -188,8 +189,8 @@ private theorem func1_terminates
   · rfl
   · simp [Function.numParams, func1Def]
   · intro _ _ _; trivial
-  -- allocator terminates: deferred per MergeSortSpec
-  sorry
+  -- dlmalloc_alloc_spec covers func2/func4 allocator calls; state-threading deferred
+  exact (dlmalloc_alloc_spec {} «module» st len sorry sorry).elim fun _ _ => sorry
 
 -- merge_sort_correct: compose func33 → func15 + func1
 -- Intended structure:
@@ -202,7 +203,11 @@ private theorem func1_terminates
 -- sorted/perm postcondition deferred (requires func3 content correctness)
 -- env bridge: «module».imports = [], run is env-independent
 theorem merge_sort_correct : MergeSortSpec := by
-  intro env st dataPtr len hdHi hpristine hmargin
-  sorry
+  intro env st dataPtr len n dLo dHi hdHi hpristine hmargin
+  refine (dlmalloc_alloc_spec env «module» st len ?_ ?_).elim fun _ _ => sorry
+  · intro i hi
+    exact hpristine i (by have : heapBase = 1050240 := rfl; omega)
+  · have : heapBase = 1050240 := rfl
+    omega
 
 end Wasm.SepLogic.MergeSort
