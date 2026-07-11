@@ -74,13 +74,19 @@ private theorem func3_terminates
     (hsp : st.globals.globals[0]? = some (.i32 sp)) :
     TerminatesWith {} «module» 3 st
       [.i32 dst_n, .i32 dst_ptr, .i32 src_n, .i32 src_ptr]
-      (fun _ _ => True) := by
+      (fun st' _ =>
+        (wordsAt st'.mem src_ptr src_n.toNat).Pairwise (· ≤ ·) ∧
+        (wordsAt st'.mem src_ptr src_n.toNat).Perm
+          (wordsAt st.mem src_ptr src_n.toNat)) := by
   suffices key : ∀ (n : Nat) (st : Store Unit) (src_ptr src_n dst_ptr dst_n sp : UInt32),
       src_n.toNat = n →
       st.globals.globals[0]? = some (.i32 sp) →
       TerminatesWith {} «module» 3 st
         [.i32 dst_n, .i32 dst_ptr, .i32 src_n, .i32 src_ptr]
-        (fun _ _ => True) from
+        (fun st' _ =>
+          (wordsAt st'.mem src_ptr src_n.toNat).Pairwise (· ≤ ·) ∧
+          (wordsAt st'.mem src_ptr src_n.toNat).Perm
+            (wordsAt st.mem src_ptr src_n.toNat)) from
     key _ st src_ptr src_n dst_ptr dst_n sp rfl hsp
   intro n
   induction n using Nat.strong_induction_on with
@@ -142,7 +148,11 @@ private theorem func3_terminates
             ite_true, ite_false,
             List.nil_append, List.take_zero
           ]
-      · trivial
+      · -- postcondition: src_n ≤ 1, result state has same mem as st, so sorted (trivially) and perm (refl)
+        refine ⟨?_, List.Perm.refl _⟩
+        simp only [wordsAt]
+        have h01 : src_n.toNat = 0 ∨ src_n.toNat = 1 := by omega
+        rcases h01 with h | h <;> simp [h]
     · -- recursive case: src_n > 1
       -- Intended proof structure (all but allocator sorry'd):
       --   preamble (6 insts, simp): globalGet 0 / const 32 / sub / localSet 4 / localGet 4 / globalSet 0
@@ -164,9 +174,9 @@ private theorem func3_terminates
       · rfl
       · rfl
       · simp [Function.numParams, func3Def]
-      · intro _ _ _; trivial
+      · intro _ _ h; exact h
       -- dlmalloc_alloc_spec covers func5 (call 5 × 2); state-threading deferred
-      exact (dlmalloc_alloc_spec {} «module» st (src_n >>> 1) sorry sorry).elim fun _ _ => sorry
+      exact (dlmalloc_alloc_spec {} «module» st (src_n >>> 1) sorry sorry).elim fun _ _ => sorry -- content: needs merge correctness lemma
 
 -- func1: sort with pre-allocated scratch; delegates to func3
 -- allocator calls (func2, func4) deferred
@@ -182,15 +192,18 @@ private theorem func1_terminates
     (st : Store Unit) (data_ptr len : UInt32) :
     TerminatesWith {} «module» 1 st
       [.i32 len, .i32 data_ptr]
-      (fun _ _ => True) := by
+      (fun st' _ =>
+        (wordsAt st'.mem data_ptr len.toNat).Pairwise (· ≤ ·) ∧
+        (wordsAt st'.mem data_ptr len.toNat).Perm
+          (wordsAt st.mem data_ptr len.toNat)) := by
   apply wp_wasm_prop_to_TerminatesWith (f := func1Def)
   · rfl
   · rfl
   · rfl
   · simp [Function.numParams, func1Def]
-  · intro _ _ _; trivial
+  · intro _ _ h; exact h
   -- dlmalloc_alloc_spec covers func2/func4 allocator calls; state-threading deferred
-  exact (dlmalloc_alloc_spec {} «module» st len sorry sorry).elim fun _ _ => sorry
+  exact (dlmalloc_alloc_spec {} «module» st len sorry sorry).elim fun _ _ => sorry -- content: needs merge correctness lemma
 
 -- merge_sort_correct: compose func33 → func15 + func1
 -- Intended structure:
