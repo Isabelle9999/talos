@@ -136,4 +136,18 @@ theorem toNat_add_ofNat (a : UInt32) (n : Nat) (h : a.toNat + n < 2^32) :
   rw [h1]
   omega
 
+section
+open Wasm
+
+/-- Exclusive ownership of function slot `idx` in module `m`:
+    the function table entry equals `f`. Prop-level (not iProp) —
+    for single-module proofs this suffices; the linking theorem's
+    structure provides the ownership discipline. -/
+def funcPointsTo (m : Module) (idx : Nat) (f : Function) : Prop :=
+  m.funcs[idx]? = some f
+
+scoped notation m " ↦func[" idx "] " f => funcPointsTo m idx f
+
+end
+
 end Wasm.SepLogic
