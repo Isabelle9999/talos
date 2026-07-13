@@ -120,60 +120,10 @@ iProp ownership:  Pre:  `pointsTo_u32 sb old_ptr ∗ pointsTo_u32 (sb+4) old_len
                   Post: `pointsTo_u32 sb ptr ∗ pointsTo_u32 (sb+4) len`
                   (plus: memory-level facts for the Prop postcondition Q) -/
 
-/-- iProp-level proof: given ownership of the 8 bytes at sb, func1 correctly
-    writes ptr and len and transfers ownership.  The genHeapInterp update steps
-    (4 `genHeap_update` calls per 32-bit store) are sorry'd; the instruction
-    sequence and pure framing are fully wired. -/
-private theorem func1_wp_iprop
-    (st : Store Unit) (sb ptr len : UInt32)
-    (hb : sb.toNat + 8 ≤ st.mem.pages * 65536)
-    (old_ptr old_len : UInt32) :
-    -- Pre: own the 8-byte slot at sb
-    iprop% (pointsTo_u32 sb old_ptr ∗ pointsTo_u32 (sb + 4) old_len) ⊢
-      -- Post: wp_wasm reduces to the memory postcondition
-      wp_wasm «module» st
-        { params := [.i32 sb, .i32 ptr, .i32 len, .i32 (1048716 : UInt32)],
-          locals := [], values := [] }
-        func1 {}
-        (fun st' _ =>
-          st'.mem.read32 sb       = ptr ∧
-          st'.mem.read32 (sb + 4) = len ∧
-          st'.globals   = st.globals ∧
-          st'.mem.pages = st.mem.pages) := by
-  sorry
-  -- Proof sketch (full iris-lean pipeline):
-  --
-  -- iintro ⟨Hptr, Hlen⟩
-  -- unfold func1
-  -- ── localGet 0 → push sb ──────────────────────────────────────────────
-  -- apply wp_wasm_localGet (hget := by simp [Locals.get])
-  -- [or: wpure wp_wasm_localGet if the tactic handles framed resources]
-  -- ── localGet 2 → push len ─────────────────────────────────────────────
-  -- apply wp_wasm_localGet (hget := by simp [Locals.get])
-  -- ── store32 4: write len to *(sb + 4) ─────────────────────────────────
-  -- apply wp_wasm_store32 (hstack := by rfl) (hbounds := by omega)
-  -- intro σ; iintro Hσ
-  -- Transfer pointsTo_u32 (sb+4) old_len → pointsTo_u32 (sb+4) len (4 genHeap_update calls):
-  --   unfold pointsTo_u32 at Hlen; obtain ⟨Hb0, Hb1, Hb2, Hb3⟩ := Hlen
-  --   imod (genHeap_update (v' := some (new_byte 0 len))) $$ Hσ Hb0 with ⟨Hσ₁, Hb0'⟩
-  --   ...
-  -- ── localGet 0 → push sb ──────────────────────────────────────────────
-  -- apply wp_wasm_localGet (hget := by simp [Locals.get])
-  -- ── localGet 1 → push ptr ─────────────────────────────────────────────
-  -- apply wp_wasm_localGet (hget := by simp [Locals.get])
-  -- ── store32 0: write ptr to *sb ───────────────────────────────────────
-  -- apply wp_wasm_store32 (hstack := by rfl) (hbounds := by omega)
-  -- intro σ; iintro Hσ
-  -- Transfer pointsTo_u32 sb old_ptr → pointsTo_u32 sb ptr (4 genHeap_update calls)
-  -- ── ret ───────────────────────────────────────────────────────────────
-  -- unfold wp_wasm; iapply least_fixpoint_unfold_mpr
-  -- simp only [wp_wasm_F, LeibnizO.car]; apply BI.pure_intro
-  -- prove: read32 sb = ptr  (via read32_write32_same after write32 (sb+0) ptr)
-  --        read32 (sb+4) = len (via read32_write32_ne + read32_write32_same)
-  --        globals = st.globals  (rfl)
-  --        mem.pages = st.mem.pages  (rfl)
-
-/-- Prop-level WP for func1's body via the iris-lean pipeline. -/
+/-- Prop-level WP for func1's body: exhibit fuel=1 and compute the 7-instruction
+    sequence directly.  func1 = [localGet 0, localGet 2, store32 4,
+    localGet 0, localGet 1, store32 0, ret]; fuel ≥ 1 suffices because there
+    are no recursive calls. -/
 private theorem func1_wp_prop
     (st : Store Unit) (sb ptr len : UInt32)
     (hb : sb.toNat + 8 ≤ st.mem.pages * 65536)
@@ -187,13 +137,40 @@ private theorem func1_wp_prop
         st'.mem.read32 (sb + 4) = len ∧
         st'.globals   = st.globals ∧
         st'.mem.pages = st.mem.pages) := by
-  sorry
-  -- Full fill (needs WasmHeapGS in scope — add [WasmHeapGS] to signature):
-  --   apply wp_to_prop
-  --   exact (func1_wp_iprop st sb ptr len hb 0 0).mp (by simp [pointsTo_u32])
-  -- or: exhibit fuel directly:
-  --   exact ⟨7, by simp [exec, execOne, func1, Locals.get, hb,
-  --                       read32_write32_same, read32_write32_ne]⟩
+  -- Bounds-check conditions: neither store32 can trap.
+  have hno1 : ¬ (sb.toNat + (4 : UInt32).toNat + 4 > st.mem.pages * 65536) := by omega
+  have hno2 : ¬ (sb.toNat + (0 : UInt32).toNat + 4 >
+      (st.mem.write32 (sb + (4 : UInt32)) len).pages * 65536) := by
+    simp only [Mem.write32]; omega
+  -- Prove each execOne result individually, then chain via exec unfolding.
+  -- The six non-ret steps have concrete Locals so execOne is rfl;
+  -- the two store32 steps need if_neg to discharge the bounds trap branch.
+  let s0 : Locals := { params := [.i32 sb, .i32 ptr, .i32 len, .i32 (1048716 : UInt32)],
+                       locals := [], values := [] }
+  let s1 : Locals := { s0 with values := [.i32 sb] }
+  let s2 : Locals := { s0 with values := [.i32 len, .i32 sb] }
+  let s3 : Locals := s0   -- values back to [] after store32 4
+  let st1 : Store Unit := { st with mem := st.mem.write32 (sb + 4) len }
+  let s4 : Locals := { s0 with values := [.i32 sb] }
+  let s5 : Locals := { s0 with values := [.i32 ptr, .i32 sb] }
+  let st2 : Store Unit := { st1 with mem := st1.mem.write32 (sb + 0) ptr }
+  have hg0a : execOne 1 «module» st s0 (.localGet 0) {} = .Fallthrough st s1 := rfl
+  have hg2  : execOne 1 «module» st s1 (.localGet 2) {} = .Fallthrough st s2 := rfl
+  have hs4  : execOne 1 «module» st s2 (.store32 4) {} = .Fallthrough st1 s3 := by
+    simp only [execOne.eq_def]; rw [if_neg hno1]
+  have hg0b : execOne 1 «module» st1 s3 (.localGet 0) {} = .Fallthrough st1 s4 := rfl
+  have hg1  : execOne 1 «module» st1 s4 (.localGet 1) {} = .Fallthrough st1 s5 := rfl
+  have hs0  : execOne 1 «module» st1 s5 (.store32 0) {} = .Fallthrough st2 s3 := by
+    simp only [execOne.eq_def]; rw [if_neg hno2]
+  have hrt  : execOne 1 «module» st2 s3 .ret {} = .Return st2 [] := rfl
+  -- Chain all 7 steps via exec.
+  refine ⟨1, ?_⟩
+  simp only [exec, func1, hg0a, hg2, hs4, hg0b, hg1, hs0, hrt]
+  -- Goal is now Q st2 [] = postcondition on mem2.
+  refine ⟨?_, ?_, rfl, rfl⟩
+  · exact read32_write32_same _ _ _
+  · rw [read32_write32_ne _ _ _ _ (by omega)]
+    exact read32_write32_same _ _ _
 
 private theorem func1_terminates
     (st : Store Unit) (sb ptr len : UInt32)
