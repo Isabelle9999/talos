@@ -36,13 +36,14 @@ def wordsAt (m : Mem) (base : UInt32) (n : Nat) : List UInt32 :=
 
     Postcondition: the array is a sorted permutation of the original. -/
 def InsertionSortSpec : Prop :=
-  ∀ (env : HostEnv Unit) (st : Store Unit) (ptr len : UInt32) (xs : List UInt32),
+  ∀ (st : Store Unit) (ptr len : UInt32) (xs : List UInt32),
     xs.length = len.toNat →
     ptr.toNat + 4 * xs.length ≤ st.mem.pages * 65536 →
     (1048576 : Nat) ≤ st.mem.pages * 65536 →
     st.globals.globals[0]? = some (.i32 (1048576 : UInt32)) →
     wordsAt st.mem ptr xs.length = xs →
-    TerminatesWith env «module» 2 st [.i32 len, .i32 ptr]
+    ptr.toNat + 4 * xs.length ≤ 1048544 →
+    TerminatesWith {} «module» 2 st [.i32 len, .i32 ptr]
       (fun st' _ =>
         ∃ ys : List UInt32,
           wordsAt st'.mem ptr ys.length = ys ∧
