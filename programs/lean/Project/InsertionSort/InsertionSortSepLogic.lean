@@ -298,12 +298,18 @@ private theorem func1_terminates
 
 /-! ## §5  func0 — insertion sort loop -/
 
-private def I_outer (ptr : UInt32) (xs : List UInt32) (frame : UInt32)
+private def I_outer (ptr len : UInt32) (xs : List UInt32) (frame : UInt32)
     (stA : Store Unit) (locA : Locals) : Prop :=
   ∃ (i : UInt32),
+    locA.get 0 = some (.i32 ptr) ∧
+    locA.get 1 = some (.i32 len) ∧
     locA.get 2 = some (.i32 frame) ∧
+    locA.values = [] ∧
     stA.mem.read32 (frame + 8) = i ∧
     0 < i.toNat ∧ i.toNat ≤ xs.length ∧
+    stA.globals.globals[0]? = some (.i32 frame) ∧
+    ptr.toNat + 4 * xs.length ≤ stA.mem.pages * 65536 ∧
+    frame.toNat + 16 ≤ stA.mem.pages * 65536 ∧
     (wordsAt stA.mem ptr i.toNat).Pairwise (· ≤ ·) ∧
     (wordsAt stA.mem ptr xs.length).Perm xs
 
@@ -317,6 +323,87 @@ private def I_inner (ptr : UInt32) (xs : List UInt32) (frame i₀ : UInt32)
       (wordsAt stA.mem ptr (i₀.toNat + 1))[k]? = (wordsAt stA.mem ptr (i₀.toNat + 1))[k - 1]?) ∧
     (∀ k, k < j.toNat → (wordsAt stA.mem ptr xs.length)[k]? = xs[k]?) ∧
     (wordsAt stA.mem ptr xs.length).Perm xs
+
+omit inst in
+/-- One CONTINUE step of the outer insertion-sort loop:
+    given I_outer with i < xs.length, the outer loop body executes a full iteration
+    (EXIT_BLOCK fires br_if 0, BOUNDS_CHECK_1 loads key, INNER_BLOCK runs the inner
+    shifting loop, STORE_KEY places key at j_final and increments frame[8])
+    and returns .Break 0, re-establishing I_outer with i+1.
+
+    The proof proceeds by strong induction on j (j decreases from i toward 0 or j_final)
+    and is deferred to a future session. -/
+private theorem outer_loop_continue_step
+    (stA : Store Unit) (locA : Locals)
+    (ptr len frame : UInt32) (xs : List UInt32)
+    (i : UInt32)
+    (hget0      : locA.get 0 = some (.i32 ptr))
+    (hget1      : locA.get 1 = some (.i32 len))
+    (hget2      : locA.get 2 = some (.i32 frame))
+    (hlocA_vals : locA.values = [])
+    (hread8     : stA.mem.read32 (frame + 8) = i)
+    (hi_pos     : 0 < i.toNat)
+    (hi_lt      : i.toNat < xs.length)
+    (hi_le      : i.toNat ≤ xs.length)
+    (hglob      : stA.globals.globals[0]? = some (.i32 frame))
+    (hbnd_arr   : ptr.toNat + 4 * xs.length ≤ stA.mem.pages * 65536)
+    (hbnd_frame : frame.toNat + 16 ≤ stA.mem.pages * 65536)
+    (hpairwise  : (wordsAt stA.mem ptr i.toNat).Pairwise (· ≤ ·))
+    (hperm      : (wordsAt stA.mem ptr xs.length).Perm xs)
+    (hlen       : xs.length = len.toNat) :
+    ∃ (N : Nat) (stFinal : Store Unit) (locFinal : Locals),
+      (∀ fuel ≥ N,
+        exec fuel «module» stA locA
+          -- The outer loop body (contents of .loop 0 0 [...] in func0):
+          [.block 0 0 [
+             .localGet 2, .load32 (8 : UInt32), .localGet 1, .ltU, .const (1 : UInt32),
+             .and, .br_if 0, .localGet 2, .const (16 : UInt32), .add, .globalSet 0, .ret],
+           .localGet 2, .load32 (8 : UInt32), .localSet 3,
+           .block 0 0 [
+             .block 0 0 [
+               .localGet 3, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 3, .const (2 : UInt32), .shl, .add,
+               .load32 (0 : UInt32), .localSet 4, .localGet 2, .localGet 2,
+               .load32 (8 : UInt32), .store32 (12 : UInt32), .br 1],
+             .localGet 3, .localGet 1, .const (1048604 : UInt32), .call 54, .unreachable],
+           .block 0 0 [
+             .loop 0 0 [
+               .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localSet 7,
+                     .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                     .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 2],
+                   .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                 .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                 .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                 .br 1]],
+             .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable],
+           .localGet 2, .load32 (12 : UInt32), .localSet 9,
+           .block 0 0 [
+             .localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+             .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+             .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+             .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]
+          {} = .Break 0 stFinal locFinal) ∧
+      I_outer ptr len xs frame stFinal { locFinal with values := [] } ∧
+      xs.length - (stFinal.mem.read32 (frame + 8)).toNat < xs.length - i.toNat := by
+  sorry
 
 -- Generalized over the shadow-stack pointer `sp` at call time (= global 0
 -- before func0's preamble decrements it).
@@ -372,15 +459,15 @@ private theorem func0_wp_prop
   -- ── Preamble: 9 straight-line steps ───────────────────────────────────────
   -- Precomputed localSet 2 / localGet 2 facts (rfl works since Locals.set? / Locals.get
   -- are plain defs, not inside the mutual exec block, so the kernel can reduce them)
-  have hset2 : ({ params := [.i32 ptr, .i32 len],
-      locals := [.i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
-      values := [.i32 frame] } : Locals).set? 2 (.i32 frame) =
-      some { params := [.i32 ptr, .i32 len],
-        locals := [.i32 frame, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
-        values := [.i32 frame] } := rfl
-  have hget2 : ({ params := [.i32 ptr, .i32 len],
-      locals := [.i32 frame, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
-      values := [] } : Locals).get 2 = some (.i32 frame) := rfl
+  have hset2 : (Locals.mk [.i32 ptr, .i32 len]
+      [.i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0]
+      [.i32 frame]).set? 2 (.i32 frame) =
+      some (Locals.mk [.i32 ptr, .i32 len]
+        [.i32 frame, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0]
+        [.i32 frame]) := rfl
+  have hget2 : (Locals.mk [.i32 ptr, .i32 len]
+      [.i32 frame, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0]
+      []).get 2 = some (.i32 frame) := rfl
   -- Step 0: globalGet 0 → push sp
   apply exec_cons_wp (show execOne 1 «module» st
       { params := [.i32 ptr, .i32 len],
@@ -487,27 +574,31 @@ private theorem func0_wp_prop
     -- falls through to `ret`, immediately returning with an empty sorted array.
     have hlen_nat : len.toNat = 0 := by rw [← hlen]; exact hlen_pos
     have hlen0 : len = 0 := UInt32.toNat_inj.mp (by simpa using hlen_nat)
-    have hxs_nil : xs = [] := List.length_eq_zero.mp hlen_pos
+    have hxs_nil : xs = [] := by cases xs with | nil => rfl | cons _ _ => simp_all
     subst hlen0; subst hxs_nil
     -- After subst: len = 0, xs = []
     have hread_i : st2.mem.read32 (frame + 8) = 1 := by
       simp only [hst2_def, hst1_mem]; exact read32_write32_same st.mem (frame + 8) 1
     have hno_load8 : ¬ (frame.toNat + (8 : UInt32).toNat + 4 > st2.mem.pages * 65536) := by
       have h8 : (8 : UInt32).toNat = 8 := rfl
-      simp only [hst2_def, hst1_mem, h8]; omega
+      simp only [hst2_def, hst1_mem, write32_pages, h8]; omega
     have hframe16 : frame + 16 = sp := by
+      apply UInt32.toNat_inj.mp
+      rw [UInt32.toNat_add, show (16 : UInt32).toNat = 16 from rfl,
+          Nat.mod_eq_of_lt (by omega), hframe_toNat]; omega
+    have hframe16' : (16 : UInt32) + frame = sp := by
       apply UInt32.toNat_inj.mp
       rw [UInt32.toNat_add, show (16 : UInt32).toNat = 16 from rfl,
           Nat.mod_eq_of_lt (by omega), hframe_toNat]; omega
     -- ∀-vs variants so simp can fire at any stack depth
     have hget2_v : ∀ (vs : List Value),
-        ({ params := [.i32 ptr, .i32 (0 : UInt32)],
-           locals := [.i32 frame, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
-           values := vs } : Locals).get 2 = some (.i32 frame) := fun _ => rfl
+        (Locals.mk [.i32 ptr, .i32 (0 : UInt32)]
+           [.i32 frame, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0]
+           vs).get 2 = some (.i32 frame) := fun _ => rfl
     have hget1_v : ∀ (vs : List Value),
-        ({ params := [.i32 ptr, .i32 (0 : UInt32)],
-           locals := [.i32 frame, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
-           values := vs } : Locals).get 1 = some (.i32 (0 : UInt32)) := fun _ => rfl
+        (Locals.mk [.i32 ptr, .i32 (0 : UInt32)]
+           [.i32 frame, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0]
+           vs).get 1 = some (.i32 (0 : UInt32)) := fun _ => rfl
     -- st2.globals.globals[0]? = some (.i32 frame) (preamble globalSet 0 set it)
     have hst2_g0 : st2.globals.globals[0]? = some (.i32 frame) := hst1_g0
     -- st3: state after the inner globalSet 0 restores sp
@@ -517,19 +608,19 @@ private theorem func0_wp_prop
     have hst3_g0 : st3.globals.globals[0]? = some (.i32 sp) := by
       simp only [hst3_def]
       obtain ⟨_, _, ht⟩ : ∃ h t, st2.globals.globals = h :: t := by
-        cases hgl : st.globals.globals with
-        | nil => simp [hgl] at hg0
-        | cons hd tl =>
-          exact ⟨.i32 frame, tl, by simp only [hst2_def, hst1_def, hgl]⟩
+        cases h : st2.globals.globals with
+        | nil => simp [h] at hst2_g0
+        | cons hd tl => exact ⟨hd, tl, rfl⟩
       rw [ht]; rfl
-    -- fuel = 2: 1 for .loop + 1 for .block; straight-line steps inside block need no fuel
-    refine ⟨2, ?_⟩
+    -- fuel = 3: 1 for .loop, 1 for .block, 1 for straight-line instructions inside block
+    refine ⟨3, ?_⟩
     simp only [exec, execOne.eq_def,
       hget2_v, hget1_v,
       if_neg hno_load8, hread_i, hst2_g0,
-      show (1 : UInt32) < (0 : UInt32) = False from by decide,
+      if_neg (show ¬((1 : UInt32) < (0 : UInt32)) from by decide),
       show (1 : UInt32) &&& (0 : UInt32) = 0 from by decide,
-      if_false, hframe16, ← hst3_def]
+      hframe16',
+      ← hst3_def]
     -- Goal: Q st3 []
     exact ⟨⟨[], rfl, List.Pairwise.nil, List.Perm.nil⟩, hst3_g0⟩
   · have hlen_pos2 : 0 < xs.length := Nat.pos_of_ne_zero hlen_pos
@@ -548,14 +639,14 @@ private theorem func0_wp_prop
       rw [haddr8, h_toNat]; omega
     -- Apply the loop rule with I_outer and measure xs.length - i
     apply wp_wasm_prop_loop
-        (I := I_outer ptr xs frame)
+        (I := I_outer ptr len xs frame)
         (μ := fun stA _ => xs.length - (stA.mem.read32 (frame + 8)).toNat)
     · -- hinit: I_outer holds at st2 with i = 1
-      show I_outer ptr xs frame st2
+      show I_outer ptr len xs frame st2
         { params := [.i32 ptr, .i32 len],
           locals := [.i32 frame, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
           values := [] }
-      refine ⟨1, rfl, ?_, ?_, ?_, ?_, ?_⟩
+      refine ⟨1, rfl, rfl, rfl, rfl, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · -- st2.mem.read32 (frame+8) = 1
         simp only [hst2_def, hst1_mem]
         exact read32_write32_same st.mem (frame + 8) 1
@@ -564,13 +655,86 @@ private theorem func0_wp_prop
       · -- (1 : UInt32).toNat ≤ xs.length
         have h1 : (1 : UInt32).toNat = 1 := rfl
         omega
+      · -- global 0 = frame at st2
+        exact hst1_g0
+      · -- array bounds at st2
+        simp only [hst2_def, hst1_mem, write32_pages]; exact hbnd
+      · -- frame bounds at st2
+        simp only [hst2_def, hst1_mem, write32_pages]; omega
       · -- 1-element prefix is Pairwise ≤
         simp [wordsAt]
       · -- wordsAt st2.mem ptr xs.length is a permutation of xs
         rw [hcont2]
-    · -- hstep: inner loop body (sorryed — outer structure proven above)
-      intro stA locA _hInv
-      sorry
+    · -- hstep: one outer-loop iteration
+      intro stA locA hInv
+      obtain ⟨i, hget0, hget1, hget2, hlocA_vals, hread8, hi_pos, hi_le,
+               hglob, hbnd_arr, hbnd_frame, hpairwise, hperm⟩ := hInv
+      -- Shared lemmas used in both branches
+      have hno_load8 : ¬(frame.toNat + (8 : UInt32).toNat + 4 > stA.mem.pages * 65536) := by
+        have h8 : (8 : UInt32).toNat = 8 := rfl
+        rw [h8]; linarith [hbnd_frame]
+      have hframe16_step : (16 : UInt32) + frame = sp := by
+        apply UInt32.toNat_inj.mp
+        rw [UInt32.toNat_add, show (16 : UInt32).toNat = 16 from rfl,
+            Nat.mod_eq_of_lt (by omega), hframe_toNat]
+        omega
+      -- locA.get N generalised over the value stack (needed after each push/pop)
+      have hget2_upd : ∀ vs : List Value, { locA with values := vs }.get 2 = some (.i32 frame) :=
+        fun _ => hget2
+      have hget1_upd : ∀ vs : List Value, { locA with values := vs }.get 1 = some (.i32 len) :=
+        fun _ => hget1
+      by_cases hi_lt : i.toNat < xs.length
+      · -- CONTINUE: i.toNat < xs.length
+        have hi_lt_u32 : i < len := by rw [UInt32.lt_iff_toNat_lt_toNat]; omega
+        -- Apply the outer loop continue step lemma (proved by inner-loop induction elsewhere):
+        obtain ⟨N, stFinal, locFinal, hexec, hI_next, hmu⟩ :=
+          outer_loop_continue_step stA locA ptr len frame xs i
+            hget0 hget1 hget2 hlocA_vals hread8 hi_pos hi_lt hi_le
+            hglob hbnd_arr hbnd_frame hpairwise hperm hlen
+        refine ⟨N, fun fuel hfuel => Or.inr (Or.inl ⟨stFinal, locFinal, hexec fuel hfuel, ?_, ?_⟩)⟩
+        · -- I_outer holds: locA.values = [] so take 0 ++ drop 0 = [] = locA.values
+          simp only [List.take_zero, List.nil_append, List.drop_zero]
+          rw [hlocA_vals]; exact hI_next
+        · -- μ decreases: xs.length - frame[8]_new < xs.length - i (= frame[8]_old)
+          rw [hread8]; exact hmu
+      · -- EXIT: i = len — EXIT_BLOCK's ret fires, Q holds for the full sorted array
+        have hi_eq : i.toNat = xs.length := Nat.le_antisymm hi_le (Nat.not_lt.mp hi_lt)
+        have hi_len : i = len := UInt32.toNat_inj.mp (by omega)
+        have hilt_false : ¬((i : UInt32) < len) := by
+          rw [UInt32.lt_iff_toNat_lt_toNat]; omega
+        -- globalSet 0 in EXIT_BLOCK restores sp into global 0
+        set stExit : Store Unit :=
+          { stA with globals := { globals := stA.globals.globals.set 0 (.i32 sp) } }
+          with hstExit_def
+        have hstExit_g0 : stExit.globals.globals[0]? = some (.i32 sp) := by
+          simp only [hstExit_def]
+          obtain ⟨_, _, ht⟩ : ∃ h t, stA.globals.globals = h :: t := by
+            cases h : stA.globals.globals with
+            | nil => simp [h] at hglob
+            | cons hd tl => exact ⟨hd, tl, rfl⟩
+          rw [ht]; rfl
+        -- fuel = 2 suffices: 1 for .block, 1 for straightline EXIT_BLOCK body
+        refine ⟨2, fun fuel hfuel => ?_⟩
+        right; right
+        refine ⟨stExit, [], ?_, ?_⟩
+        · -- exec fuel m stA locA outer_body {} = .Return stExit []
+          -- Decompose fuel ≥ 2 as k+2 so simp can unfold execOne for the .block
+          obtain ⟨k, hk⟩ : ∃ k, fuel = k + 2 := ⟨fuel - 2, by omega⟩
+          subst hk
+          simp only [exec, execOne.eq_def,
+            hlocA_vals, hget2_upd, hget1_upd,
+            if_neg hno_load8, hread8,
+            if_neg hilt_false,
+            show (1 : UInt32) &&& (0 : UInt32) = 0 from by decide,
+            hglob, hframe16_step, ← hstExit_def]
+        · -- Q stExit []
+          refine ⟨⟨wordsAt stA.mem ptr xs.length, ?_, ?_, ?_⟩, hstExit_g0⟩
+          · -- wordsAt stExit.mem ptr ys.length = ys (mem unchanged, length cancels)
+            show wordsAt stA.mem ptr (wordsAt stA.mem ptr xs.length).length =
+                wordsAt stA.mem ptr xs.length
+            congr 1; simp only [wordsAt, List.length_map, List.length_range]
+          · rw [← hi_eq]; exact hpairwise
+          · exact hperm
 
 private theorem func0_terminates
     (st : Store Unit) (sp ptr len : UInt32) (xs : List UInt32)
