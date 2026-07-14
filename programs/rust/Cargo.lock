@@ -50,6 +50,10 @@ name = "rust_u64_tests"
 version = "0.1.0"
 
 [[package]]
+name = "selection_sort"
+version = "0.1.0"
+
+[[package]]
 name = "swap_elements"
 version = "0.1.0"
 
