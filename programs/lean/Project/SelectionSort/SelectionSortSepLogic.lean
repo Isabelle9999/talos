@@ -3,6 +3,7 @@ import Project.SelectionSort.Spec
 import CodeLib.SepLogic.ModuleLinking
 import CodeLib.SepLogic.WasmHeap
 import CodeLib.SepLogic.Adequacy
+import Interpreter.Wasm.Wp.Tactic
 
 /-!
 # Selection Sort — Separation Logic Proof Skeleton
@@ -61,31 +62,139 @@ by the global-0 precondition in SelectionSortSpec). -/
 /-- Byte address of the 4-byte temp slot used by func5. -/
 abbrev func5TempAddr : UInt32 := 1048572
 
-/-- func5 satisfies the raw-pointer swap spec.
+/-! ### Memory read/write helpers (private) -/
 
-    Pre : own both cells; the 4-byte temp at 1048572 is in the frame.
-    Post: cells exchanged; temp is in the frame (contents irrelevant to caller). -/
-theorem func5_swap_satisfies (ptr0 ptr1 v0 v1 : UInt32) :
-    funcSatisfies «module» 5
-      (fun _ => iprop% pointsTo_u32 ptr0 v0 ∗ pointsTo_u32 ptr1 v1)
-      (fun _ _ => iprop% pointsTo_u32 ptr0 v1 ∗ pointsTo_u32 ptr1 v0) := by
-  -- Proof outline:
-  --   Unfold funcSatisfies; exhibit f = func5Def, m.funcs[5]? = some func5Def.
-  --   For arbitrary env, st, args:
-  --     intro pre (pointsTo_u32 ptr0 v0 ∗ pointsTo_u32 ptr1 v1)
-  --     Step through wp_wasm_iProp_F for each instruction in func5's body:
-  --       [globalGet 0, const 16, sub, localSet 2]  — wpures (no memory)
-  --       load32 ptr0 0  → push v0 onto stack (need pointsTo_u32 ptr0 v0)
-  --       store32 (local2+12) = *(1048572) = v0  (need pointsTo_u32 1048572 t for any t)
-  --         [this temp comes from the frame; caller holds it via frame_rule]
-  --       load32 ptr1 0 → push v1 (need pointsTo_u32 ptr1 v1)
-  --       store32 ptr0 0  → *ptr0 = v1 (consume ptr0 v0, yield ptr0 v1)
-  --       load32 1048572  → push v0 (temp)
-  --       store32 ptr1 0  → *ptr1 = v0 (consume ptr1 v1, yield ptr1 v0)
-  --       ret → postcondition holds
-  --   The shadow-stack temp (1048572) must be in the FRAME, not in pre/post,
-  --   so callers use frame_rule R := pointsTo_u32 1048572 _ to thread it through.
-  sorry
+/-- Byte at index `i` after writing to `[a.toNat, a.toNat+3]` is unchanged
+    when `i` is outside that range. -/
+private theorem Wasm.Mem.write32_bytes_other (m : Wasm.Mem) (a v : UInt32)
+    (i : Nat) (h : i < a.toNat ∨ a.toNat + 4 ≤ i) :
+    (m.write32 a v).bytes i = m.bytes i := by
+  simp only [Wasm.Mem.write32]
+  split_ifs with h0 h1 h2 h3 <;> first | rfl | omega
+
+/-- Reading at a 4-byte-disjoint address after write32 is unchanged. -/
+private theorem Wasm.Mem.read32_write32_other (m : Wasm.Mem) (a b v : UInt32)
+    (h : a.toNat + 4 ≤ b.toNat ∨ b.toNat + 4 ≤ a.toNat) :
+    (m.write32 a v).read32 b = m.read32 b := by
+  simp only [Wasm.Mem.read32]
+  -- Prove each of the 4 byte indices separately to avoid b.toNat vs b.toNat+0 mismatch
+  have k0 : (m.write32 a v).bytes b.toNat = m.bytes b.toNat :=
+    Wasm.Mem.write32_bytes_other m a v b.toNat (by rcases h with h | h <;> omega)
+  have k1 : (m.write32 a v).bytes (b.toNat + 1) = m.bytes (b.toNat + 1) :=
+    Wasm.Mem.write32_bytes_other m a v (b.toNat + 1) (by rcases h with h | h <;> omega)
+  have k2 : (m.write32 a v).bytes (b.toNat + 2) = m.bytes (b.toNat + 2) :=
+    Wasm.Mem.write32_bytes_other m a v (b.toNat + 2) (by rcases h with h | h <;> omega)
+  have k3 : (m.write32 a v).bytes (b.toNat + 3) = m.bytes (b.toNat + 3) :=
+    Wasm.Mem.write32_bytes_other m a v (b.toNat + 3) (by rcases h with h | h <;> omega)
+  simp only [k0, k1, k2, k3]
+
+/-- Reading at address `a` after writing `v` to `a` recovers `v`. -/
+private theorem Wasm.Mem.read32_write32_self (m : Wasm.Mem) (a v : UInt32) :
+    (m.write32 a v).read32 a = v := by
+  -- Prove each byte at a.toNat+k individually via split_ifs
+  have byte0 : (m.write32 a v).bytes a.toNat = (v &&& 0xFF).toUInt8 := by
+    simp only [Wasm.Mem.write32]; split_ifs <;> first | rfl | omega
+  have byte1 : (m.write32 a v).bytes (a.toNat + 1) = ((v >>> 8) &&& 0xFF).toUInt8 := by
+    simp only [Wasm.Mem.write32]; split_ifs <;> first | rfl | omega
+  have byte2 : (m.write32 a v).bytes (a.toNat + 2) = ((v >>> 16) &&& 0xFF).toUInt8 := by
+    simp only [Wasm.Mem.write32]; split_ifs <;> first | rfl | omega
+  have byte3 : (m.write32 a v).bytes (a.toNat + 3) = ((v >>> 24) &&& 0xFF).toUInt8 := by
+    simp only [Wasm.Mem.write32]; split_ifs <;> first | rfl | omega
+  simp only [Wasm.Mem.read32, byte0, byte1, byte2, byte3]
+  -- Reconstruct: prove via BitVec using @[simp, int_toBitVec] lemmas, close with bv_decide
+  rw [← UInt32.toBitVec_inj]
+  simp only [UInt32.toBitVec_or, UInt32.toBitVec_shiftLeft,
+             UInt8.toBitVec_toUInt32, UInt32.toBitVec_toUInt8,
+             UInt32.toBitVec_and, UInt32.toBitVec_shiftRight]
+  bv_decide
+
+/-- write32 does not change the page count. -/
+private theorem Wasm.Mem.write32_pages (m : Wasm.Mem) (a v : UInt32) :
+    (m.write32 a v).pages = m.pages := rfl
+
+/-- func5 (raw-pointer swap) terminates and swaps the values at ptr0 and ptr1.
+
+    This is stated as TerminatesWith rather than funcSatisfies because
+    funcSatisfies quantifies over all argument lists; the spec fixes the
+    Wasm calling convention ([ptr1, ptr0] with ptr1 on top of stack).
+
+    Preconditions:
+    - hg:    global 0 holds the shadow-stack base 1048576
+    - hb0/1: ptr0/ptr1 regions are in-bounds
+    - htemp: the temp slot at 1048572–1048575 is in-bounds (1048576 ≤ pages×65536)
+    - hmem0/1: initial memory content
+    - h01:   ptr0 and ptr1 regions are disjoint (4-byte)
+    - h0t/h1t: ptr0/ptr1 regions are disjoint from the temp slot -/
+theorem func5_swap_terminates (ptr0 ptr1 v0 v1 : UInt32)
+    (env : HostEnv Unit) (st : Store Unit)
+    (hg    : st.globals.globals[0]? = some (.i32 (1048576 : UInt32)))
+    (hb0   : ptr0.toNat + 4 ≤ st.mem.pages * 65536)
+    (hb1   : ptr1.toNat + 4 ≤ st.mem.pages * 65536)
+    (htemp : 1048576 ≤ st.mem.pages * 65536)
+    (hmem0 : st.mem.read32 ptr0 = v0)
+    (hmem1 : st.mem.read32 ptr1 = v1)
+    (h01   : ptr0.toNat + 4 ≤ ptr1.toNat ∨ ptr1.toNat + 4 ≤ ptr0.toNat)
+    (h0t   : ptr0.toNat + 4 ≤ 1048572 ∨ 1048576 ≤ ptr0.toNat)
+    (h1t   : ptr1.toNat + 4 ≤ 1048572 ∨ 1048576 ≤ ptr1.toNat) :
+    TerminatesWith env «module» 5 st [.i32 ptr1, .i32 ptr0]
+      (fun st' _ => st'.mem.read32 ptr0 = v1 ∧ st'.mem.read32 ptr1 = v0) := by
+  -- Named intermediate memory states (for postcondition only)
+  let mem1 := st.mem.write32 func5TempAddr v0      -- after save v0 to temp
+  let mem2 := mem1.write32 ptr0 v1                  -- after *ptr0 = v1
+  let mem3 := mem2.write32 ptr1 v0                  -- after *ptr1 = v0 (final)
+  -- Postcondition holds for the final store
+  have hpost : mem3.read32 ptr0 = v1 ∧ mem3.read32 ptr1 = v0 := by
+    refine ⟨?_, ?_⟩
+    · rw [Wasm.Mem.read32_write32_other mem2 ptr1 ptr0 v0
+            (by rcases h01 with h | h <;> omega)]
+      exact Wasm.Mem.read32_write32_self mem1 ptr0 v1
+    · exact Wasm.Mem.read32_write32_self mem2 ptr1 v0
+  -- wp proof for func5's body
+  have hwp : wp «module» func5
+      (fun c => c = .Return { st with mem := mem3 } [])
+      st (func5Def.toLocals [.i32 ptr0, .i32 ptr1]) env := by
+    -- func5TempAddr.toNat = 1048572 is needed by omega inside the memory helpers
+    have hfunc5 : func5TempAddr.toNat = 1048572 := rfl
+    -- Memory read facts in the form that matches the simp-reduced goal
+    have hmem0' : st.mem.read32 ptr0 = v0 := hmem0
+    have hmem1' : (st.mem.write32 func5TempAddr v0).read32 ptr1 = v1 :=
+      (Wasm.Mem.read32_write32_other st.mem func5TempAddr ptr1 v0
+        (by rcases h1t with h | h <;> omega)).trans hmem1
+    have htemp' : ((st.mem.write32 func5TempAddr v0).write32 ptr0 v1).read32
+        func5TempAddr = v0 :=
+      (Wasm.Mem.read32_write32_other _ ptr0 func5TempAddr v1
+        (by rcases h0t with h | h <;> omega)).trans
+          (Wasm.Mem.read32_write32_self st.mem func5TempAddr v0)
+    simp only [func5, func5Def, Function.toLocals,
+               wp_simp, Locals.get, Locals.set?, Locals.validIndex,
+               List.take, List.drop, List.reverse, List.length,
+               List.map, List.replicate, ValueType.zero,
+               Function.numParams, Function.numLocals]
+    -- simp handles: UInt32 arithmetic, if_false_left→¬oob, bounds (hb0/hb1/htemp),
+    -- and memory read substitution (hmem0'/hmem1'/htemp')
+    simp [hg, hb0, hb1, htemp, hmem0', hmem1', htemp']
+    -- residual: LHS = mem3, which is definitional equality via let-unfolding + func5TempAddr abbrev
+    exact rfl
+  -- Convert wp (∃ N, ∀ fuel ≥ N, ...) to TerminatesWith via run_eq
+  unfold Wasm.wp at hwp
+  obtain ⟨N, hN⟩ := hwp
+  have hexec := hN N (le_refl N)
+  apply TerminatesWith.of_run N [] { st with mem := mem3 }
+  · rw [Wasm.run_eq (show «module».imports[5]? = none from rfl)]
+    have hfunc : «module».funcs[5 - «module».imports.length]? = some func5Def := rfl
+    rw [hfunc]
+    -- Reduce all concrete list and Function field computations
+    simp only [show func5Def.numParams = 2 from rfl,
+               show func5Def.results.length = 0 from rfl,
+               show func5Def.body = func5 from rfl,
+               show ([.i32 ptr1, .i32 ptr0] : List Value).take 2 =
+                    [.i32 ptr1, .i32 ptr0] from rfl,
+               show ([.i32 ptr1, .i32 ptr0] : List Value).reverse =
+                    [.i32 ptr0, .i32 ptr1] from rfl,
+               show ([.i32 ptr1, .i32 ptr0] : List Value).drop 2 = [] from rfl]
+    rw [hexec]
+    simp
+  · exact hpost
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- § 2.  Bounds-checked indexed swap: func3
