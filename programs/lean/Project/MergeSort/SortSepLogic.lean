@@ -1,4 +1,5 @@
 import Project.MergeSort.MergeFull
+import Project.MergeSort.ContentLemmas
 import Project.MergeSort.Spec
 import CodeLib.SepLogic.Adequacy
 import CodeLib.SepLogic.AllocSpec
@@ -176,7 +177,7 @@ private theorem func3_terminates
       · simp [Function.numParams, func3Def]
       · intro _ _ h; exact h
       -- dlmalloc_alloc_spec covers func5 (call 5 × 2); state-threading deferred
-      exact (dlmalloc_alloc_spec {} «module» st (src_n >>> 1) sorry sorry).elim fun _ _ => sorry -- content: needs merge correctness lemma
+      exact (dlmalloc_alloc_spec {} «module» st (src_n >>> 1) sorry sorry).elim fun _ _ => sorry -- allocator: deferred per MergeSortSpec design
 
 -- func1: sort with pre-allocated scratch; delegates to func3
 -- allocator calls (func2, func4) deferred
@@ -203,7 +204,7 @@ private theorem func1_terminates
   · simp [Function.numParams, func1Def]
   · intro _ _ h; exact h
   -- dlmalloc_alloc_spec covers func2/func4 allocator calls; state-threading deferred
-  exact (dlmalloc_alloc_spec {} «module» st len sorry sorry).elim fun _ _ => sorry -- content: needs merge correctness lemma
+  exact (dlmalloc_alloc_spec {} «module» st len sorry sorry).elim fun _ _ => sorry -- allocator: deferred per MergeSortSpec design
 
 -- merge_sort_correct: compose func33 → func15 + func1
 -- Intended structure:
