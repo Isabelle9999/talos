@@ -913,7 +913,76 @@ theorem func10_spec (st : Store Unit)
     -- STEP 3 — Fuel composition (sorry'd):
     --   total fuel = N_pre + N_loop, where N_loop comes from wp_wasm_prop_loop.
     --   exec (N_pre + N_loop) ... func10.body {} = exec N_loop ... [.loop ...] {} = .Return ...
-    unfold wp_wasm_prop
+    -- lbody: the instruction list inside .loop 0 1 [...] (func10's last instruction).
+    obtain ⟨lbody, _⟩ : ∃ lbody : Program,
+        func10.getLast? = some (.loop 0 1 lbody) := ⟨_, rfl⟩
+    -- (B) Loop: wp_wasm_prop_loop with partition_inv invariant, proven helpers wired in.
+    have h_loop : wp_wasm_prop «module» st
+        (func10Def.toLocals ([.i32 (UInt32.ofNat xs.length), .i32 ptr].take 2).reverse)
+        [.loop 0 1 lbody] {} P10 := by
+      apply wp_wasm_prop_loop
+        (I := fun stA _ => ∃ i j : Nat, partition_inv ptr xs i j stA)
+        (μ := fun _ _ => xs.length)
+      · -- hinit: partition_inv ptr xs 0 0 st  [PROVEN via partition_inv_init]
+        exact ⟨0, 0, partition_inv_init ptr xs st hlen hpg hmem⟩
+      · -- hstep: sorry'd; three cases:
+        -- Case split: (a) j = len-1 → Return; (b) arr[j]>pivot → Break 0; (c) arr[j]≤pivot → Break 0
+        rintro stA locA ⟨i, j, hinvA⟩
+        by_cases hj : j = xs.length - 1
+        · -- (a) j = len-1: iterator exhausted. Final swap arr[i]↔arr[len-1], return i.
+          -- EXEC TRACE + POSTCONDITION (sorry'd, ~80 instrs + func7 call):
+          -- Loop body detects iter done (frame[40]&1=0), calls func7 to swap arr[i]↔arr[len-1],
+          -- restores global0, returns [.i32 i]. P10 follows from partition_inv after final swap.
+          refine ⟨0, fun fuel _ => Or.inr (Or.inr ?_)⟩
+          obtain ⟨stR, hexec_a, hP10_a⟩ : ∃ stR : Store Unit,
+              exec fuel «module» stA locA lbody {} = .Return stR [.i32 (UInt32.ofNat i)] ∧
+              P10 stR [.i32 (UInt32.ofNat i)] := by
+            sorry  -- exec trace ~80 instrs + func7 call; P10 from partition_inv after final swap
+          exact ⟨stR, [.i32 (UInt32.ofNat i)], hexec_a, hP10_a⟩
+        · -- j < xs.length - 1
+          have hj_lt : j + 1 < xs.length := by
+            have := hinvA.1; have := hinvA.2.2.1; omega
+          by_cases harr : xs.getLast! < (wordsAt stA.mem ptr xs.length)[j]!
+          · -- (b) arr[j] > pivot: no memory change; j advances via func5.
+            have hinv' : partition_inv ptr xs i (j + 1) stA :=
+              partition_inv_step_gt ptr xs i j stA stA hinvA hj_lt harr rfl rfl
+            refine ⟨0, fun fuel _ => Or.inr (Or.inl ?_)⟩
+            -- EXEC TRACE (sorry'd, ~80 instructions):
+            -- Loop body calls func5 (j→j+1), gt-branch taken, Break 0. No memory change.
+            obtain ⟨sB_b, hexec_b⟩ : ∃ sB_b : Locals,
+                exec fuel «module» stA locA lbody {} = .Break 0 stA sB_b := by
+              sorry  -- exec trace ~80 instructions (>50-instruction threshold)
+            exact ⟨stA, sB_b, hexec_b, ⟨i, j + 1, hinv'⟩,
+              by
+                -- MEASURE (sorry'd): μ stA {sB_b with values:=locA.values} < μ stA locA.
+                -- Real measure: xs.length-1-(j+1) < xs.length-1-j; omega from hj_lt.
+                -- Blocked: μ = fun _ _ => xs.length (constant placeholder needs updating).
+                sorry⟩
+          · -- (c) arr[j] ≤ pivot: swap arr[i]↔arr[j] via func7; i and j both advance.
+            --     partition_inv_step_le (PROVEN) maintains invariant at (i+1, j+1).
+            have harr_le : (wordsAt stA.mem ptr xs.length)[j]! ≤ xs.getLast! :=
+              UInt32.not_lt.mp harr
+            have hi_lt : i < xs.length := by
+              have := hinvA.2.1; have := hinvA.2.2.1; omega
+            refine ⟨0, fun fuel _ => Or.inr (Or.inl ?_)⟩
+            -- EXEC TRACE (sorry'd, ~80 instrs + func7 call):
+            -- Loop body: le-branch, func7 swaps arr[i]↔arr[j], i++, j++, Break 0.
+            obtain ⟨stC, sC, hexec, hmem_eq, hpg_eq⟩ :
+                ∃ stC : Store Unit, ∃ sC : Locals,
+                exec fuel «module» stA locA lbody {} = .Break 0 stC sC ∧
+                wordsAt stC.mem ptr xs.length =
+                  swapElems (wordsAt stA.mem ptr xs.length) i j ∧
+                stC.mem.pages = stA.mem.pages := by
+              sorry  -- exec trace ~80 instrs + func7 call (>50-instruction threshold)
+            exact ⟨stC, sC, hexec,
+              ⟨i + 1, j + 1,
+                partition_inv_step_le ptr xs i j stA stC hinvA hj_lt hi_lt harr_le hmem_eq hpg_eq⟩,
+              by
+                -- MEASURE (sorry'd): xs.length-1-(j+1) < xs.length-1-j; omega from hj_lt.
+                -- Blocked: μ = fun _ _ => xs.length (constant placeholder needs updating).
+                sorry⟩
+    -- (A)+(C) Preamble connection (sorry'd): exec chain through func10.body preamble
+    -- bridges the full func10Def.body to [.loop 0 1 lbody]; h_loop closes the loop.
     sorry
   -- Strategy:
   --
