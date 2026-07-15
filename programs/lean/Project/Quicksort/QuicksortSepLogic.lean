@@ -75,17 +75,39 @@ omit inst in
     (swapElems xs i j).length = xs.length := by
   simp only [swapElems]; split <;> simp [List.length_set]
 
+omit inst in
 theorem swapElems_perm (xs : List UInt32) (i j : Nat)
     (hi : i < xs.length) (hj : j < xs.length) :
     (swapElems xs i j).Perm xs := by
-  sorry
-  -- Strategy:
-  --   swapElems xs i j = (xs.set i xs[j]).set j xs[i]
-  --   List.Perm.set swaps element at one position, preserving all others.
-  --   Composition of two List.Perm.set gives the overall permutation.
-  --   If i = j, swapElems xs i j = xs.set i xs[i] = xs (set same value), Perm.refl.
-  --   Supporting lemma needed: List.perm_set (or prove by List.Perm.swap / List.Perm.cons).
+  have hswap : swapElems xs i j = (xs.set i xs[j]).set j xs[i] := by
+    simp [swapElems, hi, hj]
+  rw [hswap]
+  by_cases h : i = j
+  · subst h
+    rw [List.set_set]
+    apply List.perm_iff_count.mpr
+    intro b
+    rw [List.count_set hi]
+    split_ifs with h1
+    · exact Nat.sub_add_cancel (List.one_le_count_iff.mpr
+        (beq_iff_eq.mp h1 ▸ List.getElem_mem hi))
+    · omega
+  · have hj' : j < (xs.set i xs[j]).length := by simp [hj]
+    have hget := List.getElem_set_ne h hj'
+    apply List.perm_iff_count.mpr
+    intro b
+    rw [List.count_set hj', hget, List.count_set hi]
+    split_ifs with h1 h2
+    · have : 1 ≤ List.count b xs :=
+        List.one_le_count_iff.mpr (beq_iff_eq.mp h1 ▸ List.getElem_mem hi)
+      omega
+    · have : 1 ≤ List.count b xs :=
+        List.one_le_count_iff.mpr (beq_iff_eq.mp h1 ▸ List.getElem_mem hi)
+      omega
+    · omega
+    · omega
 
+omit inst in
 theorem swapElems_get_at (xs : List UInt32) (i j k : Nat)
     (hi : i < xs.length) (hj : j < xs.length) :
     (swapElems xs i j)[k]! =
@@ -93,11 +115,27 @@ theorem swapElems_get_at (xs : List UInt32) (i j k : Nat)
       else if k = j ∧ i ≠ j then xs[i]!
       else if k = i ∧ i = j then xs[k]!  -- k = i = j, value unchanged (swap is identity)
       else xs[k]! := by
-  sorry
-  -- Strategy:
-  --   Unfold swapElems using xs.get? i = some xs[i]!, xs.get? j = some xs[j]!.
-  --   Case split on k = i, k = j (with i ≠ j or i = j).
-  --   Use List.getElem!_set_eq and List.getElem!_set_ne.
+  have hix : xs[i]? = some xs[i]! := by simp [hi]
+  have hjx : xs[j]? = some xs[j]! := by simp [hj]
+  simp only [swapElems, hix, hjx]
+  by_cases hki : k = i
+  · by_cases hij : i = j
+    · rw [if_neg (by rintro ⟨_, h⟩; exact h hij),
+          if_neg (by rintro ⟨_, h⟩; exact h hij),
+          if_pos ⟨hki, hij⟩]
+      rw [hki, hij]
+      simp [hj]
+    · rw [if_pos ⟨hki, hij⟩, hki]
+      simp [hi, hj, Ne.symm hij]
+  · by_cases hkj : k = j
+    · have hji : i ≠ j := Ne.symm (hkj ▸ hki)
+      rw [if_neg (fun ⟨h, _⟩ => hki h), if_pos ⟨hkj, hji⟩, hkj]
+      simp [hi, hj]
+    · rw [if_neg (fun ⟨h, _⟩ => hki h), if_neg (fun ⟨h, _⟩ => hkj h),
+          if_neg (fun ⟨h, _⟩ => hki h)]
+      simp only [List.getElem!_eq_getElem?_getD,
+                 List.getElem?_set_ne (Ne.symm hkj),
+                 List.getElem?_set_ne (Ne.symm hki)]
 
 -- ======================================================================
 -- §1  Memory read/write algebra  (pure — omit inst)
