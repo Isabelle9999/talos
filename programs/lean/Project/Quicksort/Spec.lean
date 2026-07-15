@@ -33,6 +33,7 @@ def QuicksortSpec : Prop :=
     xs.length = len.toNat →
     ptr.toNat + 4 * xs.length ≤ st.mem.pages * 65536 →
     (1048576 : Nat) ≤ st.mem.pages * 65536 →
+    64 * (xs.length + 1) ≤ ptr.toNat →
     st.globals.globals[0]? = some (.i32 (1048576 : UInt32)) →
     wordsAt st.mem ptr xs.length = xs →
     TerminatesWith env «module» 12 st [.i32 len, .i32 ptr]

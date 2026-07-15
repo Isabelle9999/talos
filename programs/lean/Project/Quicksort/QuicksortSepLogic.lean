@@ -1090,16 +1090,20 @@ private theorem terminatesWith_env_irrel
           simp only [execOne.eq_def]
         · intro m hm st s p env
           cases p with
-          | nil => rfl
+          | nil => simp only [exec]
           | cons _ _ => simp only [exec, execOne.eq_def]
         · intro m hm id st args env
           have hImp : m.imports[id]? = none := by simp [hm]
-          simp only [run, hImp]
-          rcases m.funcs[id - m.imports.length]? with _ | f
-          · rfl
-          · cases f.body with
+          have irrelExecZero : ∀ (st : Store Unit) (s : Locals) (p : Program),
+              exec 0 m st s p env = exec 0 m st s p {} := by
+            intro st s p; cases p with
             | nil => simp only [exec]
             | cons _ _ => simp only [exec, execOne.eq_def]
+          conv_lhs => rw [run_eq hImp]
+          conv_rhs => rw [run_eq hImp]
+          rcases m.funcs[id - m.imports.length]? with _ | f
+          · rfl
+          · simp only [irrelExecZero, runTail]
       | succ k ih =>
         obtain ⟨ihOne, ihExec, ihRun⟩ := ih
         have irrelOne : ∀ (m : Module) (hm : m.imports = []) (st : Store Unit) (s : Locals)
@@ -1128,7 +1132,7 @@ private theorem terminatesWith_env_irrel
             exec (k + 1) m st s p env = exec (k + 1) m st s p {} := by
           intro m hm st s p env
           induction p generalizing st s with
-          | nil => rfl
+          | nil => simp only [exec]
           | cons inst rest ihRest =>
             simp only [exec]
             rw [irrelOne m hm st s inst env]
@@ -1171,25 +1175,8 @@ private theorem terminatesWith_env_irrel
 
 /-- QuicksortSpec: calling func12 sorts the array in place. -/
 theorem quicksort_correct : QuicksortSpec := by
-  intro env st ptr len xs hlen hpg hpg_min hg0 hmem
+  intro env st ptr len xs hlen hpg hpg_min hptr hg0 hmem
   apply terminatesWith_env_irrel (by native_decide) env
-  apply func12_spec st ptr len xs hlen hpg hpg_min _ hg0 hmem
-  sorry
-  -- Spec gap: QuicksortSpec does not include 64*(xs.length+1) ≤ ptr.toNat.
-  -- Without this precondition, the shadow stack (growing down from 1048576) could
-  -- overlap the array during recursive calls.
-  --
-  -- The gap mirrors the one in SwapSepLogic.lean (swap_spec_sep says
-  -- "st.globals.globals[0]? = some (.i32 1048576)" is missing from SwapElementsSpec).
-  --
-  -- Resolution options:
-  --   (A) Strengthen QuicksortSpec to add hptr: 1048576 ≤ ptr.toNat
-  --       (then the shadow stack [1048544, 1048576) is disjoint from the array).
-  --   (B) Derive from the existing preconditions:
-  --       hg0 gives global0 = 1048576 (the initial stack pointer).
-  --       ptr + 4*len ≤ pages * 65536  and  pages * 65536 ≥ 1048576
-  --       DO NOT directly imply 1048576 ≤ ptr.
-  --       The missing fact is that user allocations are above 1048576.
-  --   (C) Accept the spec gap and note it in the theorem.
+  exact func12_spec st ptr len xs hlen hpg hpg_min hptr hg0 hmem
 
 end Project.Quicksort.QuicksortSepLogic
