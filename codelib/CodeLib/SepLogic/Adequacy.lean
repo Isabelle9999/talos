@@ -656,4 +656,47 @@ theorem wp_wasm_prop_to_TerminatesWith
   | ReturnCall fid st' vs => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
   | Throwing tag targs st' s' => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
 
+/-- Variant of `wp_wasm_prop_to_TerminatesWith` for functions that return a non-empty
+    result list (e.g. `[.i32]`).  The caller supplies two compatibility lemmas bridging
+    the `wp_wasm_prop` postcondition Q to the `TerminatesWith` postcondition P after
+    the Wasm calling-convention takes `f.results.length` values from the result. -/
+theorem wp_wasm_prop_to_TerminatesWith_return
+    {m : Module} {id : Nat} {f : Function}
+    {initial : Store Unit} {args : List Value}
+    {P Q : Store Unit → List Value → Prop}
+    (hf   : m.funcs[id - m.imports.length]? = some f)
+    (himp : m.imports[id]? = none)
+    (hlen : args.length ≤ f.numParams)
+    -- Fallthrough branch: Q st' [] → P st' (stack.take results.length ++ callerRem)
+    (hcompat_ft : ∀ (st' : Store Unit) (s' : Locals), Q st' [] →
+        P st' (s'.values.take f.results.length ++ args.drop f.numParams))
+    -- Return branch: Q st' vals → P st' (vals.take results.length ++ callerRem)
+    (hcompat_ret : ∀ (st' : Store Unit) (vals : List Value), Q st' vals →
+        P st' (vals.take f.results.length ++ args.drop f.numParams))
+    (hwp : wp_wasm_prop m initial (f.toLocals (args.take f.numParams).reverse)
+        f.body {} Q) :
+    TerminatesWith {} m id initial args P := by
+  obtain ⟨fuel₀, hwp_fuel⟩ := hwp
+  have hne : exec fuel₀ m initial (f.toLocals (args.take f.numParams).reverse) f.body {}
+      ≠ .OutOfFuel := by
+    intro h; simp only [h] at hwp_fuel
+  have hcr : args.drop f.numParams = [] := List.drop_eq_nil_of_le hlen
+  refine ⟨fuel₀, fun fuel hle => ?_⟩
+  have hmono : exec fuel m initial (f.toLocals (args.take f.numParams).reverse) f.body {}
+      = exec fuel₀ m initial (f.toLocals (args.take f.numParams).reverse) f.body {} :=
+    exec_fuel_mono hle hne
+  cases hexec : exec fuel₀ m initial (f.toLocals (args.take f.numParams).reverse) f.body {} with
+  | Fallthrough st' s' =>
+    rw [hexec] at hwp_fuel
+    exact ⟨_, st', by rw [run_eq himp]; simp [hf, hmono, hexec, hcr], hcompat_ft st' s' hwp_fuel⟩
+  | Return st' vals =>
+    rw [hexec] at hwp_fuel
+    exact ⟨_, st', by rw [run_eq himp]; simp [hf, hmono, hexec, hcr], hcompat_ret st' vals hwp_fuel⟩
+  | Break n st' s' => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
+  | Trap msg => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
+  | Invalid msg => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
+  | OutOfFuel => exact absurd hexec hne
+  | ReturnCall fid st' vs => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
+  | Throwing tag targs st' s' => rw [hexec] at hwp_fuel; exact hwp_fuel.elim
+
 end Wasm.SepLogic

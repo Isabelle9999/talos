@@ -702,6 +702,38 @@ NOTE on wp_wasm_prop_to_TerminatesWith:
   This handles the .Return branch of wp_wasm_prop (the .Fallthrough branch
   is impossible for a function with results, so hcompat is vacuous).
 -/
+
+-- Invariant established at i=0, j=0 before the loop.
+theorem partition_inv_init (ptr : UInt32) (xs : List UInt32) (st : Store Unit)
+    (hlen : 1 ≤ xs.length)
+    (hpg  : ptr.toNat + 4 * xs.length ≤ st.mem.pages * 65536)
+    (hmem : wordsAt st.mem ptr xs.length = xs) :
+    partition_inv ptr xs 0 0 st := by sorry
+
+-- When arr[j] > pivot: j advances, i unchanged, no memory change.
+theorem partition_inv_step_gt
+    (ptr : UInt32) (xs : List UInt32) (i j : Nat)
+    (st st' : Store Unit)
+    (hinv    : partition_inv ptr xs i j st)
+    (hj_lt   : j + 1 < xs.length)
+    (harr_gt : (wordsAt st.mem ptr xs.length)[j]! > xs.getLast!)
+    (hmem_eq : wordsAt st'.mem ptr xs.length = wordsAt st.mem ptr xs.length)
+    (hpg_eq  : st'.mem.pages = st.mem.pages) :
+    partition_inv ptr xs i (j + 1) st' := by sorry
+
+-- When arr[j] ≤ pivot: after swap arr[i]↔arr[j], both i and j advance.
+theorem partition_inv_step_le
+    (ptr : UInt32) (xs : List UInt32) (i j : Nat)
+    (st st' : Store Unit)
+    (hinv    : partition_inv ptr xs i j st)
+    (hj_lt   : j + 1 < xs.length)
+    (hi_lt   : i < xs.length)
+    (harr_le : (wordsAt st.mem ptr xs.length)[j]! ≤ xs.getLast!)
+    (hmem_eq : wordsAt st'.mem ptr xs.length =
+               swapElems (wordsAt st.mem ptr xs.length) i j)
+    (hpg_eq  : st'.mem.pages = st.mem.pages) :
+    partition_inv ptr xs (i + 1) (j + 1) st' := by sorry
+
 theorem func10_spec (st : Store Unit)
     (ptr : UInt32) (xs : List UInt32) (g0 : UInt32)
     (hlen     : 1 ≤ xs.length)
@@ -725,7 +757,43 @@ theorem func10_spec (st : Store Unit)
             (∀ k, pivot_idx.toNat < k → k < xs.length → arr[k]! > arr[pivot_idx.toNat]!) ∧
             st'.globals = st.globals ∧
             st'.mem.pages = st.mem.pages) := by
-  sorry
+  -- Apply wp_wasm_prop_to_TerminatesWith_return to convert a wp_wasm_prop proof.
+  -- func10Def has results := [.i32], so the standard (hresults : 0) version doesn't apply.
+  -- Choose Q = P (same postcondition); hcompat_ft is vacuous since Q st' [] is False.
+  have hf   : «module».funcs[10 - «module».imports.length]? = some func10Def := by rfl
+  have himp : «module».imports[10]? = none := by rfl
+  -- P (the goal postcondition) for explicit Q unification
+  let P10 : Store Unit → List Value → Prop := fun st' vs =>
+    ∃ pivot_idx : UInt32,
+      vs = [.i32 pivot_idx] ∧
+      pivot_idx.toNat < xs.length ∧
+      ∃ arr : List UInt32,
+        arr.length = xs.length ∧
+        wordsAt st'.mem ptr xs.length = arr ∧
+        arr.Perm xs ∧
+        (∀ k < pivot_idx.toNat, arr[k]! ≤ arr[pivot_idx.toNat]!) ∧
+        (∀ k, pivot_idx.toNat < k → k < xs.length → arr[k]! > arr[pivot_idx.toNat]!) ∧
+        st'.globals = st.globals ∧
+        st'.mem.pages = st.mem.pages
+  apply wp_wasm_prop_to_TerminatesWith_return (f := func10Def) (Q := P10) hf himp
+  · -- hlen : args.length ≤ func10Def.numParams
+    have h1 : ([.i32 (UInt32.ofNat xs.length), .i32 ptr] : List Value).length = 2 := rfl
+    have h2 : func10Def.numParams = 2 := rfl
+    omega
+  · -- hcompat_ft : P10 st' [] → P10 st' (...) — P10 st' [] is False (vs=[] ≠ [.i32 _])
+    intro st' s' h
+    obtain ⟨_, hvs, _⟩ := h
+    simp at hvs
+  · -- hcompat_ret : P10 st' vals → P10 st' (vals.take 1 ++ [])
+    intro st' vals h
+    obtain ⟨pivot_idx, hvs, hlt, arr, hlen_arr, hmem_arr, hperm, hleft, hright,
+            hglob, hpages⟩ := h
+    exact ⟨pivot_idx, by rw [hvs]; rfl, hlt, arr, hlen_arr, hmem_arr, hperm, hleft, hright,
+           hglob, hpages⟩
+  · -- hwp : wp_wasm_prop «module» st (func10Def.toLocals ...) func10Def.body {} P10
+    -- TODO: apply wp_wasm_prop_loop with partition_inv as invariant;
+    -- hinit from partition_inv_init; hstep case-splits on iteration outcome.
+    sorry
   -- Strategy:
   --
   -- A. PROLOGUE (straight-line exec_cons chain):
