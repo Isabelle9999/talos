@@ -228,20 +228,57 @@ theorem func3_swap_satisfies
     funcSatisfies «module» 3
       (swapPre arr i j v_i v_j)
       (swapPost arr i j v_i v_j) := by
-  -- Proof outline:
-  --   Unfold funcSatisfies; exhibit f = func3Def, m.funcs[3]? = some func3Def.
-  --   For arbitrary env, st, args:
-  --     intro pre (swapPre arr i j v_i v_j st)
-  --     wpures through the outer block preamble
-  --     bounds check i < len:
-  --       eqz(ltU i len) = 0 since hi : i < len → br_if 0 not taken → continue
-  --     compute ptr_i = arr + i*4; localSet 5 → local5 = ptr_i
-  --     bounds check j < len:
-  --       ltU j len = 1 since hj : j < len → br_if 1 taken → exit inner block
-  --     at .call 5 with stack [arr + j*4, local5=arr+i*4]:
-  --       apply func5_swap_satisfies (arr+4*i) (arr+4*j) v_i v_j
-  --       (using frame_rule for any shadow temp in the frame)
-  --     ret → swapPost holds
+  refine ⟨func3Def, rfl, fun env st args => ?_⟩
+  iintro HPre
+  -- func3 = [.block 0 0 outer_body, j_panic].
+  -- Under hi (i < len) and hj (j < len), outer_body → Return (via .ret in success_path):
+  --
+  --   Block 0 (middle block B, wp_wasm_iProp_block, body exits Break 0 → Fallthrough):
+  --     Block 1 (inner block C, wp_wasm_iProp_block, body exits Break 1 → Break 0):
+  --       hi : i < len  → ltU i len = 1 → and 1 → eqz = 0 → br_if 0 NOT taken
+  --       compute ptr_i := arr + i*4  (localGet 0, localGet 2, const 2, shl, add, localSet 5)
+  --       hj : j < len  → ltU j len = 1 → and 1 → br_if 1 taken → Break 1
+  --     execOne(.block inner) = Break 0; middle block body = Break 0
+  --     execOne(.block middle) = Fallthrough; outer_body continues with success_path
+  --
+  --   success_path (wpures after blocks):
+  --     localGet 5  = ptr_i  (= arr + 4*i, set during inner block)
+  --     localGet 0  = arr
+  --     localGet 3  = j
+  --     const 2; shl  →  4*j
+  --     add           →  ptr_j = arr + 4*j
+  --
+  --   .call 5 (wp_wasm_iProp_call + func5_swap_satisfies):
+  --     func5 swaps *ptr_i ↔ *ptr_j in physical memory
+  --     (needs func5_swap_satisfies : funcSatisfies «module» 5 swapPre swapPost,
+  --      which requires iProp-level load32/store32 rules — not yet in the framework)
+  --
+  --   .ret → Return st' []
+  --
+  -- Ghost update (the key missing piece):
+  --   HPre : pointsTo_u32 (arr+4*i) v_i ∗ pointsTo_u32 (arr+4*j) v_j
+  --   genHeap_update × 8 bytes  →  pointsTo_u32 (arr+4*i) v_j ∗ pointsTo_u32 (arr+4*j) v_i
+  --   Requires genHeapInterp σ, available via wp_wasm_iProp_block_ret_bupd's ∀σ hook.
+  --
+  -- Full proof once wp_wasm_iProp_block_ret_bupd is provable and iProp call/mem rules exist:
+  --   apply wp_wasm_iProp_block_ret_bupd
+  --   refine ⟨N, st', [], hexec, fun σ => ?_⟩
+  --   · -- hexec : exec N ... outer_body ... = Return st' [] (from execution trace above)
+  --   · iintro Hσ
+  --     imod (Hσ.sep HPre) with ...  -- split auth + frags
+  --     genHeap_update ×8 to swap bytes at ptr_i and ptr_j
+  --     imodintro; iexists σ'; isplitl [Hσ']; exact Hσ'; exact swapPost_assembled
+  -- Proof needs wp_wasm_iProp_block_ret_bupd (Adequacy.lean) for the outer block's Return.
+  -- The goal here is:
+  --   ⊢ wp_wasm_iProp «module» st (func3Def.toLocals args)
+  --       func3Def.body env (fun st' vs => swapPost arr i j v_i v_j st' vs)
+  -- Two blockers before the sorry can be removed:
+  -- (1) exec N «module» st (func3Def.toLocals args) outer_body env = Return st' []:
+  --     funcSatisfies universally quantifies args; the concrete exec trace above
+  --     requires args = [.i32 arr, .i32 len, .i32 i, .i32 j, .i32 err].
+  -- (2) genHeapInterp σ ==∗ ∃ σ', genHeapInterp σ' ∗ swapPost:
+  --     wp_wasm_iProp_block_ret_bupd itself is sorry'd pending the ==∗ extension
+  --     to wp_wasm_iProp_F's Return branch (see Adequacy.lean comment).
   sorry
 
 /-- Frame rule for the indexed swap: preserves additional caller resource R. -/

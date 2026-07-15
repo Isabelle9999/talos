@@ -114,13 +114,14 @@ theorem linked_terminates
       wp_wasm_iProp m st (f.toLocals []) f.body {}
         (fun st' vs => iprop% pointsTo_u64 ptr (v + 1) ∗ pointsTo_u64 ptr₂ u) :=
     h_init.trans (BI.sep_mono_right (BI.wand_entails hspec_inst))
-  -- Trivialize iProp postcondition → Prop WP with True
-  have hwp_true : ⊢ genHeapInterp σ ∗ wp_wasm m st (f.toLocals []) f.body {} (fun _ _ => True) :=
+  -- Trivialize iProp postcondition → wp_wasm_iProp with ⌜True⌝
+  have hwp_true : ⊢ genHeapInterp σ ∗
+      wp_wasm_iProp m st (f.toLocals []) f.body {} (fun _ _ => iprop% ⌜True⌝) :=
     hwp_init.trans (BI.sep_mono_right wp_wasm_iProp_trivialize)
-  -- Adequacy: extract Prop-level wp_wasm_prop
+  -- iProp adequacy: extract Prop-level wp_wasm_prop
   have hwp_prop : wp_wasm_prop m st (f.toLocals []) f.body {} (fun _ _ => True) :=
     pure_soundness (hwp_true.trans
-      (wasm_adequacy m st (f.toLocals []) f.body {} (fun _ _ => True) σ))
+      (wasm_iProp_adequacy m st (f.toLocals []) f.body {} σ))
   -- Normalize args form for TerminatesWith ([] take/reverse = [])
   have hwp_prop' :
       wp_wasm_prop m st
