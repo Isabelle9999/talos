@@ -305,6 +305,8 @@ private def I_outer (ptr len : UInt32) (xs : List UInt32) (frame : UInt32)
     locA.get 1 = some (.i32 len) ∧
     locA.get 2 = some (.i32 frame) ∧
     locA.values = [] ∧
+    locA.params.length = 2 ∧
+    locA.locals.length = 8 ∧
     stA.mem.read32 (frame + 8) = i ∧
     0 < i.toNat ∧ i.toNat ≤ xs.length ∧
     stA.globals.globals[0]? = some (.i32 frame) ∧
@@ -325,36 +327,112 @@ private def I_inner (ptr : UInt32) (xs : List UInt32) (frame i₀ : UInt32)
     (wordsAt stA.mem ptr xs.length).Perm xs
 
 omit inst in
-/-- One CONTINUE step of the outer insertion-sort loop:
-    given I_outer with i < xs.length, the outer loop body executes a full iteration
-    (EXIT_BLOCK fires br_if 0, BOUNDS_CHECK_1 loads key, INNER_BLOCK runs the inner
-    shifting loop, STORE_KEY places key at j_final and increments frame[8])
-    and returns .Break 0, re-establishing I_outer with i+1.
+/-- Inner-loop termination and correctness: starting from stBC1 / locA4 (after EXIT_BLOCK,
+    GET_i, and BOUNDS_CHECK_1 have run), the INNER_BLOCK + GET_j + STORE_KEY suffix
+    terminates and re-establishes I_outer with i+1.
+    Proof by strong induction on j (deferred). -/
+private theorem inner_loop_terminates
+    (stA : Store Unit) (locA : Locals)
+    (ptr len frame : UInt32) (xs : List UInt32)
+    (i : UInt32)
+    (hlparams    : locA.params.length = 2)
+    (hllocals    : locA.locals.length = 8)
+    (hget0       : locA.get 0 = some (.i32 ptr))
+    (hget1       : locA.get 1 = some (.i32 len))
+    (hget2       : locA.get 2 = some (.i32 frame))
+    (hlocA_vals  : locA.values = [])
+    (hread8      : stA.mem.read32 (frame + 8) = i)
+    (hi_pos      : 0 < i.toNat)
+    (hi_lt       : i.toNat < xs.length)
+    (hglob       : stA.globals.globals[0]? = some (.i32 frame))
+    (hbnd_arr    : ptr.toNat + 4 * xs.length ≤ stA.mem.pages * 65536)
+    (hbnd_frame  : frame.toNat + 16 ≤ stA.mem.pages * 65536)
+    (hpairwise   : (wordsAt stA.mem ptr i.toNat).Pairwise (· ≤ ·))
+    (hperm       : (wordsAt stA.mem ptr xs.length).Perm xs)
+    (hlen        : xs.length = len.toNat)
+    (hdisj_frame : ptr.toNat + 4 * xs.length ≤ frame.toNat)
+    (hpg_arr     : ptr.toNat + 4 * xs.length ≤ 4294967296) :
+    ∃ (N : Nat) (stFinal : Store Unit) (locFinal : Locals),
+      (∀ fuel ≥ N, exec fuel «module»
+          { stA with mem := stA.mem.write32 (frame + (12 : UInt32)) i }
+          { locA with
+            locals := (locA.locals.set 1 (.i32 i)).set 2 (.i32 (stA.mem.read32 (ptr + 4 * i))),
+            values := [] }
+          [.block 0 0 [
+             .loop 0 0 [
+               .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localSet 7,
+                     .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                     .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 2],
+                   .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                 .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                 .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                 .br 1]],
+             .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable],
+           .localGet 2, .load32 (12 : UInt32), .localSet 9,
+           .block 0 0 [
+             .localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+             .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+             .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+             .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]
+          {} = .Break 0 stFinal locFinal) ∧
+      stFinal.mem.read32 (frame + 8) = i + 1 ∧
+      stFinal.globals.globals[0]? = some (.i32 frame) ∧
+      stFinal.mem.pages = stA.mem.pages ∧
+      locFinal.params.length = 2 ∧
+      locFinal.locals.length = 8 ∧
+      locFinal.values = [] ∧
+      locFinal.get 0 = some (.i32 ptr) ∧
+      locFinal.get 1 = some (.i32 len) ∧
+      locFinal.get 2 = some (.i32 frame) ∧
+      (wordsAt stFinal.mem ptr (i + 1).toNat).Pairwise (· ≤ ·) ∧
+      (wordsAt stFinal.mem ptr xs.length).Perm xs := by
+  sorry
 
-    The proof proceeds by strong induction on j (j decreases from i toward 0 or j_final)
-    and is deferred to a future session. -/
+set_option maxHeartbeats 800000 in
+omit inst in
 private theorem outer_loop_continue_step
     (stA : Store Unit) (locA : Locals)
     (ptr len frame : UInt32) (xs : List UInt32)
     (i : UInt32)
-    (hget0      : locA.get 0 = some (.i32 ptr))
-    (hget1      : locA.get 1 = some (.i32 len))
-    (hget2      : locA.get 2 = some (.i32 frame))
-    (hlocA_vals : locA.values = [])
-    (hread8     : stA.mem.read32 (frame + 8) = i)
-    (hi_pos     : 0 < i.toNat)
-    (hi_lt      : i.toNat < xs.length)
-    (hi_le      : i.toNat ≤ xs.length)
-    (hglob      : stA.globals.globals[0]? = some (.i32 frame))
-    (hbnd_arr   : ptr.toNat + 4 * xs.length ≤ stA.mem.pages * 65536)
-    (hbnd_frame : frame.toNat + 16 ≤ stA.mem.pages * 65536)
-    (hpairwise  : (wordsAt stA.mem ptr i.toNat).Pairwise (· ≤ ·))
-    (hperm      : (wordsAt stA.mem ptr xs.length).Perm xs)
-    (hlen       : xs.length = len.toNat) :
+    (hget0       : locA.get 0 = some (.i32 ptr))
+    (hget1       : locA.get 1 = some (.i32 len))
+    (hget2       : locA.get 2 = some (.i32 frame))
+    (hlocA_vals  : locA.values = [])
+    (hlparams    : locA.params.length = 2)
+    (hllocals    : locA.locals.length = 8)
+    (hdisj_frame : ptr.toNat + 4 * xs.length ≤ frame.toNat)
+    (hpg_arr     : ptr.toNat + 4 * xs.length ≤ 4294967296)
+    (hread8      : stA.mem.read32 (frame + 8) = i)
+    (hi_pos      : 0 < i.toNat)
+    (hi_lt       : i.toNat < xs.length)
+    (hi_le       : i.toNat ≤ xs.length)
+    (hglob       : stA.globals.globals[0]? = some (.i32 frame))
+    (hbnd_arr    : ptr.toNat + 4 * xs.length ≤ stA.mem.pages * 65536)
+    (hbnd_frame  : frame.toNat + 16 ≤ stA.mem.pages * 65536)
+    (hpairwise   : (wordsAt stA.mem ptr i.toNat).Pairwise (· ≤ ·))
+    (hperm       : (wordsAt stA.mem ptr xs.length).Perm xs)
+    (hlen        : xs.length = len.toNat) :
     ∃ (N : Nat) (stFinal : Store Unit) (locFinal : Locals),
       (∀ fuel ≥ N,
         exec fuel «module» stA locA
-          -- The outer loop body (contents of .loop 0 0 [...] in func0):
           [.block 0 0 [
              .localGet 2, .load32 (8 : UInt32), .localGet 1, .ltU, .const (1 : UInt32),
              .and, .br_if 0, .localGet 2, .const (16 : UInt32), .add, .globalSet 0, .ret],
@@ -403,7 +481,406 @@ private theorem outer_loop_continue_step
           {} = .Break 0 stFinal locFinal) ∧
       I_outer ptr len xs frame stFinal { locFinal with values := [] } ∧
       xs.length - (stFinal.mem.read32 (frame + 8)).toNat < xs.length - i.toNat := by
-  sorry
+  -- Transparency-friendly intermediate definitions
+  let key  : UInt32      := stA.mem.read32 (ptr + 4 * i)
+  let stBC1 : Store Unit := { stA with mem := stA.mem.write32 (frame + (12 : UInt32)) i }
+  let locA3 : Locals := { locA with locals := locA.locals.set 1 (.i32 i), values := [] }
+  let locA4 : Locals := { locA3 with locals := locA3.locals.set 2 (.i32 key), values := [] }
+  -- Apply inner_loop_terminates
+  obtain ⟨Ni, stFinal, locFinal,
+          hexec_inner, hread8_new, hglob_final, hpages_final,
+          hlp_f, hll_f, hvals_f, hg0_f, hg1_f, hg2_f,
+          hpairwise_new, hperm_new⟩ :=
+    inner_loop_terminates stA locA ptr len frame xs i
+      hlparams hllocals hget0 hget1 hget2 hlocA_vals hread8 hi_pos hi_lt
+      hglob hbnd_arr hbnd_frame hpairwise hperm hlen hdisj_frame hpg_arr
+  -- Arithmetic helpers
+  have hi_lt_u32 : i < len := by rw [UInt32.lt_iff_toNat_lt_toNat]; omega
+  have hno_load8 : ¬(frame.toNat + (8 : UInt32).toNat + 4 > stA.mem.pages * 65536) := by
+    have h8 : (8 : UInt32).toNat = 8 := rfl; rw [h8]; linarith [hbnd_frame]
+  have hns12 : ¬(frame.toNat + (12 : UInt32).toNat + 4 > stA.mem.pages * 65536) := by
+    have h12 : (12 : UInt32).toNat = 12 := rfl; rw [h12]; linarith [hbnd_frame]
+  have hishl : i <<< ((2 : UInt32) % 32) = 4 * i := by
+    rw [show (2 : UInt32) % 32 = 2 from by decide]
+    apply UInt32.toNat_inj.mp
+    simp only [UInt32.toNat_mul, show (4 : UInt32).toNat = 4 from rfl]
+    simp [UInt32.shiftLeft, Fin.shiftLeft, Nat.shiftLeft_eq]; omega
+  have hnl_load0 : ¬((4 * i + ptr).toNat + (0 : UInt32).toNat + 4 > stA.mem.pages * 65536) := by
+    have hadd := UInt32.toNat_add (4 * i) ptr
+    have hmul := UInt32.toNat_mul (4 : UInt32) i
+    simp only [show (4 : UInt32).toNat = 4 from rfl] at hmul
+    simp only [show (0 : UInt32).toNat = 0 from rfl, Nat.add_zero]
+    have hm1 := Nat.mod_le ((4 * i).toNat + ptr.toNat) 4294967296
+    have hm2 := Nat.mod_le (4 * i.toNat) 4294967296; omega
+  have harri_read : stA.mem.read32 ((4 * i + ptr) + (0 : UInt32)) = key := by
+    have haddr : (4 * i + ptr) + (0 : UInt32) = ptr + 4 * i := by
+      apply UInt32.toNat_inj.mp
+      simp only [UInt32.toNat_add, UInt32.toNat_mul,
+                 show (0 : UInt32).toNat = 0 from rfl,
+                 show (4 : UInt32).toNat = 4 from rfl,
+                 Nat.add_zero]
+      omega
+    rw [haddr]
+  -- locA helpers valid for any value stack (get doesn't use .values)
+  have hget0_upd : ∀ vs, { locA with values := vs }.get 0 = some (.i32 ptr) :=
+    fun _ => hget0
+  have hget1_upd : ∀ vs, { locA with values := vs }.get 1 = some (.i32 len) :=
+    fun _ => hget1
+  have hget2_upd : ∀ vs, { locA with values := vs }.get 2 = some (.i32 frame) :=
+    fun _ => hget2
+  -- locA3 properties
+  have hlp3 : locA3.params.length = 2 := hlparams
+  have hll3 : locA3.locals.length = 8 := by simp [locA3, List.length_set, hllocals]
+  -- locA3 get-lemmas (∀ value-stack)
+  have hg3_3 : ∀ vs, { locA3 with values := vs }.get 3 = some (.i32 i) := by
+    intro vs
+    simp only [Locals.get, locA3, hlparams, List.length_set, hllocals,
+               show ¬(3 < 2) from by omega, show (3 : Nat) < 2 + 8 from by omega,
+               show (3 : Nat) - 2 = 1 from by omega, List.getElem?_set,
+               show (1 : Nat) = 1 from rfl, show (1 : Nat) < 8 from by omega,
+               if_true, if_false]
+  have hg1_3 : ∀ vs, { locA3 with values := vs }.get 1 = some (.i32 len) := by
+    intro vs
+    simp only [Locals.get, locA3, hlparams, show (1 : Nat) < 2 from by omega]
+    have h := hget1; simp only [Locals.get, hlparams, show (1 : Nat) < 2 from by omega] at h
+    exact h
+  have hg0_3 : ∀ vs, { locA3 with values := vs }.get 0 = some (.i32 ptr) := by
+    intro vs
+    simp only [Locals.get, locA3, hlparams, show (0 : Nat) < 2 from by omega]
+    have h := hget0; simp only [Locals.get, hlparams, show (0 : Nat) < 2 from by omega] at h
+    exact h
+  have hg2_3 : ∀ vs, { locA3 with values := vs }.get 2 = some (.i32 frame) := by
+    intro vs
+    simp only [Locals.get, locA3, hlparams, List.length_set, hllocals,
+               show ¬(2 < 2) from by omega, show (2 : Nat) < 2 + 8 from by omega,
+               show (2 : Nat) - 2 = 0 from by omega, List.getElem?_set,
+               if_neg (show ¬(1 : Nat) = 0 from by omega)]
+    have h := hget2
+    simp only [Locals.get, hlparams, hllocals, show ¬(2 < 2) from by omega,
+               show (2 : Nat) < 2 + 8 from by omega, show (2 : Nat) - 2 = 0 from by omega] at h
+    exact h
+  -- locA4 get-lemmas
+  have hg2_4 : ∀ vs, { locA4 with values := vs }.get 2 = some (.i32 frame) := by
+    intro vs
+    simp only [Locals.get, locA4, locA3, hlparams, List.length_set, hllocals,
+               show ¬(2 < 2) from by omega, show (2 : Nat) < 2 + 8 from by omega,
+               show (2 : Nat) - 2 = 0 from by omega, List.getElem?_set,
+               if_neg (show ¬(2 : Nat) = 0 from by omega),
+               if_neg (show ¬(1 : Nat) = 0 from by omega)]
+    have h := hget2
+    simp only [Locals.get, hlparams, hllocals, show ¬(2 < 2) from by omega,
+               show (2 : Nat) < 2 + 8 from by omega, show (2 : Nat) - 2 = 0 from by omega] at h
+    exact h
+  -- Fuel: N = Ni + 4 (EXIT_BLOCK + GET_i + BC1 use 3 layers of block/instr, plus 1 margin)
+  refine ⟨Ni + 4, stFinal, locFinal, fun fuel hfuel => ?_, ?_, ?_⟩
+  · -- ── Execution proof ──────────────────────────────────────────────────────
+    obtain ⟨k, rfl⟩ : ∃ k, fuel = k + (Ni + 4) := ⟨fuel - (Ni + 4), by omega⟩
+    -- Step 1: EXIT_BLOCK (exec_block_cons at fuel = k+Ni+4 = (k+Ni+3)+1)
+    rw [show k + (Ni + 4) = k + Ni + 3 + 1 from by omega, exec_block_cons]
+    have hEB : exec (k + Ni + 3) «module» stA locA
+        [.localGet 2, .load32 (8 : UInt32), .localGet 1, .ltU, .const (1 : UInt32),
+         .and, .br_if 0, .localGet 2, .const (16 : UInt32), .add, .globalSet 0, .ret] {} =
+        .Break 0 stA { locA with values := [] } := by
+      simp only [exec, execOne.eq_def, hget2, hlocA_vals,
+                 if_neg hno_load8, hread8, hget1_upd, if_pos hi_lt_u32,
+                 show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide]
+      rfl
+    rw [hEB]; simp only [List.take_zero, List.nil_append, List.drop_zero, hlocA_vals]
+    rw [show k + Ni + 3 + 1 = k + Ni + 4 from by omega]
+    -- Step 2: GET_i (localGet 2, load32 8, localSet 3) — peel one instruction at a time
+    -- 2a. localGet 2
+    have hgi_a : exec (k + Ni + 4) «module» stA { locA with values := [] }
+        (.localGet 2 :: .load32 (8 : UInt32) :: .localSet 3 ::
+         [.block 0 0 [.block 0 0
+              [.localGet 3, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 3, .const (2 : UInt32), .shl, .add,
+               .load32 (0 : UInt32), .localSet 4, .localGet 2, .localGet 2,
+               .load32 (8 : UInt32), .store32 (12 : UInt32), .br 1],
+            .localGet 3, .localGet 1, .const (1048604 : UInt32), .call 54, .unreachable],
+          .block 0 0 [.loop 0 0
+              [.localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [.block 0 0
+                   [.localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                    .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                    .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                    .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [.block 0 0 [.block 0 0
+                       [.localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                        .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                        .load32 (0 : UInt32), .localSet 7,
+                        .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                        .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                        .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]],
+             .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable],
+          .localGet 2, .load32 (12 : UInt32), .localSet 9,
+          .block 0 0 [.localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+            .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+            .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+            .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]) {} =
+        exec (k + Ni + 4) «module» stA { locA with values := [.i32 frame] }
+        (.load32 (8 : UInt32) :: .localSet 3 ::
+         [.block 0 0 [.block 0 0
+              [.localGet 3, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 3, .const (2 : UInt32), .shl, .add,
+               .load32 (0 : UInt32), .localSet 4, .localGet 2, .localGet 2,
+               .load32 (8 : UInt32), .store32 (12 : UInt32), .br 1],
+            .localGet 3, .localGet 1, .const (1048604 : UInt32), .call 54, .unreachable],
+          .block 0 0 [.loop 0 0
+              [.localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [.block 0 0
+                   [.localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                    .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                    .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                    .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [.block 0 0 [.block 0 0
+                       [.localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                        .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                        .load32 (0 : UInt32), .localSet 7,
+                        .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                        .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                        .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]],
+             .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable],
+          .localGet 2, .load32 (12 : UInt32), .localSet 9,
+          .block 0 0 [.localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+            .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+            .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+            .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]) {} := by
+      conv_lhs => unfold exec; simp only [execOne.eq_def, hget2_upd]
+    rw [hgi_a]
+    -- 2b. load32 8
+    have hgi_b : exec (k + Ni + 4) «module» stA { locA with values := [.i32 frame] }
+        (.load32 (8 : UInt32) :: .localSet 3 ::
+         [.block 0 0 [.block 0 0
+              [.localGet 3, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 3, .const (2 : UInt32), .shl, .add,
+               .load32 (0 : UInt32), .localSet 4, .localGet 2, .localGet 2,
+               .load32 (8 : UInt32), .store32 (12 : UInt32), .br 1],
+            .localGet 3, .localGet 1, .const (1048604 : UInt32), .call 54, .unreachable],
+          .block 0 0 [.loop 0 0
+              [.localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [.block 0 0
+                   [.localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                    .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                    .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                    .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [.block 0 0 [.block 0 0
+                       [.localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                        .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                        .load32 (0 : UInt32), .localSet 7,
+                        .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                        .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                        .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]],
+             .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable],
+          .localGet 2, .load32 (12 : UInt32), .localSet 9,
+          .block 0 0 [.localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+            .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+            .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+            .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]) {} =
+        exec (k + Ni + 4) «module» stA { locA with values := [.i32 i] }
+        (.localSet 3 ::
+         [.block 0 0 [.block 0 0
+              [.localGet 3, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 3, .const (2 : UInt32), .shl, .add,
+               .load32 (0 : UInt32), .localSet 4, .localGet 2, .localGet 2,
+               .load32 (8 : UInt32), .store32 (12 : UInt32), .br 1],
+            .localGet 3, .localGet 1, .const (1048604 : UInt32), .call 54, .unreachable],
+          .block 0 0 [.loop 0 0
+              [.localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [.block 0 0
+                   [.localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                    .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                    .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                    .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [.block 0 0 [.block 0 0
+                       [.localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                        .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                        .load32 (0 : UInt32), .localSet 7,
+                        .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                        .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                        .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]],
+             .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable],
+          .localGet 2, .load32 (12 : UInt32), .localSet 9,
+          .block 0 0 [.localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+            .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+            .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+            .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]) {} := by
+      conv_lhs => unfold exec; simp only [execOne.eq_def, if_neg hno_load8, hread8]
+    rw [hgi_b]
+    -- 2c. localSet 3 → locA3
+    have hgi_c : exec (k + Ni + 4) «module» stA { locA with values := [.i32 i] }
+        (.localSet 3 ::
+         [.block 0 0 [.block 0 0
+              [.localGet 3, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 3, .const (2 : UInt32), .shl, .add,
+               .load32 (0 : UInt32), .localSet 4, .localGet 2, .localGet 2,
+               .load32 (8 : UInt32), .store32 (12 : UInt32), .br 1],
+            .localGet 3, .localGet 1, .const (1048604 : UInt32), .call 54, .unreachable],
+          .block 0 0 [.loop 0 0
+              [.localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [.block 0 0
+                   [.localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                    .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                    .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                    .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [.block 0 0 [.block 0 0
+                       [.localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                        .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                        .load32 (0 : UInt32), .localSet 7,
+                        .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                        .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                        .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]],
+             .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable],
+          .localGet 2, .load32 (12 : UInt32), .localSet 9,
+          .block 0 0 [.localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+            .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+            .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+            .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]) {} =
+        exec (k + Ni + 4) «module» stA locA3
+        [.block 0 0 [.block 0 0
+              [.localGet 3, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 3, .const (2 : UInt32), .shl, .add,
+               .load32 (0 : UInt32), .localSet 4, .localGet 2, .localGet 2,
+               .load32 (8 : UInt32), .store32 (12 : UInt32), .br 1],
+            .localGet 3, .localGet 1, .const (1048604 : UInt32), .call 54, .unreachable],
+         .block 0 0 [.loop 0 0
+              [.localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [.block 0 0
+                   [.localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                    .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                    .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                    .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [.block 0 0 [.block 0 0
+                       [.localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                        .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                        .load32 (0 : UInt32), .localSet 7,
+                        .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                        .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                        .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]],
+             .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable],
+         .localGet 2, .load32 (12 : UInt32), .localSet 9,
+         .block 0 0 [.localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+           .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+           .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+           .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]] {} := by
+      conv_lhs => unfold exec; simp only [execOne.eq_def, Locals.set?, hlparams, hllocals,
+                   List.length_set, show ¬(3 < 2) from by omega,
+                   show (3 : Nat) < 10 from by omega, show (3 : Nat) - 2 = 1 from by omega,
+                   show Locals.mk locA.params (locA.locals.set 1 (.i32 i)) [] = locA3 from rfl,
+                   if_true, if_false]
+    rw [hgi_c]
+    -- Step 3: BC1_OUTER via exec_block_cons (fuel = k+Ni+4 = (k+Ni+3)+1)
+    rw [show k + Ni + 4 = k + Ni + 3 + 1 from by omega, exec_block_cons]
+    -- BC1_OUTER body at k+Ni+3
+    have hBC1 : exec (k + Ni + 3) «module» stA locA3
+        [.block 0 0
+           [.localGet 3, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+            .localGet 0, .localGet 3, .const (2 : UInt32), .shl, .add,
+            .load32 (0 : UInt32), .localSet 4, .localGet 2, .localGet 2,
+            .load32 (8 : UInt32), .store32 (12 : UInt32), .br 1],
+         .localGet 3, .localGet 1, .const (1048604 : UInt32), .call 54, .unreachable] {} =
+        .Break 0 stBC1 locA4 := by
+      rw [show k + Ni + 3 = k + Ni + 2 + 1 from by omega, exec_block_cons]
+      -- BC1_INNER body at k+Ni+2 produces .Break 1
+      have hBC1_body : exec (k + Ni + 2) «module» stA locA3
+          [.localGet 3, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+           .localGet 0, .localGet 3, .const (2 : UInt32), .shl, .add,
+           .load32 (0 : UInt32), .localSet 4, .localGet 2, .localGet 2,
+           .load32 (8 : UInt32), .store32 (12 : UInt32), .br 1] {} =
+          .Break 1 stBC1 locA4 := by
+        simp only [exec, execOne.eq_def,
+                   show locA3.get 3 = some (.i32 i) from hg3_3 [],
+                   show locA3.values = [] from rfl,
+                   hg3_3, hg1_3, if_pos hi_lt_u32,
+                   show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide,
+                   show (if (1 : UInt32) = 0 then (1 : UInt32) else 0) = 0 from by decide,
+                   hg0_3, hishl,
+                   if_neg hnl_load0, harri_read,
+                   Locals.set?, hlp3, hll3, List.length_set,
+                   show ¬(4 < 2) from by omega, show (4 : Nat) < 10 from by omega,
+                   show (4 : Nat) - 2 = 2 from by omega, if_true, if_false,
+                   show Locals.mk locA.params ((locA.locals.set 1 (.i32 i)).set 2 (.i32 key)) [] =
+                       locA4 from rfl,
+                   show ({ params := locA3.params, locals := locA3.locals.set 2 (.i32 key) } : Locals) =
+                       locA4 from rfl,
+                   show locA4.get 2 = some (.i32 frame) from hg2_4 [],
+                   show locA4.values = [] from rfl,
+                   hg2_3, hg2_4,
+                   if_neg hno_load8, if_neg hns12, hread8,
+                   show { stA with mem := stA.mem.write32 (frame + (12 : UInt32)) i } =
+                       stBC1 from rfl,
+                   show { locA4 with values := [] } = locA4 from rfl]
+      rw [hBC1_body]
+    rw [hBC1]
+    simp only [List.take_zero, List.nil_append, List.drop_zero]
+    -- Step 4: INNER_BLOCK + GET_j + STORE_KEY via inner_loop_terminates
+    exact hexec_inner (k + Ni + 4) (by omega)
+  · -- ── I_outer re-establishment ─────────────────────────────────────────────
+    have hip1 : (i + 1 : UInt32).toNat = i.toNat + 1 := by
+      rw [UInt32.toNat_add, show (1 : UInt32).toNat = 1 from rfl]
+      exact Nat.mod_eq_of_lt (by have := len.toNat_lt; rw [← hlen] at this; omega)
+    refine ⟨i + 1, hg0_f, hg1_f, hg2_f, rfl, hlp_f, hll_f, hread8_new,
+            by omega, by omega, hglob_final, ?_, ?_, hpairwise_new, hperm_new⟩
+    · rw [hpages_final]; exact hbnd_arr
+    · rw [hpages_final]; exact hbnd_frame
+  · -- ── Measure decrease ─────────────────────────────────────────────────────
+    have hip1 : (i + 1 : UInt32).toNat = i.toNat + 1 := by
+      rw [UInt32.toNat_add, show (1 : UInt32).toNat = 1 from rfl]
+      exact Nat.mod_eq_of_lt (by have := len.toNat_lt; rw [← hlen] at this; omega)
+    rw [hread8_new]; omega
 
 -- Generalized over the shadow-stack pointer `sp` at call time (= global 0
 -- before func0's preamble decrements it).
@@ -646,7 +1123,7 @@ private theorem func0_wp_prop
         { params := [.i32 ptr, .i32 len],
           locals := [.i32 frame, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
           values := [] }
-      refine ⟨1, rfl, rfl, rfl, rfl, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      refine ⟨1, rfl, rfl, rfl, rfl, rfl, rfl, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · -- st2.mem.read32 (frame+8) = 1
         simp only [hst2_def, hst1_mem]
         exact read32_write32_same st.mem (frame + 8) 1
@@ -667,7 +1144,7 @@ private theorem func0_wp_prop
         rw [hcont2]
     · -- hstep: one outer-loop iteration
       intro stA locA hInv
-      obtain ⟨i, hget0, hget1, hget2, hlocA_vals, hread8, hi_pos, hi_le,
+      obtain ⟨i, hget0, hget1, hget2, hlocA_vals, hlparams, hllocals, hread8, hi_pos, hi_le,
                hglob, hbnd_arr, hbnd_frame, hpairwise, hperm⟩ := hInv
       -- Shared lemmas used in both branches
       have hno_load8 : ¬(frame.toNat + (8 : UInt32).toNat + 4 > stA.mem.pages * 65536) := by
@@ -687,9 +1164,14 @@ private theorem func0_wp_prop
       · -- CONTINUE: i.toNat < xs.length
         have hi_lt_u32 : i < len := by rw [UInt32.lt_iff_toNat_lt_toNat]; omega
         -- Apply the outer loop continue step lemma (proved by inner-loop induction elsewhere):
+        have hdisj_frame : ptr.toNat + 4 * xs.length ≤ frame.toNat := by
+          rw [hframe_toNat]; omega
+        have hpg_arr : ptr.toNat + 4 * xs.length ≤ 4294967296 := by
+          have := hsp_lt; omega
         obtain ⟨N, stFinal, locFinal, hexec, hI_next, hmu⟩ :=
           outer_loop_continue_step stA locA ptr len frame xs i
-            hget0 hget1 hget2 hlocA_vals hread8 hi_pos hi_lt hi_le
+            hget0 hget1 hget2 hlocA_vals hlparams hllocals hdisj_frame hpg_arr
+            hread8 hi_pos hi_lt hi_le
             hglob hbnd_arr hbnd_frame hpairwise hperm hlen
         refine ⟨N, fun fuel hfuel => Or.inr (Or.inl ⟨stFinal, locFinal, hexec fuel hfuel, ?_, ?_⟩)⟩
         · -- I_outer holds: locA.values = [] so take 0 ++ drop 0 = [] = locA.values
