@@ -708,7 +708,20 @@ theorem partition_inv_init (ptr : UInt32) (xs : List UInt32) (st : Store Unit)
     (hlen : 1 ≤ xs.length)
     (hpg  : ptr.toNat + 4 * xs.length ≤ st.mem.pages * 65536)
     (hmem : wordsAt st.mem ptr xs.length = xs) :
-    partition_inv ptr xs 0 0 st := by sorry
+    partition_inv ptr xs 0 0 st := by
+  -- Unfold and substitute arr = xs via hmem; all ranges [0..0) are empty.
+  show 0 < xs.length ∧ 0 ≤ 0 ∧ 0 < xs.length ∧
+       (∀ k < 0, (wordsAt st.mem ptr xs.length)[k]! ≤ xs.getLast!) ∧
+       (∀ k, 0 ≤ k → k < 0 → (wordsAt st.mem ptr xs.length)[k]! > xs.getLast!) ∧
+       (wordsAt st.mem ptr xs.length).getLast! = xs.getLast! ∧
+       (wordsAt st.mem ptr xs.length).Perm xs ∧
+       ptr.toNat + 4 * xs.length ≤ st.mem.pages * 65536
+  exact ⟨by omega, Nat.le_refl 0, by omega,
+         fun _ hk => absurd hk (Nat.not_lt_zero _),
+         fun _ _ hk => absurd hk (Nat.not_lt_zero _),
+         by rw [hmem],
+         by rw [hmem],
+         hpg⟩
 
 -- When arr[j] > pivot: j advances, i unchanged, no memory change.
 theorem partition_inv_step_gt
@@ -719,7 +732,18 @@ theorem partition_inv_step_gt
     (harr_gt : (wordsAt st.mem ptr xs.length)[j]! > xs.getLast!)
     (hmem_eq : wordsAt st'.mem ptr xs.length = wordsAt st.mem ptr xs.length)
     (hpg_eq  : st'.mem.pages = st.mem.pages) :
-    partition_inv ptr xs i (j + 1) st' := by sorry
+    partition_inv ptr xs i (j + 1) st' := by
+  obtain ⟨hlen, hij, hj_lt_len, hleft, hright, hlast, hperm, hpg⟩ := hinv
+  refine ⟨hlen, by omega, by omega,
+          fun k hk => by rw [hmem_eq]; exact hleft k hk,
+          fun k hk_ge hk_lt => by
+            rw [hmem_eq]
+            by_cases hkj : k = j
+            · rw [hkj]; exact harr_gt
+            · exact hright k hk_ge (by omega),
+          by rw [hmem_eq]; exact hlast,
+          by rw [hmem_eq]; exact hperm,
+          by rw [hpg_eq]; exact hpg⟩
 
 -- When arr[j] ≤ pivot: after swap arr[i]↔arr[j], both i and j advance.
 theorem partition_inv_step_le
@@ -732,7 +756,62 @@ theorem partition_inv_step_le
     (hmem_eq : wordsAt st'.mem ptr xs.length =
                swapElems (wordsAt st.mem ptr xs.length) i j)
     (hpg_eq  : st'.mem.pages = st.mem.pages) :
-    partition_inv ptr xs (i + 1) (j + 1) st' := by sorry
+    partition_inv ptr xs (i + 1) (j + 1) st' := by
+  obtain ⟨hlen, hij, hj_lt_len, hleft, hright, hlast, hperm, hpg⟩ := hinv
+  have hj_lt_xs : j < xs.length := hj_lt_len
+  set arr := wordsAt st.mem ptr xs.length with harr_def
+  have harr_len : arr.length = xs.length := by simp [harr_def, wordsAt]
+  have hi_lt_arr : i < arr.length := harr_len ▸ hi_lt
+  have hj_lt_arr : j < arr.length := harr_len ▸ hj_lt_xs
+  refine ⟨hlen, by omega, by omega,
+          -- left region: ∀ k < i+1, (swapElems arr i j)[k]! ≤ xs.getLast!
+          fun k hk => by
+            rw [hmem_eq, swapElems_get_at arr i j k hi_lt_arr hj_lt_arr]
+            split_ifs with h1 h2 h3
+            · -- k = i ∧ i ≠ j → arr'[i] = arr[j] ≤ pivot
+              exact harr_le
+            · -- k = j ∧ i ≠ j but k < i+1 and j ≥ i → k = i = j → contradicts i ≠ j
+              obtain ⟨hkj, _⟩ := h2; omega
+            · -- k = i = j → arr'[k] = arr[k] = arr[j] ≤ pivot
+              rw [show k = j from h3.1.trans h3.2]; exact harr_le
+            · -- k ≠ i, not k=j or i=j → k < i → use hleft
+              exact hleft k (by omega),
+          -- right region: ∀ k, i+1 ≤ k → k < j+1 → (swapElems arr i j)[k]! > xs.getLast!
+          fun k hk_ge hk_lt => by
+            rw [hmem_eq, swapElems_get_at arr i j k hi_lt_arr hj_lt_arr]
+            split_ifs with h1 h2 h3
+            · -- k = i ∧ i ≠ j but i+1 ≤ k = i → impossible
+              obtain ⟨hki, _⟩ := h1; omega
+            · -- k = j ∧ i ≠ j → arr'[j] = arr[i]; arr[i] was in right region [i..j)
+              obtain ⟨_, hij_ne⟩ := h2
+              exact hright i (le_refl i) (by omega)
+            · -- k = i = j but i+1 ≤ k = i → impossible
+              obtain ⟨hki, _⟩ := h3; omega
+            · -- else: k ≠ i, (k ≠ j or i = j). Use hright k.
+              by_cases hkj : k = j
+              · -- k = j: then from h2 (¬(k = j ∧ i ≠ j)): i = j. But then i+1 ≤ k = j = i.
+                by_cases hije : i = j
+                · omega
+                · exact absurd ⟨hkj, hije⟩ h2
+              · -- k ≠ j, k < j (from hk_lt and k ≠ j), i ≤ k (from hk_ge)
+                exact hright k (by omega) (by omega),
+          -- getLast!: the swap touches i,j < arr.length-1; last element is unchanged.
+          by
+            have hpos : 0 < arr.length := harr_len ▸ hlen
+            have hi_lt_last : i + 1 < arr.length := by omega
+            have hj_lt_last : j + 1 < arr.length := harr_len ▸ hj_lt
+            -- Convert getLast! to getElem! at last index, apply swapElems_get_at.
+            conv_lhs => rw [hmem_eq, List.getLast!_eq_getElem!, swapElems_length]
+            rw [swapElems_get_at arr i j (arr.length - 1) hi_lt_arr hj_lt_arr]
+            split_ifs with h1 h2 h3
+            · obtain ⟨heq, _⟩ := h1; omega
+            · obtain ⟨heq, _⟩ := h2; omega
+            · obtain ⟨heq, _⟩ := h3; omega
+            · rw [← List.getLast!_eq_getElem!]; exact hlast,
+          -- Perm: swapElems preserves multiset membership
+          by rw [hmem_eq]; exact (swapElems_perm arr i j hi_lt_arr hj_lt_arr).trans hperm,
+          -- pages: unchanged
+          by rw [hpg_eq]; exact hpg⟩
 
 theorem func10_spec (st : Store Unit)
     (ptr : UInt32) (xs : List UInt32) (g0 : UInt32)
@@ -791,8 +870,50 @@ theorem func10_spec (st : Store Unit)
     exact ⟨pivot_idx, by rw [hvs]; rfl, hlt, arr, hlen_arr, hmem_arr, hperm, hleft, hright,
            hglob, hpages⟩
   · -- hwp : wp_wasm_prop «module» st (func10Def.toLocals ...) func10Def.body {} P10
-    -- TODO: apply wp_wasm_prop_loop with partition_inv as invariant;
-    -- hinit from partition_inv_init; hstep case-splits on iteration outcome.
+    --
+    -- Proof plan:
+    -- 1. Step through the preamble (frame alloc, pivot load, func9 call) to reach
+    --    a state (st_pre, loc_pre) where the remaining program is [.loop 0 1 loop_body].
+    -- 2. Apply wp_wasm_prop_loop at (st_pre, loc_pre) with:
+    --      I stA _ := ∃ i j : Nat, j < xs.length ∧ partition_inv ptr xs i j stA
+    --      μ stA _ := xs.length - 1 - j   (j increases each iteration)
+    --    hinit  : partition_inv_init (established after preamble)
+    --    hstep  : for each iteration, one of three outcomes:
+    --      (a) Exhausted (frame[40]&1=0): body = .Return st' [.i32 i].
+    --          Q st' [.i32 i] follows from the final partition_inv state.
+    --      (b) arr[j] > pivot: body = .Break 0, no swap.
+    --          partition_inv_step_gt gives I at (i, j+1). μ decreases by 1.
+    --      (c) arr[j] ≤ pivot: call func7 to swap arr[i]↔arr[j], then .Break 0.
+    --          partition_inv_step_le gives I at (i+1, j+1). μ decreases by 1.
+    --
+    -- All per-instruction exec stepping is sorry'd pending full mechanisation.
+    --
+    -- Full proof structure (all pieces are sorry'd):
+    --
+    -- STEP 1 — Preamble execution (exec_cons chain, sorry'd):
+    --   exec N_pre «module» st loc_init preamble {} = .Fallthrough st_pre loc_pre
+    --   where preamble = func10.body with the final .loop removed.
+    --   After preamble: partition_inv ptr xs 0 0 st_pre  (by partition_inv_init).
+    --
+    -- STEP 2 — Loop proof (apply wp_wasm_prop_loop at (st_pre, loc_pre)):
+    --   I stL _ := ∃ i j : Nat, j ≤ xs.length - 1 ∧ partition_inv ptr xs i j stL
+    --   μ stL _ := xs.length - 1 - j  (j = scan position, increases each iteration)
+    --
+    --   hinit : ∃ 0 0, 0 ≤ n-1 ∧ partition_inv ptr xs 0 0 st_pre
+    --           comes from partition_inv_init (fully proven).
+    --
+    --   hstep : for each (stA, locA) with I stA locA, one of:
+    --     • Fallthrough (iterator exhausted, frame[40]&1=0):
+    --         final swap via func7_spec; Return [.i32 i] satisfies P10.
+    --     • Break 0 (arr[j] > pivot):
+    --         partition_inv_step_gt → I at (i, j+1); μ decreases by 1.
+    --     • Break 0 (arr[j] ≤ pivot):
+    --         func7_spec swap + partition_inv_step_le → I at (i+1, j+1); μ decreases.
+    --
+    -- STEP 3 — Fuel composition (sorry'd):
+    --   total fuel = N_pre + N_loop, where N_loop comes from wp_wasm_prop_loop.
+    --   exec (N_pre + N_loop) ... func10.body {} = exec N_loop ... [.loop ...] {} = .Return ...
+    unfold wp_wasm_prop
     sorry
   -- Strategy:
   --
@@ -922,6 +1043,24 @@ theorem func11_spec (n : Nat) : ∀
   induction n using Nat.strong_induction_on with
   | _ n IH =>
     intro st ptr xs g0 hlen hpg hpg_min hptr hg0 hg0_le hg0_ok hmem
+    apply wp_wasm_prop_to_TerminatesWith (f := func11Def)
+      (by rfl) (by rfl) (by rfl)
+      (by simp [func11Def, Function.numParams])
+      (by intro _ _ h; exact h)
+    -- wp_wasm_prop goal: func11Def.body executes from initial locals to P11.
+    -- Case n ≤ 1 (base): br_if in the block exits immediately; xs is trivially sorted.
+    -- Case n ≥ 2 (inductive):
+    --   exec preamble → frame alloc + global0 update + block entry
+    --   wp_wasm_prop_call func10_spec → partition, get pivot_idx
+    --   wp_wasm_prop_call func1_terminates → write left-slice descriptor
+    --   load frame[0], frame[4] → push (ptr, pivot_idx)
+    --   wp_wasm_prop_call (IH pivot_idx.toNat < n) → sort left half
+    --   wp_wasm_prop_call func2_terminates → write right-slice descriptor
+    --   load frame[8], frame[12] → push (ptr + (pivot_idx+1)*4, n - pivot_idx - 1)
+    --   wp_wasm_prop_call (IH (n - pivot_idx - 1) < n) → sort right half
+    --   epilogue: restore global0, ret
+    --   postcondition: combine sorted halves + pivot via sorted_of_sorted_split
+    -- All exec stepping and auxiliary specs (func1, func2) are sorry'd.
     sorry
     -- Strategy:
     --
