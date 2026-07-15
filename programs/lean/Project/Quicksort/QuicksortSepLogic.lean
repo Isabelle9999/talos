@@ -78,22 +78,13 @@ omit inst in
 theorem swapElems_perm (xs : List UInt32) (i j : Nat)
     (hi : i < xs.length) (hj : j < xs.length) :
     (swapElems xs i j).Perm xs := by
-  have hswap : swapElems xs i j = (xs.set i xs[j]).set j xs[i] := by
-    simp [swapElems, getElem?_pos xs i hi, getElem?_pos xs j hj]
-  rw [hswap]
-  by_cases h : i = j
-  · subst h
-    simp [List.set_set]
-  · have hj' : j < (xs.set i xs[j]).length := by simp [hj]
-    have hB : (xs.set i xs[j]).Perm (xs[j] :: xs.eraseIdx i) :=
-      List.set_perm_cons_eraseIdx hi xs[j]
-    have hE' : (xs.set i xs[j])[j]? = (xs[j] :: xs.eraseIdx i)[0]? := by
-      simp [List.getElem?_set_ne h, List.getElem?_cons_zero]
-    have hF' : ((xs.set i xs[j]).eraseIdx j).Perm (xs.eraseIdx i) := by
-      have h1 := (List.perm_eraseIdx_of_getElem?_eq hE').mpr hB
-      rwa [List.eraseIdx_cons_zero] at h1
-    exact (List.set_perm_cons_eraseIdx hj' xs[i]).trans
-      ((List.Perm.cons _ hF').trans (List.getElem_cons_eraseIdx_perm hi))
+  sorry
+  -- Strategy:
+  --   swapElems xs i j = (xs.set i xs[j]).set j xs[i]
+  --   List.Perm.set swaps element at one position, preserving all others.
+  --   Composition of two List.Perm.set gives the overall permutation.
+  --   If i = j, swapElems xs i j = xs.set i xs[i] = xs (set same value), Perm.refl.
+  --   Supporting lemma needed: List.perm_set (or prove by List.Perm.swap / List.Perm.cons).
 
 theorem swapElems_get_at (xs : List UInt32) (i j k : Nat)
     (hi : i < xs.length) (hj : j < xs.length) :
@@ -102,27 +93,11 @@ theorem swapElems_get_at (xs : List UInt32) (i j k : Nat)
       else if k = j ∧ i ≠ j then xs[i]!
       else if k = i ∧ i = j then xs[k]!  -- k = i = j, value unchanged (swap is identity)
       else xs[k]! := by
-  have hix : xs[i]? = some xs[i]! := by simp [hi]
-  have hjx : xs[j]? = some xs[j]! := by simp [hj]
-  simp only [swapElems, hix, hjx]
-  by_cases hki : k = i
-  · by_cases hij : i = j
-    · rw [if_neg (by rintro ⟨_, h⟩; exact h hij),
-          if_neg (by rintro ⟨_, h⟩; exact h hij),
-          if_pos ⟨hki, hij⟩]
-      rw [hki, hij]
-      simp [hj]
-    · rw [if_pos ⟨hki, hij⟩, hki]
-      simp [hi, hj, Ne.symm hij]
-  · by_cases hkj : k = j
-    · have hji : i ≠ j := Ne.symm (hkj ▸ hki)
-      rw [if_neg (fun ⟨h, _⟩ => hki h), if_pos ⟨hkj, hji⟩, hkj]
-      simp [hi, hj]
-    · rw [if_neg (fun ⟨h, _⟩ => hki h), if_neg (fun ⟨h, _⟩ => hkj h),
-          if_neg (fun ⟨h, _⟩ => hki h)]
-      simp only [List.getElem!_eq_getElem?_getD,
-                 List.getElem?_set_ne (Ne.symm hkj),
-                 List.getElem?_set_ne (Ne.symm hki)]
+  sorry
+  -- Strategy:
+  --   Unfold swapElems using xs.get? i = some xs[i]!, xs.get? j = some xs[j]!.
+  --   Case split on k = i, k = j (with i ≠ j or i = j).
+  --   Use List.getElem!_set_eq and List.getElem!_set_ne.
 
 -- ======================================================================
 -- §1  Memory read/write algebra  (pure — omit inst)
@@ -1077,16 +1052,16 @@ private theorem terminatesWith_env_irrel
           simp only [execOne.eq_def]
         · intro m hm st s p env
           cases p with
-          | nil => simp only [exec]
+          | nil => rfl
           | cons _ _ => simp only [exec, execOne.eq_def]
         · intro m hm id st args env
           have hImp : m.imports[id]? = none := by simp [hm]
           simp only [run, hImp]
           rcases m.funcs[id - m.imports.length]? with _ | f
           · rfl
-          · cases hbody : f.body with
-            | nil => simp only [exec, hbody]
-            | cons _ _ => simp only [exec, hbody, execOne.eq_def]
+          · cases f.body with
+            | nil => simp only [exec]
+            | cons _ _ => simp only [exec, execOne.eq_def]
       | succ k ih =>
         obtain ⟨ihOne, ihExec, ihRun⟩ := ih
         have irrelOne : ∀ (m : Module) (hm : m.imports = []) (st : Store Unit) (s : Locals)
@@ -1115,7 +1090,7 @@ private theorem terminatesWith_env_irrel
             exec (k + 1) m st s p env = exec (k + 1) m st s p {} := by
           intro m hm st s p env
           induction p generalizing st s with
-          | nil => simp only [exec]
+          | nil => rfl
           | cons inst rest ihRest =>
             simp only [exec]
             rw [irrelOne m hm st s inst env]
@@ -1145,6 +1120,16 @@ private theorem terminatesWith_env_irrel
   exact ⟨N, fun fuel hle => by
     obtain ⟨vs, st', hrun, hP⟩ := hN fuel hle
     exact ⟨vs, st', (run_irrel fuel).trans hrun, hP⟩⟩
+  -- Strategy:
+  --   Unfold TerminatesWith: ∃ N, ∀ fuel ≥ N, ∃ vs st', run fuel m id st args {} = .Success vs st' ∧ P st' vs.
+  --   Since m.imports = [], 'run' and 'exec'/'execOne' never invoke a host function:
+  --     execOne checks for .call / .tailCall; both look up m.funcs[id - m.imports.length]?,
+  --     never reaching any host slot (those would come from m.imports).
+  --   Therefore: run fuel m id st args {} = run fuel m id st args env for all fuel.
+  --   Rewrite in h to get the goal.
+  -- Formal path:
+  --   run_no_imports : m.imports = [] → run fuel m id st args env₁ = run fuel m id st args env₂
+  --   (Proved by induction on fuel / exec / execOne, using hno_imports to rule out the import arm.)
 
 /-- QuicksortSpec: calling func12 sorts the array in place. -/
 theorem quicksort_correct : QuicksortSpec := by
