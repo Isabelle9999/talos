@@ -404,7 +404,846 @@ private theorem inner_loop_terminates
       locFinal.get 2 = some (.i32 frame) ∧
       (wordsAt stFinal.mem ptr (i + 1).toNat).Pairwise (· ≤ ·) ∧
       (wordsAt stFinal.mem ptr xs.length).Perm xs := by
-  sorry
+  let key : UInt32 := stA.mem.read32 (ptr + 4 * i)
+  -- Address toNat helpers
+  have hf12_toNat : (frame + (12 : UInt32)).toNat = frame.toNat + 12 := by
+    rw [UInt32.toNat_add]; simp [UInt32.toNat_ofNat']; sorry
+  have hf8_toNat : (frame + (8 : UInt32)).toNat = frame.toNat + 8 := by
+    rw [UInt32.toNat_add]; simp [UInt32.toNat_ofNat']; sorry
+  have hi_ofNat : UInt32.ofNat i.toNat = i := by
+    apply UInt32.toNat_inj.mp
+    simp [UInt32.toNat_ofNat', Nat.mod_eq_of_lt i.toNat_lt]
+  -- Generalized claim: induct on j = stJ.mem.read32(frame+12).toNat
+  suffices gen : ∀ (n : Nat) (stJ : Store Unit) (locJ : Locals),
+      stJ.mem.read32 (frame + (12 : UInt32)) = UInt32.ofNat n →
+      n ≤ i.toNat →
+      stJ.mem.read32 (frame + (8 : UInt32)) = i →
+      stJ.globals.globals[0]? = some (.i32 frame) →
+      stJ.mem.pages = stA.mem.pages →
+      locJ.params.length = 2 →
+      locJ.locals.length = 8 →
+      locJ.values = [] →
+      locJ.get 0 = some (.i32 ptr) →
+      locJ.get 1 = some (.i32 len) →
+      locJ.get 2 = some (.i32 frame) →
+      locJ.get 4 = some (.i32 key) →
+      (∀ k : Nat, k < n →
+        stJ.mem.read32 (ptr + 4 * UInt32.ofNat k) =
+        stA.mem.read32 (ptr + 4 * UInt32.ofNat k)) →
+      (∀ k : Nat, n ≤ k → k < i.toNat →
+        stJ.mem.read32 (ptr + 4 * UInt32.ofNat (k + 1)) =
+        stA.mem.read32 (ptr + 4 * UInt32.ofNat k)) →
+      (∀ k : Nat, i.toNat < k → k < xs.length →
+        stJ.mem.read32 (ptr + 4 * UInt32.ofNat k) =
+        stA.mem.read32 (ptr + 4 * UInt32.ofNat k)) →
+      (∀ k : Nat, n ≤ k → k < i.toNat →
+        key < stA.mem.read32 (ptr + 4 * UInt32.ofNat k)) →
+      ∃ (N : Nat) (stFinal : Store Unit) (locFinal : Locals),
+        (∀ fuel ≥ N, exec fuel «module» stJ locJ
+          [.block 0 0 [
+             .loop 0 0 [
+               .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localSet 7,
+                     .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                     .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 2],
+                   .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                 .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                 .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                 .br 1]],
+             .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable],
+           .localGet 2, .load32 (12 : UInt32), .localSet 9,
+           .block 0 0 [
+             .localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+             .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+             .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+             .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]
+          {} = .Break 0 stFinal locFinal) ∧
+        stFinal.mem.read32 (frame + (8 : UInt32)) = i + 1 ∧
+        stFinal.globals.globals[0]? = some (.i32 frame) ∧
+        stFinal.mem.pages = stA.mem.pages ∧
+        locFinal.params.length = 2 ∧ locFinal.locals.length = 8 ∧ locFinal.values = [] ∧
+        locFinal.get 0 = some (.i32 ptr) ∧ locFinal.get 1 = some (.i32 len) ∧
+        locFinal.get 2 = some (.i32 frame) ∧
+        (wordsAt stFinal.mem ptr (i + 1).toNat).Pairwise (· ≤ ·) ∧
+        (wordsAt stFinal.mem ptr xs.length).Perm xs from by
+    -- Apply gen to the initial state (n = i.toNat, stJ = stBC1, locJ = locA4)
+    apply gen i.toNat
+      { stA with mem := stA.mem.write32 (frame + (12 : UInt32)) i }
+      { locA with locals := (locA.locals.set 1 (.i32 i)).set 2 (.i32 key), values := [] }
+    -- frame[12] = UInt32.ofNat i.toNat
+    · rw [hi_ofNat]; exact read32_write32_same stA.mem (frame + (12 : UInt32)) i
+    -- n ≤ i.toNat (n = i.toNat)
+    · exact Nat.le_refl _
+    -- frame[8] = i (write32(frame+12) doesn't touch frame+8)
+    · rw [read32_write32_ne stA.mem (frame + (12 : UInt32)) (frame + (8 : UInt32)) i
+            (Or.inl (by linarith [hf8_toNat, hf12_toNat]))]
+      exact hread8
+    -- globals unchanged
+    · exact hglob
+    -- pages unchanged
+    · exact write32_pages stA.mem (frame + (12 : UInt32)) i
+    -- params length
+    · exact hlparams
+    -- locals length
+    · simp [List.length_set, hllocals]
+    -- values = []
+    · rfl
+    -- get 0 = ptr (params unchanged)
+    · simp only [Locals.get, hlparams, show (0:Nat) < 2 from by omega]
+      have h := hget0; simp only [Locals.get, hlparams, show (0:Nat) < 2 from by omega] at h; exact h
+    -- get 1 = len (params unchanged)
+    · simp only [Locals.get, hlparams, show (1:Nat) < 2 from by omega]
+      have h := hget1; simp only [Locals.get, hlparams, show (1:Nat) < 2 from by omega] at h; exact h
+    -- get 2 = frame (locals[0] unchanged by set 1 and set 2)
+    · simp only [Locals.get, hlparams, hllocals, List.length_set,
+                 show ¬(2 < 2) from by omega, show (2 : Nat) < 2 + 8 from by omega,
+                 show (2 : Nat) - 2 = 0 from by omega, List.getElem?_set,
+                 if_neg (show ¬(2 : Nat) = 0 from by omega),
+                 if_neg (show ¬(1 : Nat) = 0 from by omega)]
+      have h := hget2
+      simp only [Locals.get, hlparams, hllocals, show ¬(2 < 2) from by omega,
+                 show (2 : Nat) < 2 + 8 from by omega,
+                 show (2 : Nat) - 2 = 0 from by omega] at h
+      exact h
+    -- get 4 = key (locals[2] = key from .set 2 (.i32 key))
+    · simp only [Locals.get, hlparams, hllocals, List.length_set,
+                 show ¬(4 < 2) from by omega, show (4 : Nat) < 2 + 8 from by omega,
+                 show (4 : Nat) - 2 = 2 from by omega, List.getElem?_set,
+                 if_pos (show (2 : Nat) = 2 from rfl),
+                 if_pos (show (2 : Nat) < 8 from by omega),
+                 if_true, if_false]
+    -- shape1: ∀ k < i.toNat, stJ.arr[k] = stA.arr[k] (write32 at frame+12 ≠ array)
+    · intro k hk
+      apply read32_write32_ne
+      left
+      rw [toNat_wordAddr ptr xs.length k (by omega) hpg_arr, hf12_toNat]; omega
+    -- shape2 vacuous (n = i.toNat, range n ≤ k < i.toNat is empty)
+    · intro k hge hlt; exact absurd hlt (Nat.not_lt.mpr hge)
+    -- shape3: ∀ k, i.toNat < k < xs.length, stJ.arr[k] = stA.arr[k]
+    · intro k hk hlt
+      apply read32_write32_ne
+      left
+      rw [toNat_wordAddr ptr xs.length k hlt hpg_arr, hf12_toNat]; omega
+    -- hgt_key vacuous (n = i.toNat, range n ≤ k < i.toNat is empty)
+    · intro k hge hlt; exact absurd hlt (Nat.not_lt.mpr hge)
+  -- ── Strong induction on n = j ──────────────────────────────────────────────
+  intro n
+  induction n using Nat.strong_induction_on with
+  | _ n IH =>
+    intro stJ locJ hj12 hn_le hf8_J hglob_J hpages_J hlp hll hvals hg0 hg1 hg2 hg4
+          hshape1 hshape2 hshape3 hgt_key
+    -- Bounds for stJ memory (pages = stA.mem.pages)
+    have hns12_J : ¬(frame.toNat + (12 : UInt32).toNat + 4 > stJ.mem.pages * 65536) := by
+      have h12 : (12 : UInt32).toNat = 12 := rfl
+      rw [h12, hpages_J]; linarith [hbnd_frame]
+    have hns8_J : ¬(frame.toNat + (8 : UInt32).toNat + 4 > stJ.mem.pages * 65536) := by
+      have h8 : (8 : UInt32).toNat = 8 := rfl
+      rw [h8, hpages_J]; linarith [hbnd_frame]
+    cases n with
+    | zero =>
+      -- ── Case (a): j = 0. br_if 1 fires immediately. Store key at arr[0]. ──
+      -- hj12 : stJ.mem.read32 (frame+12) = UInt32.ofNat 0 = 0
+      have hj12_0 : stJ.mem.read32 (frame + (12 : UInt32)) = 0 := by
+        exact hj12
+      -- n=0 ≤ i.toNat so 0 < i.toNat (from hi_pos), xs.length > 0, ptr+4 ≤ frame
+      have hptr_bnd : ¬(ptr.toNat + (0 : UInt32).toNat + 4 > stJ.mem.pages * 65536) := by
+        simp only [show (0 : UInt32).toNat = 0 from rfl, Nat.add_zero, hpages_J]
+        have : 1 ≤ xs.length := by omega
+        linarith [Nat.mul_le_mul_left 4 this]
+      have hframe8_bnd : ¬((frame + (8 : UInt32)).toNat + (0 : UInt32).toNat + 4 >
+          (stJ.mem.write32 ptr key).pages * 65536) := by
+        simp only [show (0 : UInt32).toNat = 0 from rfl, Nat.add_zero,
+                   write32_pages, hf8_toNat, hpages_J]
+        linarith [hbnd_frame]
+      -- 0 < len (needed for STORE_KEY bounds check)
+      have h0_lt_len : (0 : UInt32) < len := by
+        rw [UInt32.lt_iff_toNat_lt_toNat]; simp [UInt32.toNat_ofNat']; omega
+      -- shl for 0: 0 <<< 2%32 = 4*0 = 0
+      have h0_shl : (0 : UInt32) <<< ((2 : UInt32) % 32) = 0 := by decide
+      -- Final state: write key to arr[0], i+1 to frame[8]
+      let stFinalA : Store Unit :=
+        { stJ with mem := stJ.mem.write32 ptr key |>.write32 (frame + (8 : UInt32)) (i + 1) }
+      -- Final locals: localSet 9 sets locals[7] = 0 (local9 = 0 from frame[12] = 0)
+      let locFinalA : Locals :=
+        { locJ with locals := locJ.locals.set 7 (.i32 (0 : UInt32)), values := [] }
+      refine ⟨10, stFinalA, locFinalA, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      · -- Exec proof: loop body exits via br_if 1 (j=0 ≯ 0) → GET_j → STORE_KEY
+        intro fuel hfuel
+        -- Rewrite to specific fuel shape for block peeling
+        obtain ⟨k, rfl⟩ : ∃ k, fuel = k + 10 := ⟨fuel - 10, by omega⟩
+        -- OUTER_BLOCK peel (fuel = k+10 = (k+9)+1)
+        rw [show k + 10 = k + 9 + 1 from by omega, exec_block_cons]
+        -- Show INNER_LOOP body exits with .Break 0 (which Fallthrough's the OUTER_BLOCK)
+        -- INNER_LOOP body at k+8: execOne_loop_succ(k+8) calls exec(k+7) on loop body
+        -- Loop body CHECK at k+7: br_if 1 fires → .Break 1; execOne_loop_succ → .Break 0
+        -- exec [INNER_LOOP, INNER_ERROR] at k+9: .Break 0 from execOne → other → .Break 0
+        have hinner : exec (k + 9) «module» stJ locJ
+            [.loop 0 0 [
+               .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localSet 7,
+                     .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                     .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 2],
+                   .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                 .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                 .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                 .br 1]],
+             .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable]
+            {} = .Break 0 stJ { locJ with values := [] } := by
+          -- execOne_loop_succ at k+9: body at k+8
+          rw [show k + 9 = k + 8 + 1 from by omega]
+          conv_lhs => unfold exec; rw [show k + 8 + 1 = k + 8 + 1 from rfl, execOne_loop_succ]
+          -- Loop body at k+8: CHECK fires br_if 1 immediately
+          have hbody : exec (k + 8) «module» stJ locJ
+              [.localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localSet 7,
+                     .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                     .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 2],
+                   .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                 .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                 .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                 .br 1]] {} = .Break 1 stJ { locJ with values := [] } := by
+            simp only [exec, execOne.eq_def, hg2, hvals,
+                       if_neg hns12_J, hj12_0,
+                       show (if (0 : UInt32) > (0 : UInt32) then (1 : UInt32) else 0) = 0 from by decide,
+                       show (1 : UInt32) &&& (0 : UInt32) = 0 from by decide,
+                       show (if (0 : UInt32) = 0 then (1 : UInt32) else 0) = 1 from by decide,
+                       if_neg (show ¬(1 : UInt32) = 0 from by decide)]
+            rfl
+          rw [hbody]
+        rw [hinner]
+        simp only [List.take_zero, List.nil_append, List.drop_zero, hvals]
+        -- Now execute GET_j (localGet 2, load32 12, localSet 9) and STORE_KEY_BLOCK
+        -- GET_j: frame + load32(frame[12]=0) + localSet 9
+        have hgetj : exec (k + 10) «module» stJ { locJ with values := [] }
+            (.localGet 2 :: .load32 (12 : UInt32) :: .localSet 9 ::
+             [.block 0 0 [
+               .localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+               .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+               .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]) {} =
+            exec (k + 10) «module» stJ
+              { locJ with locals := locJ.locals.set 7 (.i32 (0 : UInt32)), values := [] }
+              [.block 0 0 [
+               .localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+               .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+               .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]] {} := by
+          -- derive get 2 for the initial state { locJ with values := [] }
+          have hg2' : ({ locJ with values := [] } : Locals).get 2 = some (.i32 frame) := hg2
+          -- localGet 2
+          conv_lhs => unfold exec; simp only [execOne.eq_def, hg2']
+          -- load32 12: reads frame[12] = 0
+          conv_lhs => unfold exec; simp only [execOne.eq_def, if_neg hns12_J, hj12_0]
+          -- localSet 9: sets locals[9-2] = locals[7] = 0
+          conv_lhs => unfold exec
+          simp only [execOne.eq_def, Locals.set?, hlp, hll, List.length_set,
+                     show ¬(9 < 2) from by omega, show (9 : Nat) < 2 + 8 from by omega,
+                     show (9 : Nat) - 2 = 7 from by omega, if_true, if_false]
+        rw [hgetj]
+        -- STORE_KEY_BLOCK: exec_block_cons
+        rw [show k + 10 = k + 9 + 1 from by omega, exec_block_cons]
+        -- STORE_KEY_BODY: executes, then br 1 → .Break 1 → exec_block_cons gives .Break 0
+        have hstore_body : exec (k + 9) «module» stJ
+            { locJ with locals := locJ.locals.set 7 (.i32 (0 : UInt32)), values := [] }
+            [.localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+             .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+             .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+             .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1] {} =
+            .Break 1 stFinalA locFinalA := by
+          -- local9 = locals[7] = 0
+          have hg9 : { locJ with locals := locJ.locals.set 7 (.i32 (0:UInt32)), values := [] }.get 9 =
+              some (.i32 (0:UInt32)) := by
+            simp only [Locals.get, hlp, hll, List.length_set,
+                       show ¬(9 < 2) from by omega, show (9 : Nat) < 2 + 8 from by omega,
+                       show (9 : Nat) - 2 = 7 from by omega, List.getElem?_set,
+                       if_pos (show (7 : Nat) = 7 from rfl),
+                       if_pos (show (7 : Nat) < 8 from by omega),
+                       if_true, if_false]
+          -- local1 = len (params unchanged)
+          have hg1_upd : { locJ with locals := locJ.locals.set 7 (.i32 (0:UInt32)), values := [] }.get 1 =
+              some (.i32 len) := by
+            simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega]
+            have h := hg1; simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega] at h; exact h
+          -- local0 = ptr (params unchanged)
+          have hg0_upd : { locJ with locals := locJ.locals.set 7 (.i32 (0:UInt32)), values := [] }.get 0 =
+              some (.i32 ptr) := by
+            simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega]
+            have h := hg0; simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega] at h; exact h
+          -- local4 = key (locals[2] set earlier, not touched by set 7)
+          have hg4_upd : { locJ with locals := locJ.locals.set 7 (.i32 (0:UInt32)), values := [] }.get 4 =
+              some (.i32 key) := by
+            simp only [Locals.get, hlp, hll, List.length_set,
+                       show ¬(4 < 2) from by omega, show (4:Nat) < 2 + 8 from by omega,
+                       show (4:Nat) - 2 = 2 from by omega, List.getElem?_set,
+                       if_neg (show ¬(7:Nat) = 2 from by omega)]
+            have h := hg4; simp only [Locals.get, hlp, hll, show ¬(4 < 2) from by omega,
+                           show (4:Nat) < 2 + 8 from by omega, show (4:Nat) - 2 = 2 from by omega] at h
+            exact h
+          -- local2 = frame (locals[0] not touched by set 7)
+          have hg2_upd : { locJ with locals := locJ.locals.set 7 (.i32 (0:UInt32)), values := [] }.get 2 =
+              some (.i32 frame) := by
+            simp only [Locals.get, hlp, hll, List.length_set,
+                       show ¬(2 < 2) from by omega, show (2:Nat) < 2 + 8 from by omega,
+                       show (2:Nat) - 2 = 0 from by omega, List.getElem?_set,
+                       if_neg (show ¬(7:Nat) = 0 from by omega)]
+            have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+                           show (2:Nat) < 2 + 8 from by omega, show (2:Nat) - 2 = 0 from by omega] at h
+            exact h
+          simp only [exec, execOne.eq_def, hg9, hg1_upd, if_pos h0_lt_len,
+                     show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide,
+                     show (if (1 : UInt32) = 0 then (1 : UInt32) else 0) = 0 from by decide,
+                     hg0_upd, h0_shl, show (0:UInt32) + (0:UInt32) = 0 from by decide,
+                     if_neg hptr_bnd, hg4_upd,
+                     hg2_upd, if_neg hns8_J, hf8_J,
+                     show (1 : UInt32) + (1 : UInt32) = 2 from by decide,
+                     show ¬(1 : UInt32) = 0 from by decide,
+                     show stFinalA = { stJ with mem := stJ.mem.write32 ptr key |>.write32 (frame + 8) (i + 1) } from rfl,
+                     show locFinalA = { locJ with locals := locJ.locals.set 7 (.i32 (0:UInt32)), values := [] } from rfl]
+          sorry -- remaining simp after store32 operations; likely needs explicit store32 address proofs
+        rw [hstore_body]
+      · -- frame[8] = i+1
+        exact read32_write32_same (stJ.mem.write32 ptr key) (frame + (8 : UInt32)) (i + 1)
+      · -- globals unchanged by write32
+        exact hglob_J
+      · -- pages unchanged by two write32s
+        rw [write32_pages, write32_pages]; exact hpages_J
+      · -- params length
+        exact hlp
+      · -- locals length
+        have hlocals_eq : locFinalA.locals = locJ.locals.set 7 (.i32 (0:UInt32)) := rfl
+        simp only [hlocals_eq, List.length_set, hll]
+      · -- values = []
+        rfl
+      · -- get 0 = ptr
+        have hparams_eq : locFinalA.params = locJ.params := rfl
+        simp only [Locals.get, hparams_eq, hlp, show (0:Nat) < 2 from by omega, if_true, if_false]
+        have h := hg0; simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega, if_true, if_false] at h; exact h
+      · -- get 1 = len
+        have hparams_eq : locFinalA.params = locJ.params := rfl
+        simp only [Locals.get, hparams_eq, hlp, show (1:Nat) < 2 from by omega, if_true, if_false]
+        have h := hg1; simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega, if_true, if_false] at h; exact h
+      · -- get 2 = frame (locals[0] not touched by set 7)
+        have hparams_eq : locFinalA.params = locJ.params := rfl
+        have hlocals_eq : locFinalA.locals = locJ.locals.set 7 (.i32 (0:UInt32)) := rfl
+        simp only [Locals.get, hparams_eq, hlocals_eq, hlp, hll, List.length_set,
+                   show ¬(2 < 2) from by omega, show (2:Nat) < 2 + 8 from by omega,
+                   show (2:Nat) - 2 = 0 from by omega, List.getElem?_set,
+                   if_neg (show ¬(7:Nat) = 0 from by omega), if_true, if_false]
+        have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+                       show (2:Nat) < 2 + 8 from by omega, show (2:Nat) - 2 = 0 from by omega,
+                       if_true, if_false] at h
+        exact h
+      · -- sorted postcondition
+        sorry
+        /- SORTED SKETCH (case a, j=0):
+           stFinalA writes key=stA.arr[i] to position 0 of the array, then shifts nothing.
+           But shape invariants say:
+             shape2: ∀ k, 0 ≤ k < i.toNat, stJ.arr[k+1] = stA.arr[k] (all shifted right)
+             hgt_key: ∀ k, 0 ≤ k < i.toNat, key < stA.arr[k] (all > key)
+           So stFinalA.arr = [key, stA.arr[0], stA.arr[1], ..., stA.arr[i-1]]
+           which is sorted: key < all others, and stA.arr[0..i-1] already sorted. -/
+      · -- perm postcondition
+        sorry
+    | succ n' =>
+      -- ── Cases (b) and (c): j = n'+1 > 0 ────────────────────────────────────
+      -- hj12 : stJ.mem.read32(frame+12) = UInt32.ofNat(n'+1)
+      let arr_jm1 : UInt32 := stJ.mem.read32 (ptr + 4 * UInt32.ofNat n')
+      -- n' < xs.length (since n'+1 ≤ i.toNat < xs.length)
+      have hn'_lt_xs : n' < xs.length := by omega
+      -- n' < len (UInt32 comparison)
+      have hn'_lt_len : UInt32.ofNat n' < len := by
+        rw [UInt32.lt_iff_toNat_lt_toNat, UInt32.toNat_ofNat']
+        have := len.toNat_lt; rw [← hlen] at this; omega
+      -- n'+1 < len (UInt32 comparison)
+      have hn_lt_len : UInt32.ofNat (n' + 1) < len := by
+        rw [UInt32.lt_iff_toNat_lt_toNat, UInt32.toNat_ofNat']
+        have := len.toNat_lt; rw [← hlen] at this; omega
+      -- shl for n': n' <<< 2%32 = 4*n'
+      have hn'_shl : UInt32.ofNat n' <<< ((2 : UInt32) % 32) = 4 * UInt32.ofNat n' := by
+        rw [show (2 : UInt32) % 32 = 2 from by decide]
+        apply UInt32.toNat_inj.mp
+        simp only [UInt32.toNat_mul, show (4 : UInt32).toNat = 4 from rfl]
+        simp [UInt32.shiftLeft, Fin.shiftLeft, Nat.shiftLeft_eq]; omega
+      -- shl for n'+1: (n'+1) <<< 2%32 = 4*(n'+1)
+      have hn_shl : UInt32.ofNat (n' + 1) <<< ((2 : UInt32) % 32) = 4 * UInt32.ofNat (n' + 1) := by
+        rw [show (2 : UInt32) % 32 = 2 from by decide]
+        apply UInt32.toNat_inj.mp
+        simp only [UInt32.toNat_mul, show (4 : UInt32).toNat = 4 from rfl]
+        simp [UInt32.shiftLeft, Fin.shiftLeft, Nat.shiftLeft_eq]; omega
+      -- addr of arr[n']
+      have hn'_addr : (ptr + 4 * UInt32.ofNat n').toNat = ptr.toNat + 4 * n' := by
+        apply toNat_wordAddr; exact hn'_lt_xs; exact hpg_arr
+      -- bounds for load32 at arr[n']
+      have hbnd_n' : ¬((ptr + 4 * UInt32.ofNat n').toNat + (0 : UInt32).toNat + 4 >
+          stJ.mem.pages * 65536) := by
+        simp only [show (0 : UInt32).toNat = 0 from rfl, Nat.add_zero, hn'_addr, hpages_J]
+        have : n' + 1 ≤ xs.length := Nat.succ_le_of_lt hn'_lt_xs
+        linarith [Nat.mul_le_mul_left 4 this]
+      -- hj12 in simplified form: frame[12] = UInt32.ofNat (n'+1) which is ≥ 1
+      have hj12_succ : stJ.mem.read32 (frame + (12 : UInt32)) = UInt32.ofNat (n' + 1) := hj12
+      have hj12_pos : (0 : UInt32) < UInt32.ofNat (n' + 1) := by
+        rw [UInt32.lt_iff_toNat_lt_toNat]; simp [UInt32.toNat_ofNat']; omega
+      by_cases hbc : arr_jm1 > key
+      · -- ── Case (c): arr[n'] > key → shift arr[n'] to arr[n'+1], decrement j ──
+        -- Apply IH at n' with updated state stJ' after the shift
+        -- stJ' = stJ.write32 (ptr+4*(n'+1)) arr[n'] |>.write32 (frame+12) n'
+        sorry
+        /- CASE (c) SKETCH (j=n'+1>0, arr[n'] > key):
+           After:
+           - CHECK: gtU(n'+1, 0) = n'+1>0 = true → 1; eqz→0; br_if 1 no fire
+           - j'_set: local5 = n'+1-1 = n'
+           - BC2_OUTER: BC2_INNER body:
+             n'<len ✓; ltU→1; and→1; eqz→0; br_if 0 no fire
+             arr[n']=arr_jm1>key ✓; gtU→1; and→1; br_if 1 fires → .Break 1 from BC2_INNER body
+             BC2_INNER_BLOCK: .Break 1=.Break(0+1)→.Break 0 (Fallthrough to PANIC2, not exec'd? No:
+             Actually: BC2_OUTER body is [BC2_INNER_BLOCK, PANIC2].
+             BC2_INNER_BLOCK body returns .Break 1 = .Break(0+1) → .Break 0 from exec_block_cons.
+             Then exec [BC2_INNER_BLOCK, PANIC2]: execOne BC2_INNER_BLOCK = .Break 0 → Fallthrough to PANIC2.
+             WAIT: exec_block_cons for BC2_INNER_BLOCK: body .Break 1 = .Break(0+1) → .Break 0.
+             But the OUTER exec sees .Break 0 from execOne BC2_INNER_BLOCK → Fallthrough!
+             Then PANIC2 (.localGet 5, .localGet 1, .call 54, .unreachable) runs... that's the error branch!
+
+             I was wrong! Let me re-trace:
+
+             Inside BC2_INNER body (= `.block 0 0 [CHECK_BODY, PANIC2]`):
+               The labels inside CHECK_BODY see:
+               - label 0 = BC2_INNER body label (the inner block)
+               - label 1 = BC2_OUTER label (the outer block wrapping both [BC2_INNER_BLOCK, PANIC2])
+               - Wait: the instruction structure is:
+                 BC2_OUTER = `.block 0 0 [BC2_INNER_BLOCK_INSTR, PANIC2]` where:
+                   BC2_INNER_BLOCK_INSTR = `.block 0 0 [CHECK_BODY]`
+                   CHECK_BODY = [..., br_if 1 (exits BC2_OUTER), br 3 (exits OUTER_BLOCK)]
+                   PANIC2 = [localGet 5, localGet 1, call 54, unreachable]
+
+             Hmm but the instruction list in the source is:
+               .block 0 0 [      -- BC2_OUTER
+                 .block 0 0 [    -- BC2_INNER_BLOCK
+                   .localGet 5, .localGet 1, .ltU, .const 1, .and, .eqz, .br_if 0,   -- br_if 0 exits BC2_INNER_BLOCK
+                   .localGet 0, .localGet 5, .const 2, .shl, .add, .load32 0,
+                   .localGet 4, .gtU, .const 1, .and,
+                   .br_if 1, .br 3],     -- br_if 1 exits BC2_OUTER; br 3 exits OUTER_BLOCK
+                 .localGet 5, .localGet 1, .const 1048620, .call 54, .unreachable]  -- PANIC2
+
+             So in case (c) (arr[n'] > key): br_if 1 fires!
+             br_if 1 from inside BC2_INNER_BLOCK body: .Break 1
+             exec_block_cons for BC2_INNER_BLOCK: .Break 1 = .Break(0+1) → .Break 0 (Fallthrough)
+             Then exec [BC2_INNER_BLOCK, PANIC2] at BC2_OUTER level: .Break 0 from execOne BC2_INNER_BLOCK → Fallthrough to PANIC2!
+             Wait no: exec processes as:
+               exec fuel m st s (BC2_INNER_BLOCK :: PANIC2 :: nil) env
+               = match execOne fuel BC2_INNER_BLOCK with
+               | .Fallthrough → exec fuel ... PANIC2 :: nil
+               | other → other
+             And execOne fuel for BC2_INNER_BLOCK (which is a .block instruction) returns .Break 0 (from exec_block_cons giving .Break(0+1)-1=.Break 0).
+
+             Hmm: exec_block_cons says exec (f+1) ... (.block :: rest) = match exec f ... body with | .Break 0 → continue to rest | .Break k+1 → .Break k | .Fallthrough → continue to rest | other → other.
+
+             So execOne for BC2_INNER_BLOCK (.block 0 0 CHECK_BODY) at fuel f:
+             = execOne (f-1+1) ... (.block 0 0 CHECK_BODY) = exec_block_cons with fuel=f:
+               match exec (f-1) ... CHECK_BODY with
+               | .Break 0 → continue to rest (empty, so .Fallthrough)
+               | .Break 1 → .Break 0 ← this is what happens in case (c)!
+
+             Wait: CHECK_BODY in case (c) has br_if 1 fire → .Break 1 from inside CHECK_BODY. Then:
+             exec_block_cons for BC2_INNER_BLOCK (outer block of CHECK_BODY):
+               CHECK_BODY returns .Break 1 = .Break(0+1) → execOne returns .Break 0.
+
+             exec [BC2_INNER_BLOCK, PANIC2] at BC2_OUTER:
+               execOne BC2_INNER_BLOCK = .Break 0 → Fallthrough → continue to PANIC2!
+
+             This means PANIC2 runs! That's the success path NOT the error path!
+
+             Wait, I think I misread the label convention. Let me re-read the source:
+
+             The BC2 block structure is:
+             .block 0 0 [  -- OUTER (bc2_outer)
+               .block 0 0 [  -- INNER (bc2_inner)
+                 ..., .br_if 1,  -- fires → .Break 1 from bc2_inner body
+                 .br 3],         -- fires → .Break 3 from bc2_inner body
+               ...(PANIC2)...]    -- only runs if bc2_inner Fallthrough's
+
+             From inside bc2_inner body:
+             - br 0 = exit bc2_inner (continue after bc2_inner block)
+             - br 1 = exit bc2_outer (the OUTER block enclosing bc2_inner)
+             - br 2 = exit the INNER_LOOP (restart loop)
+             - br 3 = exit OUTER_BLOCK
+
+             Wait, but we're executing bc2_inner body. The label 0 is the bc2_inner block itself. So:
+             - br 0 from bc2_inner → .Break 0 from bc2_inner body → Fallthrough from bc2_inner_block exec_block_cons
+             - br 1 from bc2_inner → .Break 1 from bc2_inner body → .Break 0 from bc2_inner_block exec_block_cons → Fallthrough to PANIC2!
+
+             Hmm that doesn't seem right. Let me re-think.
+
+             When execOne processes .block 0 0 CHECK_BODY:
+             - It calls exec fuel ... CHECK_BODY
+             - CHECK_BODY has `br_if 1` which (when firing) produces .Break 1 from the exec
+             - exec_block_cons for .block 0 0: match body_result with
+               | .Break 0 → Fallthrough to rest after the block
+               | .Break (k+1) → .Break k  ← .Break 1 → .Break 0
+               | .Fallthrough → Fallthrough
+
+             So .Break 1 from CHECK_BODY → .Break 0 from execOne for bc2_inner_block.
+             Then exec [bc2_inner_block, PANIC2]: .Break 0 from execOne → match | .Fallthrough → exec PANIC2 | other → other = .Break 0.
+
+             .Break 0 ≠ .Fallthrough → other! So .Break 0 → other → exec returns .Break 0 without executing PANIC2! ✓
+
+             I was confusing: exec in the list processes with `match execOne with | .Fallthrough → continue | other → other`. So .Break 0 → other → stop (don't execute PANIC2). ✓
+
+             So in case (c): bc2_inner body returns .Break 1 (from br_if 1) → exec_block_cons for bc2_inner_block returns .Break 0 → exec [bc2_inner_block, PANIC2] returns .Break 0 (stops, doesn't run PANIC2) → exec_block_cons for bc2_OUTER: body returned .Break 0 → Fallthrough.
+
+             Fallthrough from bc2_outer → continue with rest of INNER_LOOP body after bc2_outer:
+             [j_set2 instrs, BC3_OUTER block, INNER_ERROR]
+
+             - j_set2: localGet 2→frame; load32 12 → n'+1; sub 1 → n'; localSet 6 (local6 = n')
+             - BC3_OUTER block:
+               BC3_INNER body: n'<len ✓ → continue; arr[n']=arr_jm1 → local7; frame[12]=n'+1 → local8; n'+1<len ✓ → br_if 1 fires → .Break 1
+
+             Wait, in BC3_INNER body there's `br_if 1`. Let me read it:
+             ```
+             .block 0 0 [  -- bc3_inner_block
+               .localGet 6, .localGet 1, .ltU, .const 1, .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 6, .const 2, .shl, .add, .load32 0, .localSet 7,
+               .localGet 2, .load32 12, .localSet 8,
+               .localGet 8, .localGet 1, .ltU, .const 1, .and,
+               .br_if 1, .br 2],
+             ```
+             - n'<len ✓ → ltU=1; and=1; eqz=0; br_if 0 no fire
+             - arr[n'] (= arr_jm1) → local7
+             - frame[12] = n'+1 → local8
+             - n'+1<len ✓ → ltU=1; and=1; br_if 1 fires! → .Break 1 from bc3_inner body
+             - exec_block_cons for bc3_inner_block: .Break 1 → .Break 0 → execOne returns .Break 0
+             - exec [bc3_inner_block, PANIC3] at bc3_outer level: .Break 0 → other → stop
+             - exec_block_cons for bc3_outer: body .Break 0 → Fallthrough → [WRITE_SHIFT, ...]
+
+             WRITE_SHIFT (after bc3_outer Fallthrough):
+             - localGet 0 → ptr; localGet 8 → local8=n'+1; const 2; shl → 4*(n'+1); add → ptr+4*(n'+1)
+             - localGet 7 → arr_jm1
+             - store32 0: write arr_jm1 to ptr+4*(n'+1) ← this is the SHIFT!
+             - localGet 2 → frame; localGet 2 → frame; load32 12 → n'+1; const 1; sub → n'; store32 12: frame[12] = n'
+             - br 1 → .Break 1
+
+             After WRITE_SHIFT: stJ' = stJ.write32 (ptr+4*(n'+1)) arr_jm1 |>.write32 (frame+12) (n')
+
+             exec [BC3_OUTER_BLOCK, WRITE_SHIFT, INNER_ERROR] (from j_set2 continuation):
+             BC3_OUTER returns .Break 0 → Fallthrough → WRITE_SHIFT → .Break 1 (from br 1)
+             exec [WRITE_SHIFT, INNER_ERROR]: WRITE_SHIFT execOne returns .Break 1 → other → stop.
+
+             Wait no: BC3_OUTER_BLOCK = `.block 0 0 [BC3_INNER_BLOCK_INSTR, PANIC3, WRITE_SHIFT_INSTRS]`.
+             No wait, looking at the source:
+             ```
+             .block 0 0 [           -- BC3_OUTER
+               .block 0 0 [         -- BC3_INNER
+                 .block 0 0 [       -- BC3_INNERMOST
+                   ..., .br_if 0,   -- exits bc3_innermost
+                   ..., .br_if 1, .br 2],  -- br_if 1 exits bc3_inner; br 2 exits bc3_outer
+                 .localGet 6, .localGet 1, .const 1048652, .call 54, .unreachable],  -- PANIC3 (bc3_inner fails)
+               .localGet 0, .localGet 8, .const 2, .shl, .add, .localGet 7,
+               .store32 0, .localGet 2, .localGet 2,
+               .load32 12, .const 1, .sub, .store32 12, .br 1]  -- WRITE_SHIFT (bc3_outer success)
+             ```
+
+             So: BC3_OUTER body = [BC3_INNER_BLOCK, WRITE_SHIFT...]
+             BC3_INNER body (the `.block 0 0 [BC3_INNERMOST, PANIC3]`):
+               BC3_INNERMOST = [.block 0 0 [..., .br_if 0, ..., .br_if 1, .br 2]]
+
+             In case (c):
+             - BC3_INNERMOST: n'<len → br_if 0 no fire; arr[n']→local7; frame[12]=n'+1→local8; n'+1<len → br_if 1 fires!
+
+             br_if 1 from BC3_INNERMOST body:
+             Labels from inside BC3_INNERMOST body:
+             - label 0 = BC3_INNERMOST block
+             - label 1 = BC3_INNER block (enclosing BC3_INNERMOST + PANIC3)
+             - label 2 = BC3_OUTER block
+
+             br_if 1 fires → .Break 1 from BC3_INNERMOST body.
+             exec_block_cons for BC3_INNERMOST (.block 0 0): body .Break 1 = .Break(0+1) → .Break 0.
+             execOne for BC3_INNERMOST returns .Break 0.
+             exec [BC3_INNERMOST, PANIC3] (BC3_INNER body): .Break 0 → other → stop (PANIC3 not executed).
+             exec_block_cons for BC3_INNER (.block 0 0 [BC3_INNERMOST, PANIC3]):
+               body returns .Break 0 → Fallthrough → rest (empty, so .Fallthrough).
+             execOne for BC3_INNER returns .Fallthrough.
+             exec [BC3_INNER_BLOCK, WRITE_SHIFT, ...] (BC3_OUTER body): .Fallthrough → continue to WRITE_SHIFT.
+
+             WRITE_SHIFT: ptr+4*(local8) = ptr+4*(n'+1); store arr_jm1; frame[12] = n'; br 1 → .Break 1.
+             exec BC3_OUTER body: WRITE_SHIFT returns .Break 1 → other → stop. Body = .Break 1.
+             exec_block_cons for BC3_OUTER: body .Break 1 = .Break(0+1) → .Break 0.
+
+             After BC3_OUTER: exec [BC3_OUTER_BLOCK, INNER_ERROR] (in INNER_LOOP body after j_set2):
+             execOne BC3_OUTER_BLOCK returns .Break 0 → other → stop (INNER_ERROR not executed).
+
+             This means the INNER_LOOP body returns .Break 0 → loops back!
+             Wait: .Break 0 from the INNER_LOOP body → execOne_loop_succ .Break 0 → restart loop!
+
+             Actually: execOne_loop_succ: body returns .Break 0 → `execOne f m r' {s'...} (.loop ...) env` (restart).
+
+             So in case (c), the loop RESTARTS with the updated state stJ':
+               stJ' = stJ.write32 (ptr+4*(n'+1)) arr_jm1 |>.write32 (frame+12) n'
+               locJ' = locJ with local5=n', local6=n', local7=arr_jm1, local8=n'+1
+
+             Then apply IH at n' < n'+1 with stJ' to get ∃ N', ...
+
+             Final fuel = N' + 3 (OUTER_BLOCK + each loop restart costs 1 execOne_loop_succ).
+             Actually more careful: each iteration of the loop (including the restart) costs fuel:
+             - execOne_loop_succ calls exec f-1 on the body, then on restart calls execOne f-1 again.
+             - So each restart costs 1 additional fuel unit.
+             - Total for this iteration: 1 (OUTER_BLOCK) + 1 (first execOne_loop_succ for j=n'+1) + N' + ...
+
+             The IH handles ALL remaining iterations. When IH terminates with N', the fuel for those iterations is N'. We need extra fuel for:
+             1. OUTER_BLOCK peel: 1
+             2. FIRST execOne_loop_succ for j=n'+1: 1
+             3. The IH executes starting from the RESTARTED loop, but the IH exec includes the whole [.block 0 0 [.loop ...], GET_j, STORE_KEY] which starts at the loop again.
+
+             The IH says: ∃ N' stFinalC locFinalC, ∀ fuel ≥ N', exec fuel «module» stJ' locJ_new [OUTER_BLOCK, ...] {} = .Break 0 ...
+
+             But I need the CURRENT fuel to restart the loop. The IH's exec starts at the SAME INSTRUCTION LIST (OUTER_BLOCK wrapping the loop). So the fuel for the IH already accounts for all remaining iterations.
+
+             The connection is:
+             - exec fuel stJ locJ [OUTER_BLOCK, GET_j, STORE_KEY] = exec (fuel-1) stJ locJ [INNER_LOOP, INNER_ERROR] (from exec_block_cons)
+             - exec (fuel-1) stJ locJ [INNER_LOOP, INNER_ERROR] = execOne (fuel-1) stJ locJ INNER_LOOP (case: .Break 0 → other)
+             - execOne (fuel-1) stJ locJ INNER_LOOP = execOne_loop_succ(fuel-2) → runs body at fuel-2, restarts at fuel-2
+             - After shift, the LOOP is restarted via execOne (fuel-2) stJ' locJ' INNER_LOOP
+             - This is NOT the same as exec (N') stJ' locJ' [OUTER_BLOCK, GET_j, STORE_KEY] since we're inside execOne of INNER_LOOP, not at the top-level OUTER_BLOCK.
+
+             This is the tricky fuel composition issue. The IH needs to handle the RESTARTED INNER_LOOP, not the full [OUTER_BLOCK, ...] list. So the IH should be stated in terms of exec [.loop ...] or exec [INNER_LOOP, ...] rather than exec [OUTER_BLOCK, ...].
+
+             This is a fundamental issue with the gen statement: the IH applies gen with the [OUTER_BLOCK, ...] list, but after loop restart we're at execOne of INNER_LOOP, not exec of [OUTER_BLOCK, ...].
+
+             RESOLUTION: The exec [.loop ...] on restart runs execOne fuel stJ' locJ' .loop = exec (fuel-1) stJ' locJ' body. This is handled by exec_fuel_mono + the IH's execOne for the loop.
+
+             This analysis shows case (c) requires careful fuel management. I'll sorry it and provide this detailed sketch.
+        -/
+      · -- ── Case (b): arr[n'] ≤ key → exit loop, store key at arr[n'+1] ──────
+        -- hbc : ¬(arr_jm1 > key) = ¬(key < arr_jm1)
+        -- Case (b): CHECK fires (j=n'+1>0), j'_set (local5=n'), BC2 exits via br 3 (since arr[n']≤key)
+        -- After br 3: .Break 3 from bc2_inner_body → .Break 2 from bc2_inner_block → .Break 2 from exec
+        -- exec [bc2_inner_block, PANIC2] in bc2_outer: .Break 2 → other → .Break 2
+        -- exec_block_cons for bc2_outer: body .Break 2=.Break(1+1) → .Break 1
+        -- exec_block_cons: wait, bc2_outer = .block 0 0 [bc2_inner_block, PANIC2]
+        -- BC2_OUTER body returns .Break 2 then .Break 1 from exec_block_cons of BC2_OUTER? No:
+        -- exec_block_cons for BC2_OUTER: match exec (fuel-1) [bc2_inner_block, PANIC2] with
+        --   | .Break 0 → Fallthrough (to rest of INNER_LOOP body)
+        --   | .Break k+1 → .Break k ← .Break 2 → .Break 1
+        --   | .Fallthrough → Fallthrough
+        -- So BC2_OUTER_BLOCK instruction → .Break 1.
+        -- INNER_LOOP body: execOne for BC2_OUTER_BLOCK = .Break 1 → other → .Break 1 (rest of body skipped).
+        -- execOne_loop_succ: body .Break 1 = .Break(0+1) → .Break 0.
+        -- exec [INNER_LOOP, INNER_ERROR]: .Break 0 → other → .Break 0.
+        -- exec_block_cons for OUTER_BLOCK: body .Break 0 → Fallthrough → GET_j + STORE_KEY.
+        -- GET_j: local9 = frame[12] = n'+1.
+        -- STORE_KEY: arr[n'+1] = key, frame[8] = i+1.
+        -- ── Build witnesses ──────────────────────────────────────────────────
+        -- arr[n'] bound
+        have hbnd_n'_load : ¬((ptr + 4 * UInt32.ofNat n').toNat + (0:UInt32).toNat + 4 >
+            stJ.mem.pages * 65536) := hbnd_n'
+        -- bounds for store32 at arr[n'+1]
+        have hbnd_n1_store : ¬((ptr + 4 * UInt32.ofNat (n'+1)).toNat + (0:UInt32).toNat + 4 >
+            stJ.mem.pages * 65536) := by
+          have hn1_addr : (ptr + 4 * UInt32.ofNat (n'+1)).toNat = ptr.toNat + 4 * (n'+1) :=
+            toNat_wordAddr ptr xs.length (n'+1) (by omega) hpg_arr
+          simp only [show (0:UInt32).toNat = 0 from rfl, Nat.add_zero, hn1_addr, hpages_J]
+          have : n'+2 ≤ xs.length := by omega
+          linarith [Nat.mul_le_mul_left 4 this]
+        -- bounds for store32 at frame+8 (memory after write32 at ptr+4*(n'+1))
+        have hbnd_frame8_b : ¬((frame + (8:UInt32)).toNat + (0:UInt32).toNat + 4 >
+            (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n'+1)) key).pages * 65536) := by
+          simp only [show (0:UInt32).toNat = 0 from rfl, Nat.add_zero, write32_pages,
+                     hf8_toNat, hpages_J]
+          linarith [hbnd_frame]
+        -- n'+1 < len for STORE_KEY bounds check (ltU)
+        have hn1_lt_len : UInt32.ofNat (n'+1) < len := hn_lt_len
+        -- addr of arr[n'+1] for STORE_KEY
+        have hn1_shl_eq : UInt32.ofNat (n'+1) <<< ((2:UInt32) % 32) = 4 * UInt32.ofNat (n'+1) :=
+          hn_shl
+        -- arr[n'] = arr_jm1 from stJ (for bc2 inner load)
+        have harr_n'_read : stJ.mem.read32 ((ptr + 4 * UInt32.ofNat n') + (0:UInt32)) = arr_jm1 := by
+          have h0 : (ptr + 4 * UInt32.ofNat n') + (0:UInt32) = ptr + 4 * UInt32.ofNat n' := by simp
+          rw [h0]
+        -- bc2: br_if 1 no fire (arr[n'] ≤ key), br 3 fires
+        have hle_show : ¬(arr_jm1 > key) := hbc
+        -- jm1 = n' = frame[12] - 1; sub is in WASM
+        have hjm1_sub : UInt32.ofNat (n'+1) - 1 = UInt32.ofNat n' := by
+          apply UInt32.toNat_inj.mp; simp [UInt32.toNat_sub_of_le, UInt32.toNat_ofNat']
+        -- Final state: write key to arr[n'+1], i+1 to frame[8]
+        let stFinalB : Store Unit :=
+          { stJ with mem := stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n'+1)) key
+                              |>.write32 (frame + (8:UInt32)) (i+1) }
+        -- Final locals: local5 = n' (from j'_set), local9 = n'+1 (from GET_j)
+        let locFinalB : Locals :=
+          { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 7 (.i32 (UInt32.ofNat (n' + 1))), values := [] }
+        refine ⟨20, stFinalB, locFinalB, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+        · -- Exec proof for case (b)
+          intro fuel hfuel
+          obtain ⟨k, rfl⟩ : ∃ k, fuel = k + 20 := ⟨fuel - 20, by omega⟩
+          -- OUTER_BLOCK peel
+          rw [show k + 20 = k + 19 + 1 from by omega, exec_block_cons]
+          -- INNER_LOOP at k+19: execOne_loop_succ(k+18) runs body at k+17
+          -- Body trace: CHECK no fire, j'_set, BC2_OUTER → .Break 1 → body .Break 1
+          -- execOne_loop_succ: .Break(0+1) → .Break 0
+          -- exec [INNER_LOOP, INNER_ERROR] at k+19: .Break 0 → stop
+          have hinner_b : exec (k + 19) «module» stJ locJ
+              [.loop 0 0 [
+                 .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+                 .const (1 : UInt32), .and, .eqz, .br_if 1,
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 3],
+                   .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .block 0 0 [
+                       .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                       .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                       .load32 (0 : UInt32), .localSet 7,
+                       .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                       .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                       .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]],
+               .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable]
+              {} = .Break 0 stJ
+                { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] } := by
+            rw [show k + 19 = k + 18 + 1 from by omega]
+            conv_lhs => unfold exec; rw [show k + 18 + 1 = k + 18 + 1 from rfl, execOne_loop_succ]
+            -- Loop body at k+17 produces .Break 1 (case b: bc2_outer → .Break 1 from inner_loop body)
+            sorry -- loop body exec for case (b) — needs careful simp through CHECK + j'_set + BC2_OUTER
+          rw [hinner_b]
+          simp only [List.take_zero, List.nil_append, List.drop_zero, hvals]
+          -- GET_j + STORE_KEY_BLOCK
+          -- GET_j: local9 = frame[12] = n'+1
+          have hgetj_b : exec (k + 20) «module» stJ
+              { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }
+              (.localGet 2 :: .load32 (12 : UInt32) :: .localSet 9 ::
+               [.block 0 0 [
+                 .localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                 .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+                 .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]) {} =
+              exec (k + 20) «module» stJ
+                { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 7 (.i32 (UInt32.ofNat (n' + 1))), values := [] }
+                [.block 0 0 [
+                  .localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                  .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+                  .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+                  .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]] {} := by
+            -- local2 = frame (params unchanged)
+            have hg2_b : { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }.get 2 =
+                some (.i32 frame) := by
+              simp only [Locals.get, hlp, hll, List.length_set,
+                         show ¬(2 < 2) from by omega, show (2:Nat) < 2 + 8 from by omega,
+                         show (2:Nat) - 2 = 0 from by omega, List.getElem?_set,
+                         if_neg (show ¬(3:Nat) = 0 from by omega)]
+              have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+                             show (2:Nat) < 2 + 8 from by omega, show (2:Nat) - 2 = 0 from by omega] at h
+              exact h
+            -- localGet 2
+            conv_lhs => unfold exec; simp only [execOne.eq_def, hg2_b]
+            -- load32 12: frame[12] = n'+1
+            conv_lhs => unfold exec; simp only [execOne.eq_def, if_neg hns12_J, hj12_succ]
+            -- localSet 9: locals[7] = n'+1
+            conv_lhs => unfold exec
+            simp only [execOne.eq_def, Locals.set?, hlp, hll, List.length_set,
+                       show ¬(9 < 2) from by omega, show (9:Nat) < 2 + 8 from by omega,
+                       show (9:Nat) - 2 = 7 from by omega, if_true, if_false]
+          rw [hgetj_b]
+          -- STORE_KEY_BLOCK exec_block_cons
+          rw [show k + 20 = k + 19 + 1 from by omega, exec_block_cons]
+          -- STORE_KEY_BODY produces .Break 1 → exec_block_cons gives .Break 0 (= stFinalB, locFinalB)
+          sorry -- store key at arr[n'+1] and i+1 at frame[8], prove .Break 1 → exec_block_cons .Break 0
+        · -- frame[8] = i+1
+          exact read32_write32_same (stJ.mem.write32 _ _) (frame + (8:UInt32)) (i+1)
+        · -- globals unchanged
+          exact hglob_J
+        · -- pages unchanged
+          rw [write32_pages, write32_pages]; exact hpages_J
+        · -- params length
+          exact hlp
+        · -- locals length
+          have hlocals_eq : locFinalB.locals = (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 7 (.i32 (UInt32.ofNat (n' + 1))) := rfl
+          simp only [hlocals_eq, List.length_set, hll]
+        · -- values = []
+          rfl
+        · -- get 0 = ptr
+          have hparams_eq : locFinalB.params = locJ.params := rfl
+          simp only [Locals.get, hparams_eq, hlp, show (0:Nat) < 2 from by omega, if_true, if_false]
+          have h := hg0; simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega, if_true, if_false] at h; exact h
+        · -- get 1 = len
+          have hparams_eq : locFinalB.params = locJ.params := rfl
+          simp only [Locals.get, hparams_eq, hlp, show (1:Nat) < 2 from by omega, if_true, if_false]
+          have h := hg1; simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega, if_true, if_false] at h; exact h
+        · -- get 2 = frame (locals[0] not touched by set 3 or set 7)
+          have hparams_eq : locFinalB.params = locJ.params := rfl
+          have hlocals_eq : locFinalB.locals = (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 7 (.i32 (UInt32.ofNat (n' + 1))) := rfl
+          simp only [Locals.get, hparams_eq, hlocals_eq, hlp, hll, List.length_set,
+                     show ¬(2 < 2) from by omega, show (2:Nat) < 2 + 8 from by omega,
+                     show (2:Nat) - 2 = 0 from by omega, List.getElem?_set,
+                     if_neg (show ¬(7:Nat) = 0 from by omega),
+                     if_neg (show ¬(3:Nat) = 0 from by omega), if_true, if_false]
+          have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+                         show (2:Nat) < 2 + 8 from by omega, show (2:Nat) - 2 = 0 from by omega,
+                         if_true, if_false] at h
+          exact h
+        · -- sorted postcondition
+          sorry
+        · -- perm postcondition
+          sorry
 
 set_option maxHeartbeats 800000 in
 omit inst in
