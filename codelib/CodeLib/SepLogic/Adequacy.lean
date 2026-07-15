@@ -24,6 +24,22 @@ def wp_wasm_F (Φ : LeibnizO WasmState → IProp WasmHeapGF)
       iprop% ⌜ws.Q ws.st []⌝
   | .ret :: _ =>
       iprop% ⌜ws.Q ws.st ws.locals.values⌝
+  | .block bt bl body :: rest =>
+      iprop% (∀ σ : WasmHeapMap (Option UInt8),
+        genHeapInterp σ ==∗
+          ∃ σ' : WasmHeapMap (Option UInt8),
+          ∃ N : Nat,
+          ∃ st' : Store Unit,
+          ∃ s' : Locals,
+            ⌜exec N ws.m ws.st ws.locals body ws.env = .Fallthrough st' s' ∨
+             exec N ws.m ws.st ws.locals body ws.env = .Break 0 st' s'⌝ ∗
+            genHeapInterp σ' ∗
+            Φ ⟨{ m := ws.m, st := st',
+                 locals := { s' with values := s'.values.take bl ++ ws.locals.values.drop bt },
+                 prog := rest, env := ws.env, Q := ws.Q }⟩) ∨
+      (∃ N : Nat, ∃ st' : Store Unit, ∃ vs : List Value,
+        ⌜exec N ws.m ws.st ws.locals body ws.env = .Return st' vs⌝ ∗
+        ⌜ws.Q st' vs⌝)
   | instr :: rest =>
       iprop% ∀ σ : WasmHeapMap (Option UInt8),
         genHeapInterp σ ==∗
@@ -51,6 +67,23 @@ instance instBIMonoPredWasmF :
     split
     · iintro H; iexact H
     · iintro H; iexact H
+    · next bt bl body rest =>
+      iintro Hwp
+      icases Hwp with (Hwp_fall | Hwp_ret)
+      · ileft
+        iintro %σ₀
+        iintro Hσ₀
+        imod Hwp_fall $$ % σ₀ Hσ₀ with ⟨%σ', %N, %st₁, %s₁, hexec, Hσ', HΦ⟩
+        imodintro
+        iexists σ', N, st₁, s₁
+        isplitl [hexec]
+        · iexact hexec
+        · isplitl [Hσ']
+          · iexact Hσ'
+          · iapply HΦΨ
+            iexact HΦ
+      · iright
+        iexact Hwp_ret
     · next instr rest =>
       iintro Hwp
       iintro %σ₀
@@ -87,6 +120,22 @@ def wp_wasm_iProp_F (Ψ : LeibnizO WasmStateIProp → IProp WasmHeapGF)
       ws.Φ ws.st []
   | .ret :: _ =>
       ws.Φ ws.st ws.locals.values
+  | .block bt bl body :: rest =>
+      iprop% (∀ σ : WasmHeapMap (Option UInt8),
+        genHeapInterp σ ==∗
+          ∃ σ' : WasmHeapMap (Option UInt8),
+          ∃ N : Nat,
+          ∃ st' : Store Unit,
+          ∃ s' : Locals,
+            ⌜exec N ws.m ws.st ws.locals body ws.env = .Fallthrough st' s' ∨
+             exec N ws.m ws.st ws.locals body ws.env = .Break 0 st' s'⌝ ∗
+            genHeapInterp σ' ∗
+            Ψ ⟨{ m := ws.m, st := st',
+                 locals := { s' with values := s'.values.take bl ++ ws.locals.values.drop bt },
+                 prog := rest, env := ws.env, Φ := ws.Φ }⟩) ∨
+      (∃ N : Nat, ∃ st' : Store Unit, ∃ vs : List Value,
+        ⌜exec N ws.m ws.st ws.locals body ws.env = .Return st' vs⌝ ∗
+        ws.Φ st' vs)
   | instr :: rest =>
       iprop% ∀ σ : WasmHeapMap (Option UInt8),
         genHeapInterp σ ==∗
@@ -114,6 +163,23 @@ instance instBIMonoPredWasmIPropF :
     split
     · iintro H; iexact H
     · iintro H; iexact H
+    · next bt bl body rest =>
+      iintro Hwp
+      icases Hwp with (Hwp_fall | Hwp_ret)
+      · ileft
+        iintro %σ₀
+        iintro Hσ₀
+        imod Hwp_fall $$ % σ₀ Hσ₀ with ⟨%σ', %N, %st₁, %s₁, hexec, Hσ', HΦ⟩
+        imodintro
+        iexists σ', N, st₁, s₁
+        isplitl [hexec]
+        · iexact hexec
+        · isplitl [Hσ']
+          · iexact Hσ'
+          · iapply HΦΨ
+            iexact HΦ
+      · iright
+        iexact Hwp_ret
     · next instr rest =>
       iintro Hwp
       iintro %σ₀
@@ -148,40 +214,67 @@ theorem wp_wasm_iProp_frame_right
   have hstep : ⊢ □ (∀ y : LeibnizO WasmStateIProp, wp_wasm_iProp_F Ψ y -∗ Ψ y) := by
     iintro !> %s
     obtain ⟨ws⟩ := s
-    rcases hprog : ws.prog with _ | ⟨instr, rest⟩
+    unfold wp_wasm_iProp_F
+    simp only [LeibnizO.car]
+    split
     · -- ws.prog = []
-      unfold wp_wasm_iProp_F Ψ; simp only [LeibnizO.car, hprog]
+      unfold Ψ; simp only [LeibnizO.car]
       iintro H HR
       iapply least_fixpoint_unfold_mpr
-      unfold wp_wasm_iProp_F; simp only [LeibnizO.car, hprog]
+      unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]
       isplitl [H]
       · iexact H
       · iexact HR
-    · by_cases h_ret : instr = Instruction.ret
-      · -- ws.prog = .ret :: rest
-        subst h_ret
-        unfold wp_wasm_iProp_F Ψ; simp only [LeibnizO.car, hprog]
-        iintro H HR
-        iapply least_fixpoint_unfold_mpr
-        unfold wp_wasm_iProp_F; simp only [LeibnizO.car, hprog]
-        isplitl [H]
-        · iexact H
-        · iexact HR
-      · -- ws.prog = instr :: rest, instr ≠ .ret
-        unfold wp_wasm_iProp_F Ψ; simp only [LeibnizO.car, hprog]
-        iintro Hwp HR
-        iapply least_fixpoint_unfold_mpr
-        unfold wp_wasm_iProp_F; simp only [LeibnizO.car, hprog]
+    · -- ws.prog = .ret :: rest
+      unfold Ψ; simp only [LeibnizO.car]
+      iintro H HR
+      iapply least_fixpoint_unfold_mpr
+      unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]
+      isplitl [H]
+      · iexact H
+      · iexact HR
+    · -- ws.prog = .block bt bl body :: rest
+      next bt bl body rest =>
+      unfold Ψ; simp only [LeibnizO.car]
+      iintro Hwp HR
+      iapply least_fixpoint_unfold_mpr
+      unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]
+      icases Hwp with (Hwp_fall | Hwp_ret)
+      · ileft
         iintro %σ Hσ
-        imod Hwp $$ %σ Hσ with ⟨%σ', %st', %locals', hexec, Hσ', HΨ⟩
+        imod Hwp_fall $$ %σ Hσ with ⟨%σ', %N, %st', %s', hexec, Hσ', HΨ⟩
         imodintro
-        iexists σ', st', locals'
+        iexists σ', N, st', s'
         isplitl [hexec]
         · iexact hexec
         · isplitl [Hσ']
           · iexact Hσ'
           · iapply HΨ
             iexact HR
+      · iright
+        icases Hwp_ret with ⟨%N, %st', %vs, hexec, HΦ⟩
+        iexists N, st', vs
+        isplitl [hexec]
+        · iexact hexec
+        · isplitl [HΦ]
+          · iexact HΦ
+          · iexact HR
+    · -- ws.prog = instr :: rest (non-block, non-ret)
+      next instr rest =>
+      unfold Ψ; simp only [LeibnizO.car]
+      iintro Hwp HR
+      iapply least_fixpoint_unfold_mpr
+      unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]
+      iintro %σ Hσ
+      imod Hwp $$ %σ Hσ with ⟨%σ', %st', %locals', hexec, Hσ', HΨ⟩
+      imodintro
+      iexists σ', st', locals'
+      isplitl [hexec]
+      · iexact hexec
+      · isplitl [Hσ']
+        · iexact Hσ'
+        · iapply HΨ
+          iexact HR
   have hfp :
       bi_least_fixpoint wp_wasm_iProp_F ⟨{ m, st, locals, prog, env, Φ }⟩ ⊢
       Ψ ⟨{ m, st, locals, prog, env, Φ }⟩ :=
@@ -214,27 +307,15 @@ theorem wp_wasm_iProp_pure
     have hstep₁ : ⊢ □ (∀ y : LeibnizO WasmState, wp_wasm_F Ψ₁ y -∗ Ψ₁ y) := by
       iintro !> %s
       obtain ⟨ws₁⟩ := s
-      rcases hprog₁ : ws₁.prog with _ | ⟨instr₁, rest₁⟩
-      · -- ws₁.prog = []
-        unfold wp_wasm_F Ψ₁; simp only [LeibnizO.car, hprog₁]
-        iintro H
-        iapply least_fixpoint_unfold_mpr
-        unfold wp_wasm_iProp_F; simp only [LeibnizO.car, hprog₁]
-        iexact H
-      · by_cases h_ret₁ : instr₁ = Instruction.ret
-        · -- ws₁.prog = .ret :: rest₁
-          subst h_ret₁
-          unfold wp_wasm_F Ψ₁; simp only [LeibnizO.car, hprog₁]
-          iintro H
-          iapply least_fixpoint_unfold_mpr
-          unfold wp_wasm_iProp_F; simp only [LeibnizO.car, hprog₁]
-          iexact H
-        · -- ws₁.prog = instr₁ :: rest₁, instr₁ ≠ .ret
-          unfold wp_wasm_F Ψ₁; simp only [LeibnizO.car, hprog₁]
-          iintro H
-          iapply least_fixpoint_unfold_mpr
-          unfold wp_wasm_iProp_F; simp only [LeibnizO.car, hprog₁]
-          iexact H
+      unfold wp_wasm_F Ψ₁
+      simp only [LeibnizO.car]
+      split
+      · iintro H; iapply least_fixpoint_unfold_mpr; unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]; iexact H
+      · iintro H; iapply least_fixpoint_unfold_mpr; unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]; iexact H
+      · next bt bl body rest₁ =>
+        iintro H; iapply least_fixpoint_unfold_mpr; unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]; iexact H
+      · next instr₁ rest₁ =>
+        iintro H; iapply least_fixpoint_unfold_mpr; unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]; iexact H
     exact BI.sep_elim_emp_valid_left hstep₁
       (BI.wand_elim ((BI.wand_entails (least_fixpoint_iter (F := wp_wasm_F))).trans
         (BI.forall_elim (⟨{ m, st, locals, prog, env, Q }⟩ : LeibnizO WasmState))))
@@ -253,40 +334,63 @@ theorem wp_wasm_iProp_pure
     have hstep₂ : ⊢ □ (∀ y : LeibnizO WasmStateIProp, wp_wasm_iProp_F Ψ₂ y -∗ Ψ₂ y) := by
       iintro !> %s
       obtain ⟨ws₂⟩ := s
-      rcases hprog₂ : ws₂.prog with _ | ⟨instr₂, rest₂⟩
+      unfold wp_wasm_iProp_F Ψ₂
+      simp only [LeibnizO.car]
+      split
       · -- ws₂.prog = []
-        unfold wp_wasm_iProp_F Ψ₂; simp only [LeibnizO.car, hprog₂]
         iintro H %Q'' HΦQ''
         iapply least_fixpoint_unfold_mpr
-        unfold wp_wasm_F; simp only [LeibnizO.car, hprog₂]
+        unfold wp_wasm_F; simp only [LeibnizO.car, *]
         ispecialize HΦQ'' $$ %ws₂.st %([] : List Value)
         ispecialize HΦQ'' $$ H
         iexact HΦQ''
-      · by_cases h_ret₂ : instr₂ = Instruction.ret
-        · -- ws₂.prog = .ret :: rest₂
-          subst h_ret₂
-          unfold wp_wasm_iProp_F Ψ₂; simp only [LeibnizO.car, hprog₂]
-          iintro H %Q'' HΦQ''
-          iapply least_fixpoint_unfold_mpr
-          unfold wp_wasm_F; simp only [LeibnizO.car, hprog₂]
-          ispecialize HΦQ'' $$ %ws₂.st %ws₂.locals.values
-          ispecialize HΦQ'' $$ H
-          iexact HΦQ''
-        · -- ws₂.prog = instr₂ :: rest₂, instr₂ ≠ .ret
-          unfold wp_wasm_iProp_F Ψ₂; simp only [LeibnizO.car, hprog₂]
-          iintro Hwp₂ %Q'' HΦQ''
-          iapply least_fixpoint_unfold_mpr
-          unfold wp_wasm_F; simp only [LeibnizO.car, hprog₂]
+      · -- ws₂.prog = .ret :: rest₂
+        iintro H %Q'' HΦQ''
+        iapply least_fixpoint_unfold_mpr
+        unfold wp_wasm_F; simp only [LeibnizO.car, *]
+        ispecialize HΦQ'' $$ %ws₂.st %ws₂.locals.values
+        ispecialize HΦQ'' $$ H
+        iexact HΦQ''
+      · -- ws₂.prog = .block bt bl body :: rest₂
+        next bt bl body rest₂ =>
+        iintro Hwp₂ %Q'' HΦQ''
+        iapply least_fixpoint_unfold_mpr
+        unfold wp_wasm_F; simp only [LeibnizO.car, *]
+        icases Hwp₂ with (Hwp_fall | Hwp_ret)
+        · ileft
           iintro %σ₂ Hσ₂
-          imod Hwp₂ $$ %σ₂ Hσ₂ with ⟨%σ₂', %st₂', %loc₂', hexec₂, Hσ₂', Hcont₂⟩
+          imod Hwp_fall $$ %σ₂ Hσ₂ with ⟨%σ₂', %N₂, %st₂', %s₂', hexec₂, Hσ₂', Hcont₂⟩
           imodintro
-          iexists σ₂', st₂', loc₂'
+          iexists σ₂', N₂, st₂', s₂'
           isplitl [hexec₂]
           · iexact hexec₂
           · isplitl [Hσ₂']
             · iexact Hσ₂'
             · ispecialize Hcont₂ $$ %Q'' HΦQ''
               iexact Hcont₂
+        · iright
+          icases Hwp_ret with ⟨%N, %st', %vs, hexec, HΦ⟩
+          ispecialize HΦQ'' $$ %st' %vs
+          ispecialize HΦQ'' $$ HΦ
+          iexists N, st', vs
+          isplitl [hexec]
+          · iexact hexec
+          · iexact HΦQ''
+      · -- ws₂.prog = instr₂ :: rest₂ (non-block, non-ret)
+        next instr₂ rest₂ =>
+        iintro Hwp₂ %Q'' HΦQ''
+        iapply least_fixpoint_unfold_mpr
+        unfold wp_wasm_F; simp only [LeibnizO.car, *]
+        iintro %σ₂ Hσ₂
+        imod Hwp₂ $$ %σ₂ Hσ₂ with ⟨%σ₂', %st₂', %loc₂', hexec₂, Hσ₂', Hcont₂⟩
+        imodintro
+        iexists σ₂', st₂', loc₂'
+        isplitl [hexec₂]
+        · iexact hexec₂
+        · isplitl [Hσ₂']
+          · iexact Hσ₂'
+          · ispecialize Hcont₂ $$ %Q'' HΦQ''
+            iexact Hcont₂
     have hfp₂ :
         bi_least_fixpoint wp_wasm_iProp_F
           ⟨{ m, st, locals, prog, env, Φ := fun st' vs => iprop% ⌜Q st' vs⌝ }⟩ ⊢
@@ -341,6 +445,27 @@ theorem wp_wasm_step
     next tail h =>
     obtain ⟨rfl, _⟩ := List.cons.inj h
     simp [execOne] at hexec
+  · -- block: instr₀ = .block bt bl body, only provable when body = []
+    next bt bl body rest h =>
+    obtain ⟨h_instr, rfl⟩ := List.cons.inj h
+    subst h_instr
+    cases body with
+    | cons _ _ => simp [execOne, exec] at hexec
+    | nil =>
+      simp [execOne, exec] at hexec
+      obtain ⟨hst', hloc'⟩ := hexec
+      subst hst'; subst hloc'
+      unfold wp_wasm at hstep
+      ileft
+      iintro %σ Hσ
+      imod (hstep σ) $$ Hσ with ⟨%σ', Hσ', Hwp⟩
+      imodintro
+      iexists σ', 0, st, locals
+      isplitl []
+      · exact BI.pure_intro (Or.inl (by simp [exec]))
+      · isplitl [Hσ']
+        · iexact Hσ'
+        · iexact Hwp
   · -- general: subst equalities, then iris proof
     next instr rest h =>
     obtain ⟨h1, h2⟩ := List.cons.inj h
@@ -357,6 +482,53 @@ theorem wp_wasm_step
     · isplitl [Hσ']
       · iexact Hσ'
       · iexact Hwp
+
+-- block rule: body either falls through or breaks to label 0;
+-- both cases produce the same trimmed continuation locals.
+theorem wp_wasm_prop_block
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {bt bl : Nat} {body : Program} {rest : Program}
+    {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    (hbody : ∃ N, ∀ fuel ≥ N,
+      (∃ st' s', exec fuel m st locals body env = .Fallthrough st' s' ∧
+        wp_wasm_prop m st' { s' with values := s'.values.take bl ++ locals.values.drop bt }
+          rest env Q) ∨
+      (∃ st' s', exec fuel m st locals body env = .Break 0 st' s' ∧
+        wp_wasm_prop m st' { s' with values := s'.values.take bl ++ locals.values.drop bt }
+          rest env Q)) :
+    wp_wasm_prop m st locals (.block bt bl body :: rest) env Q := by
+  obtain ⟨N, hN⟩ := hbody
+  rcases hN N le_rfl with ⟨st', s', hbody_result, hwp⟩ | ⟨st', s', hbody_result, hwp⟩ <;> {
+    obtain ⟨fuel_rest, hfuel⟩ := hwp
+    have hbody_ne : exec N m st locals body env ≠ .OutOfFuel := by
+      rw [hbody_result]; intro h; cases h
+    have hfuel_ne : exec fuel_rest m st'
+        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env ≠ .OutOfFuel := by
+      intro h; simp only [h] at hfuel
+    refine ⟨max N fuel_rest + 1, ?_⟩
+    have hbody' : exec (max N fuel_rest) m st locals body env = exec N m st locals body env :=
+      exec_fuel_mono (Nat.le_max_left N fuel_rest) hbody_ne
+    have hfuel' : exec (max N fuel_rest + 1) m st'
+        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env =
+        exec fuel_rest m st'
+        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env :=
+      exec_fuel_mono (by omega) hfuel_ne
+    simp only [exec_block_cons, hbody', hbody_result, hfuel']
+    exact hfuel }
+
+theorem wp_wasm_prop_block_ret
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {bt bl : Nat} {body : Program} {rest : Program}
+    {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    (hbody : ∃ N : Nat, ∃ st' : Store Unit, ∃ vs : List Value,
+      exec N m st locals body env = .Return st' vs ∧ Q st' vs) :
+    wp_wasm_prop m st locals (.block bt bl body :: rest) env Q := by
+  obtain ⟨N, st', vs, hexec, hQ⟩ := hbody
+  refine ⟨N + 1, ?_⟩
+  simp only [exec_block_cons, hexec]
+  exact hQ
 
 theorem wasm_adequacy
     (m : Module) (st : Store Unit) (locals : Locals)
@@ -383,6 +555,27 @@ theorem wasm_adequacy
     · refine BI.entails_wand (BI.pure_elim' fun h =>
         BI.forall_intro fun _ => BI.wand_intro (BI.pure_intro ⟨1, ?_⟩))
       simp only [exec, execOne]; exact h
+    · next bt bl body rest =>
+      iintro Hwp
+      icases Hwp with (Hwp_fall | Hwp_ret)
+      · iintro %σ_any
+        iintro Hσ_any
+        imod Hwp_fall $$ % σ_any Hσ_any with ⟨%σ₁, %N, %st₁, %s₁, hexec, Hσ₁, Hcont⟩
+        icases hexec with %hexec_lean
+        icases Hcont $$ % σ₁ Hσ₁ with %hwp_lean
+        exact BI.pure_intro (wp_wasm_prop_block ⟨N, fun fuel hfuel =>
+          hexec_lean.elim
+            (fun h => Or.inl ⟨st₁, s₁,
+              (exec_fuel_mono hfuel (by rw [h]; intro h'; cases h')).trans h,
+              hwp_lean⟩)
+            (fun h => Or.inr ⟨st₁, s₁,
+              (exec_fuel_mono hfuel (by rw [h]; intro h'; cases h')).trans h,
+              hwp_lean⟩)⟩)
+      · icases Hwp_ret with ⟨%N, %st₁, %vs, hexec, hQ⟩
+        icases hexec with %hexec_lean
+        icases hQ with %hQ_lean
+        exact BI.forall_intro fun _ => BI.wand_intro (BI.pure_intro
+          (wp_wasm_prop_block_ret ⟨N, st₁, vs, hexec_lean, hQ_lean⟩))
     · next instr rest =>
       iintro Hwp
       iintro %σ_any
@@ -424,39 +617,62 @@ theorem wp_wasm_prop_call
   simp only [exec_call_cons, hrun', hfuel']
   exact hfuel
 
--- block rule: body either falls through or breaks to label 0;
--- both cases produce the same trimmed continuation locals.
-theorem wp_wasm_prop_block
+-- iProp block rule: body either falls through or breaks to label 0;
+-- both produce the same trimmed continuation locals.
+theorem wp_wasm_iProp_block
     {m : Module} {st : Store Unit} {locals : Locals}
     {bt bl : Nat} {body : Program} {rest : Program}
     {env : HostEnv Unit}
-    {Q : Store Unit → List Value → Prop}
-    (hbody : ∃ N, ∀ fuel ≥ N,
-      (∃ st' s', exec fuel m st locals body env = .Fallthrough st' s' ∧
-        wp_wasm_prop m st' { s' with values := s'.values.take bl ++ locals.values.drop bt }
-          rest env Q) ∨
-      (∃ st' s', exec fuel m st locals body env = .Break 0 st' s' ∧
-        wp_wasm_prop m st' { s' with values := s'.values.take bl ++ locals.values.drop bt }
-          rest env Q)) :
-    wp_wasm_prop m st locals (.block bt bl body :: rest) env Q := by
+    {Φ : Store Unit → List Value → IProp WasmHeapGF}
+    (hbody : ∃ N,
+      (∃ st' s', exec N m st locals body env = .Fallthrough st' s' ∧
+        (⊢ wp_wasm_iProp m st' { s' with values := s'.values.take bl ++ locals.values.drop bt }
+          rest env Φ)) ∨
+      (∃ st' s', exec N m st locals body env = .Break 0 st' s' ∧
+        (⊢ wp_wasm_iProp m st' { s' with values := s'.values.take bl ++ locals.values.drop bt }
+          rest env Φ))) :
+    ⊢ wp_wasm_iProp m st locals (.block bt bl body :: rest) env Φ := by
+  unfold wp_wasm_iProp
+  iapply least_fixpoint_unfold_mpr
+  unfold wp_wasm_iProp_F
+  simp only [LeibnizO.car]
   obtain ⟨N, hN⟩ := hbody
-  rcases hN N le_rfl with ⟨st', s', hbody_result, hwp⟩ | ⟨st', s', hbody_result, hwp⟩ <;> {
-    obtain ⟨fuel_rest, hfuel⟩ := hwp
-    have hbody_ne : exec N m st locals body env ≠ .OutOfFuel := by
-      rw [hbody_result]; intro h; cases h
-    have hfuel_ne : exec fuel_rest m st'
-        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env ≠ .OutOfFuel := by
-      intro h; simp only [h] at hfuel
-    refine ⟨max N fuel_rest + 1, ?_⟩
-    have hbody' : exec (max N fuel_rest) m st locals body env = exec N m st locals body env :=
-      exec_fuel_mono (Nat.le_max_left N fuel_rest) hbody_ne
-    have hfuel' : exec (max N fuel_rest + 1) m st'
-        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env =
-        exec fuel_rest m st'
-        { s' with values := s'.values.take bl ++ locals.values.drop bt } rest env :=
-      exec_fuel_mono (by omega) hfuel_ne
-    simp only [exec_block_cons, hbody', hbody_result, hfuel']
-    exact hfuel }
+  ileft
+  iintro %σ Hσ
+  imodintro
+  rcases hN with ⟨st', s', hexec, hwp_rest⟩ | ⟨st', s', hexec, hwp_rest⟩
+  · iexists σ, N, st', s'
+    isplitl []
+    · exact BI.pure_intro (Or.inl hexec)
+    · isplitl [Hσ]
+      · iexact Hσ
+      · exact hwp_rest
+  · iexists σ, N, st', s'
+    isplitl []
+    · exact BI.pure_intro (Or.inr hexec)
+    · isplitl [Hσ]
+      · iexact Hσ
+      · exact hwp_rest
+
+-- iProp block rule: body returns from the enclosing function.
+theorem wp_wasm_iProp_block_ret
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {bt bl : Nat} {body : Program} {rest : Program}
+    {env : HostEnv Unit}
+    {Φ : Store Unit → List Value → IProp WasmHeapGF}
+    (hbody : ∃ N : Nat, ∃ st' : Store Unit, ∃ vs : List Value,
+      exec N m st locals body env = .Return st' vs ∧ (⊢ Φ st' vs)) :
+    ⊢ wp_wasm_iProp m st locals (.block bt bl body :: rest) env Φ := by
+  obtain ⟨N, st', vs, hexec, hΦ⟩ := hbody
+  unfold wp_wasm_iProp
+  iapply least_fixpoint_unfold_mpr
+  unfold wp_wasm_iProp_F
+  simp only [LeibnizO.car]
+  iright
+  iexists N, st', vs
+  isplitl []
+  · exact BI.pure_intro hexec
+  · exact hΦ
 
 -- loop rule: invariant I and measure μ; body either falls through (exit) or
 -- breaks to label 0 (re-enter) with I re-established and μ decreased.
@@ -911,27 +1127,39 @@ lemma wp_wasm_iProp_trivialize
   have hstep : ⊢ □ (∀ y : LeibnizO WasmStateIProp, wp_wasm_iProp_F Ψ' y -∗ Ψ' y) := by
     iintro !> %s
     obtain ⟨ws⟩ := s
-    rcases hprog : ws.prog with _ | ⟨instr, rest⟩
+    unfold wp_wasm_iProp_F Ψ'
+    simp only [LeibnizO.car]
+    split
     · -- prog = [] : postcondition → ⌜True⌝ trivially in affine BI
-      unfold wp_wasm_iProp_F Ψ'; simp only [LeibnizO.car, hprog]
       iintro _H
       iapply least_fixpoint_unfold_mpr
-      unfold wp_wasm_iProp_F; simp only [LeibnizO.car, hprog]
+      unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]
       exact BI.pure_intro trivial
-    · by_cases h_ret : instr = Instruction.ret
-      · -- prog = .ret :: _ : same trivial close
-        subst h_ret
-        unfold wp_wasm_iProp_F Ψ'; simp only [LeibnizO.car, hprog]
-        iintro _H
-        iapply least_fixpoint_unfold_mpr
-        unfold wp_wasm_iProp_F; simp only [LeibnizO.car, hprog]
-        exact BI.pure_intro trivial
-      · -- prog = instr :: rest (instr ≠ .ret): Ψ' ignores Φ, so Hwp IS the goal
-        unfold wp_wasm_iProp_F Ψ'; simp only [LeibnizO.car, hprog]
-        iintro Hwp
-        iapply least_fixpoint_unfold_mpr
-        unfold wp_wasm_iProp_F; simp only [LeibnizO.car, hprog]
-        iexact Hwp
+    · -- prog = .ret :: _ : same trivial close
+      iintro _H
+      iapply least_fixpoint_unfold_mpr
+      unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]
+      exact BI.pure_intro trivial
+    · -- prog = .block bt bl body :: rest
+      next bt bl body rest =>
+      iintro Hwp
+      iapply least_fixpoint_unfold_mpr
+      unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]
+      icases Hwp with (Hwp_fall | Hwp_ret)
+      · ileft
+        iexact Hwp_fall
+      · iright
+        icases Hwp_ret with ⟨%N, %st', %vs, hexec, _HΦ⟩
+        iexists N, st', vs
+        isplitl [hexec]
+        · iexact hexec
+        · exact BI.pure_intro trivial
+    · -- prog = instr :: rest (instr ≠ .ret, ≠ .block): Ψ' ignores Φ, so Hwp IS the goal
+      next instr rest =>
+      iintro Hwp
+      iapply least_fixpoint_unfold_mpr
+      unfold wp_wasm_iProp_F; simp only [LeibnizO.car, *]
+      iexact Hwp
   have hfp :
       bi_least_fixpoint wp_wasm_iProp_F ⟨{ m, st, locals, prog, env, Φ := post }⟩ ⊢
       Ψ' ⟨{ m, st, locals, prog, env, Φ := post }⟩ :=
