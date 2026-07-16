@@ -916,73 +916,137 @@ theorem func10_spec (st : Store Unit)
     -- lbody: the instruction list inside .loop 0 1 [...] (func10's last instruction).
     obtain ⟨lbody, _⟩ : ∃ lbody : Program,
         func10.getLast? = some (.loop 0 1 lbody) := ⟨_, rfl⟩
-    -- (B) Loop: wp_wasm_prop_loop with partition_inv invariant, proven helpers wired in.
-    have h_loop : wp_wasm_prop «module» st
-        (func10Def.toLocals ([.i32 (UInt32.ofNat xs.length), .i32 ptr].take 2).reverse)
-        [.loop 0 1 lbody] {} P10 := by
+    -- frame = g0 - 48 (set by preamble; invariant-maintained through loop).
+    let frame : UInt32 := g0 - 48
+    -- (B) Loop: wp_wasm_prop_loop from post-preamble state (st_pre, loc_pre).
+    -- Richer invariant I tracks local2 (frame ptr), local4 (pivot), frame memory, global0.
+    -- Measure μ = xs.length - 1 - frame[32].toNat (= xs.length - 1 - j); decreases each iter.
+    --
+    -- WHY THE STRONGER I: lbody uses local2 (frame ptr) and frame memory at every step.
+    -- The old I only tracked local9=j but exec traces need local2/local4/frame[28/32/36]/global0.
+    -- WHY h_loop IS PARAMETERISED: it starts from the POST-PREAMBLE state (st_pre, loc_pre),
+    -- not from (st, loc0); the preamble sorry (below) establishes these conditions.
+    -- WHY stB_b ≠ stA in case (b): func5 writes to frame region [g0-80, g0-48), changing
+    -- the store. The array region [ptr, ptr+4*len) is untouched, so partition_inv is preserved.
+    have h_loop : ∀ (st_pre : Store Unit) (loc_pre : Locals),
+        loc_pre.get 2 = some (.i32 frame) →
+        loc_pre.get 4 = some (.i32 xs.getLast!) →
+        st_pre.mem.read32 (frame + 28) = UInt32.ofNat 0 →
+        st_pre.mem.read32 (frame + 32) = UInt32.ofNat 0 →
+        st_pre.mem.read32 (frame + 36) = UInt32.ofNat (xs.length - 1) →
+        st_pre.globals.globals[0]? = some (.i32 frame) →
+        wordsAt st_pre.mem ptr xs.length = xs →
+        st_pre.mem.pages = st.mem.pages →
+        wp_wasm_prop «module» st_pre loc_pre [.loop 0 1 lbody] {} P10 := by
+      intro st_pre loc_pre hloc2 hloc4 hframe28_0 hframe32_0 hframe36_end
+            hglobal0 hmem_pre hpg_pre
       apply wp_wasm_prop_loop
-        (I := fun stA _ => ∃ i j : Nat, partition_inv ptr xs i j stA)
-        (μ := fun _ _ => xs.length)
-      · -- hinit: partition_inv ptr xs 0 0 st  [PROVEN via partition_inv_init]
-        exact ⟨0, 0, partition_inv_init ptr xs st hlen hpg hmem⟩
-      · -- hstep: sorry'd; three cases:
-        -- Case split: (a) j = len-1 → Return; (b) arr[j]>pivot → Break 0; (c) arr[j]≤pivot → Break 0
-        rintro stA locA ⟨i, j, hinvA⟩
+        (I := fun stA locA => ∃ i j : Nat,
+            partition_inv ptr xs i j stA ∧
+            locA.get 2 = some (.i32 frame) ∧
+            locA.get 4 = some (.i32 xs.getLast!) ∧
+            stA.mem.read32 (frame + 28) = UInt32.ofNat i ∧
+            stA.mem.read32 (frame + 32) = UInt32.ofNat j ∧
+            stA.mem.read32 (frame + 36) = UInt32.ofNat (xs.length - 1) ∧
+            stA.globals.globals[0]? = some (.i32 frame))
+        (μ := fun stA _ => xs.length - 1 - (stA.mem.read32 (frame + 32)).toNat)
+      · -- hinit: invariant holds at post-preamble state (i=0, j=0).
+        refine ⟨0, 0, partition_inv_init ptr xs st_pre hlen ?_ hmem_pre,
+                hloc2, hloc4, hframe28_0, hframe32_0, hframe36_end, hglobal0⟩
+        rw [hpg_pre]; exact hpg
+      · -- hstep: case split on j vs len-1 and arr[j] vs pivot.
+        rintro stA locA ⟨i, j, hinvA, hloc2A, hloc4A, hframe28A, hframe32A, hframe36A, hglobal0A⟩
         by_cases hj : j = xs.length - 1
-        · -- (a) j = len-1: iterator exhausted. Final swap arr[i]↔arr[len-1], return i.
-          -- EXEC TRACE + POSTCONDITION (sorry'd, ~80 instrs + func7 call):
-          -- Loop body detects iter done (frame[40]&1=0), calls func7 to swap arr[i]↔arr[len-1],
-          -- restores global0, returns [.i32 i]. P10 follows from partition_inv after final swap.
+        · -- (a) j = len-1: frame[32]=frame[36] → next func5 call is exhausted.
+          -- Exec: func5 flag=0, exhausted branch → func7 final swap arr[i]↔arr[len-1],
+          -- restore global0 := frame, return [.i32 i].
+          -- P10: from partition_inv after swap arr[i]↔arr[len-1] (pivot_idx = UInt32.ofNat i).
           refine ⟨0, fun fuel _ => Or.inr (Or.inr ?_)⟩
           obtain ⟨stR, hexec_a, hP10_a⟩ : ∃ stR : Store Unit,
               exec fuel «module» stA locA lbody {} = .Return stR [.i32 (UInt32.ofNat i)] ∧
               P10 stR [.i32 (UInt32.ofNat i)] := by
-            sorry  -- exec trace ~80 instrs + func7 call; P10 from partition_inv after final swap
+            sorry  -- exec trace (exhausted): func5 flag=0 → exhausted branch → func7 → return i
+                   -- P10: pivot_idx=i, arr' = swapElems arr i (len-1), from partition_inv + final swap
           exact ⟨stR, [.i32 (UInt32.ofNat i)], hexec_a, hP10_a⟩
-        · -- j < xs.length - 1
+        · -- j < xs.length - 1 (not exhausted; func5 will yield j this iteration)
           have hj_lt : j + 1 < xs.length := by
             have := hinvA.1; have := hinvA.2.2.1; omega
           by_cases harr : xs.getLast! < (wordsAt stA.mem ptr xs.length)[j]!
-          · -- (b) arr[j] > pivot: no memory change; j advances via func5.
-            have hinv' : partition_inv ptr xs i (j + 1) stA :=
-              partition_inv_step_gt ptr xs i j stA stA hinvA hj_lt harr rfl rfl
+          · -- (b) arr[j] > pivot: no array swap; func5 advances frame[32]: j→j+1. Break 0.
+            -- Exec: func5(frame+8, frame+32) → frame[32]:=j+1, frame[12]:=j, local8:=j.
+            -- D block: frame[40]=1 (has value), local9:=j, j<len-1 → br D.
+            -- B block: arr[j]>pivot → br 2 → propagates to lbody = Break 0 stB_b sB_b.
+            -- Store change: stB_b differs from stA only in frame region (below ptr, above array).
             refine ⟨0, fun fuel _ => Or.inr (Or.inl ?_)⟩
-            -- EXEC TRACE (sorry'd, ~80 instructions):
-            -- Loop body calls func5 (j→j+1), gt-branch taken, Break 0. No memory change.
-            obtain ⟨sB_b, hexec_b⟩ : ∃ sB_b : Locals,
-                exec fuel «module» stA locA lbody {} = .Break 0 stA sB_b := by
-              sorry  -- exec trace ~80 instructions (>50-instruction threshold)
-            exact ⟨stA, sB_b, hexec_b, ⟨i, j + 1, hinv'⟩,
+            obtain ⟨stB_b, sB_b, hexec_b, hinvB_b, hlocB2, hlocB4, hframeB28, hframeB32,
+                    hframeB36, hglobal0B, hframeB32_toNat, hframe32A_toNat⟩ :
+                ∃ stB_b : Store Unit, ∃ sB_b : Locals,
+                exec fuel «module» stA locA lbody {} = .Break 0 stB_b sB_b ∧
+                partition_inv ptr xs i (j + 1) stB_b ∧
+                sB_b.get 2 = some (.i32 frame) ∧
+                sB_b.get 4 = some (.i32 xs.getLast!) ∧
+                stB_b.mem.read32 (frame + 28) = UInt32.ofNat i ∧
+                stB_b.mem.read32 (frame + 32) = UInt32.ofNat (j + 1) ∧
+                stB_b.mem.read32 (frame + 36) = UInt32.ofNat (xs.length - 1) ∧
+                stB_b.globals.globals[0]? = some (.i32 frame) ∧
+                (stB_b.mem.read32 (frame + 32)).toNat = j + 1 ∧
+                (stA.mem.read32 (frame + 32)).toNat = j := by
+              sorry  -- exec trace: func5 call (frame[32]:=j+1), gt branch, Break 0
+            simp only [List.take_zero, List.drop_zero, List.nil_append]
+            exact ⟨stB_b, sB_b, hexec_b,
+              ⟨i, j + 1, hinvB_b, hlocB2, hlocB4, hframeB28, hframeB32,
+               hframeB36, hglobal0B⟩,
               by
-                -- MEASURE (sorry'd): μ stA {sB_b with values:=locA.values} < μ stA locA.
-                -- Real measure: xs.length-1-(j+1) < xs.length-1-j; omega from hj_lt.
-                -- Blocked: μ = fun _ _ => xs.length (constant placeholder needs updating).
-                sorry⟩
-          · -- (c) arr[j] ≤ pivot: swap arr[i]↔arr[j] via func7; i and j both advance.
-            --     partition_inv_step_le (PROVEN) maintains invariant at (i+1, j+1).
+                show xs.length - 1 - (stB_b.mem.read32 (frame + 32)).toNat <
+                     xs.length - 1 - (stA.mem.read32 (frame + 32)).toNat
+                rw [hframeB32_toNat, hframe32A_toNat]
+                have hj_lt_xs := hinvA.2.2.1
+                omega⟩
+          · -- (c) arr[j] ≤ pivot: func7 swaps arr[i]↔arr[j]; frame[28]:=i+1. Break 0.
+            -- Exec: func5 yields j (frame[32]:=j+1). B block: arr[j]≤pivot →
+            -- func7(ptr,len,i,j,...) swaps arr[i]↔arr[j] in memory. frame[28]:=i+1. Break 0.
             have harr_le : (wordsAt stA.mem ptr xs.length)[j]! ≤ xs.getLast! :=
               UInt32.not_lt.mp harr
             have hi_lt : i < xs.length := by
               have := hinvA.2.1; have := hinvA.2.2.1; omega
             refine ⟨0, fun fuel _ => Or.inr (Or.inl ?_)⟩
-            -- EXEC TRACE (sorry'd, ~80 instrs + func7 call):
-            -- Loop body: le-branch, func7 swaps arr[i]↔arr[j], i++, j++, Break 0.
-            obtain ⟨stC, sC, hexec, hmem_eq, hpg_eq⟩ :
+            obtain ⟨stC, sC, hexec_c, hinvC, hlocC2, hlocC4, hframeC28, hframeC32,
+                    hframeC36, hglobal0C, hframeC32_toNat, hframe32A_toNat⟩ :
                 ∃ stC : Store Unit, ∃ sC : Locals,
                 exec fuel «module» stA locA lbody {} = .Break 0 stC sC ∧
-                wordsAt stC.mem ptr xs.length =
-                  swapElems (wordsAt stA.mem ptr xs.length) i j ∧
-                stC.mem.pages = stA.mem.pages := by
-              sorry  -- exec trace ~80 instrs + func7 call (>50-instruction threshold)
-            exact ⟨stC, sC, hexec,
-              ⟨i + 1, j + 1,
-                partition_inv_step_le ptr xs i j stA stC hinvA hj_lt hi_lt harr_le hmem_eq hpg_eq⟩,
+                partition_inv ptr xs (i + 1) (j + 1) stC ∧
+                sC.get 2 = some (.i32 frame) ∧
+                sC.get 4 = some (.i32 xs.getLast!) ∧
+                stC.mem.read32 (frame + 28) = UInt32.ofNat (i + 1) ∧
+                stC.mem.read32 (frame + 32) = UInt32.ofNat (j + 1) ∧
+                stC.mem.read32 (frame + 36) = UInt32.ofNat (xs.length - 1) ∧
+                stC.globals.globals[0]? = some (.i32 frame) ∧
+                (stC.mem.read32 (frame + 32)).toNat = j + 1 ∧
+                (stA.mem.read32 (frame + 32)).toNat = j := by
+              sorry  -- exec trace: func5 call, le branch, func7 swap, frame[28]:=i+1, Break 0
+            simp only [List.take_zero, List.drop_zero, List.nil_append]
+            exact ⟨stC, sC, hexec_c,
+              ⟨i + 1, j + 1, hinvC, hlocC2, hlocC4, hframeC28, hframeC32,
+               hframeC36, hglobal0C⟩,
               by
-                -- MEASURE (sorry'd): xs.length-1-(j+1) < xs.length-1-j; omega from hj_lt.
-                -- Blocked: μ = fun _ _ => xs.length (constant placeholder needs updating).
-                sorry⟩
-    -- (A)+(C) Preamble connection (sorry'd): exec chain through func10.body preamble
-    -- bridges the full func10Def.body to [.loop 0 1 lbody]; h_loop closes the loop.
+                show xs.length - 1 - (stC.mem.read32 (frame + 32)).toNat <
+                     xs.length - 1 - (stA.mem.read32 (frame + 32)).toNat
+                rw [hframeC32_toNat, hframe32A_toNat]
+                have hj_lt_xs := hinvA.2.2.1
+                omega⟩
+    -- (A)+(C) Preamble connection: exec func10Def.body preamble from (st, loc0) to reach
+    -- (st_pre, loc_pre), then apply h_loop to get wp_wasm_prop for the full body.
+    --
+    -- Preamble sets (sorry'd exec trace):
+    --   local2 = g0-48 = frame       (globalGet 0, sub 48, localSet 2)
+    --   global0 = frame              (localGet 2, globalSet 0)
+    --   local4 = arr[len-1]          (load xs.getLast! into local4)
+    --   frame[28] = 0                (UInt32.ofNat 0 = write-head i)
+    --   frame[32] = 0                (from func9 iterator init: iter.current = 0)
+    --   frame[36] = len-1            (from func9: iter.end = len-1)
+    --   array unchanged              (preamble writes only to frame region, below ptr)
+    -- Then h_loop provides wp_wasm_prop for [.loop 0 1 lbody] from (st_pre, loc_pre).
+    -- Fuel composition: fuel_total = fuel_preamble + fuel_loop.
     sorry
   -- Strategy:
   --
