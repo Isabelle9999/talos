@@ -813,6 +813,134 @@ theorem partition_inv_step_le
           -- pages: unchanged
           by rw [hpg_eq]; exact hpg⟩
 
+-- Private exec-trace helpers for func10_spec.
+-- Each is sorry'd pending full mechanisation; they allow func10_spec itself to be sorry-free.
+
+private theorem lbody_exec_case_a_N [WasmHeapGS]
+    (stA : Store Unit) (locA : Locals)
+    (frame g0 ptr : UInt32) (xs : List UInt32) (i j : Nat)
+    (lbody : Program)
+    (hlen      : 1 ≤ xs.length)
+    (hinvA     : partition_inv ptr xs i j stA)
+    (hloc2A    : locA.get 2 = some (.i32 frame))
+    (hloc4A    : locA.get 4 = some (.i32 xs.getLast!))
+    (hframe28A : stA.mem.read32 (frame + 28) = UInt32.ofNat i)
+    (hframe32A : stA.mem.read32 (frame + 32) = UInt32.ofNat j)
+    (hframe36A : stA.mem.read32 (frame + 36) = UInt32.ofNat (xs.length - 1))
+    (hglobal0A : stA.globals.globals[0]? = some (.i32 frame))
+    (hframe_def : frame = g0 - 48)
+    (hg0_ok    : (52 : Nat) ≤ g0.toNat)
+    (hpg       : ptr.toNat + 4 * xs.length ≤ stA.mem.pages * 65536)
+    (hptr      : (52 : Nat) ≤ ptr.toNat)
+    (hgframe   : g0.toNat ≤ ptr.toNat)
+    (hi_lt     : i < xs.length)
+    (hj_exhaust : j = xs.length - 1)
+    (hlbody    : func10.getLast? = some (.loop 0 1 lbody))
+    (P10       : Store Unit → List Value → Prop) :
+    ∃ N : Nat, ∀ fuel : Nat, fuel ≥ N →
+      ∃ stR : Store Unit,
+        exec fuel «module» stA locA lbody {} = .Return stR [.i32 (UInt32.ofNat i)] ∧
+        P10 stR [.i32 (UInt32.ofNat i)] := by
+  sorry
+
+private theorem lbody_exec_case_b_N [WasmHeapGS]
+    (stA : Store Unit) (locA : Locals)
+    (frame g0 ptr : UInt32) (xs : List UInt32) (i j : Nat)
+    (lbody : Program)
+    (hlen      : 1 ≤ xs.length)
+    (hinvA     : partition_inv ptr xs i j stA)
+    (hloc2A    : locA.get 2 = some (.i32 frame))
+    (hloc4A    : locA.get 4 = some (.i32 xs.getLast!))
+    (hframe28A : stA.mem.read32 (frame + 28) = UInt32.ofNat i)
+    (hframe32A : stA.mem.read32 (frame + 32) = UInt32.ofNat j)
+    (hframe36A : stA.mem.read32 (frame + 36) = UInt32.ofNat (xs.length - 1))
+    (hglobal0A : stA.globals.globals[0]? = some (.i32 frame))
+    (hframe_def : frame = g0 - 48)
+    (hg0_ok    : (52 : Nat) ≤ g0.toNat)
+    (hpg       : ptr.toNat + 4 * xs.length ≤ stA.mem.pages * 65536)
+    (hptr      : (52 : Nat) ≤ ptr.toNat)
+    (hgframe   : g0.toNat ≤ ptr.toNat)
+    (hj        : j ≠ xs.length - 1)
+    (hj_lt     : j + 1 < xs.length)
+    (harr      : xs.getLast! < (wordsAt stA.mem ptr xs.length)[j]!)
+    (hlbody    : func10.getLast? = some (.loop 0 1 lbody)) :
+    ∃ N : Nat, ∀ fuel : Nat, fuel ≥ N →
+      ∃ stB_b : Store Unit, ∃ sB_b : Locals,
+        exec fuel «module» stA locA lbody {} = .Break 0 stB_b sB_b ∧
+        partition_inv ptr xs i (j + 1) stB_b ∧
+        sB_b.get 2 = some (.i32 frame) ∧
+        sB_b.get 4 = some (.i32 xs.getLast!) ∧
+        stB_b.mem.read32 (frame + 28) = UInt32.ofNat i ∧
+        stB_b.mem.read32 (frame + 32) = UInt32.ofNat (j + 1) ∧
+        stB_b.mem.read32 (frame + 36) = UInt32.ofNat (xs.length - 1) ∧
+        stB_b.globals.globals[0]? = some (.i32 frame) ∧
+        (stB_b.mem.read32 (frame + 32)).toNat = j + 1 ∧
+        (stA.mem.read32 (frame + 32)).toNat = j := by
+  sorry
+
+private theorem lbody_exec_case_c_N [WasmHeapGS]
+    (stA : Store Unit) (locA : Locals)
+    (frame g0 ptr : UInt32) (xs : List UInt32) (i j : Nat)
+    (lbody : Program)
+    (hlen      : 1 ≤ xs.length)
+    (hinvA     : partition_inv ptr xs i j stA)
+    (hloc2A    : locA.get 2 = some (.i32 frame))
+    (hloc4A    : locA.get 4 = some (.i32 xs.getLast!))
+    (hframe28A : stA.mem.read32 (frame + 28) = UInt32.ofNat i)
+    (hframe32A : stA.mem.read32 (frame + 32) = UInt32.ofNat j)
+    (hframe36A : stA.mem.read32 (frame + 36) = UInt32.ofNat (xs.length - 1))
+    (hglobal0A : stA.globals.globals[0]? = some (.i32 frame))
+    (hframe_def : frame = g0 - 48)
+    (hg0_ok    : (52 : Nat) ≤ g0.toNat)
+    (hpg       : ptr.toNat + 4 * xs.length ≤ stA.mem.pages * 65536)
+    (hptr      : (52 : Nat) ≤ ptr.toNat)
+    (hgframe   : g0.toNat ≤ ptr.toNat)
+    (hj        : j ≠ xs.length - 1)
+    (hj_lt     : j + 1 < xs.length)
+    (harr      : ¬xs.getLast! < (wordsAt stA.mem ptr xs.length)[j]!)
+    (hi_lt     : i < xs.length)
+    (hlbody    : func10.getLast? = some (.loop 0 1 lbody)) :
+    ∃ N : Nat, ∀ fuel : Nat, fuel ≥ N →
+      ∃ stC : Store Unit, ∃ sC : Locals,
+        exec fuel «module» stA locA lbody {} = .Break 0 stC sC ∧
+        partition_inv ptr xs (i + 1) (j + 1) stC ∧
+        sC.get 2 = some (.i32 frame) ∧
+        sC.get 4 = some (.i32 xs.getLast!) ∧
+        stC.mem.read32 (frame + 28) = UInt32.ofNat (i + 1) ∧
+        stC.mem.read32 (frame + 32) = UInt32.ofNat (j + 1) ∧
+        stC.mem.read32 (frame + 36) = UInt32.ofNat (xs.length - 1) ∧
+        stC.globals.globals[0]? = some (.i32 frame) ∧
+        (stC.mem.read32 (frame + 32)).toNat = j + 1 ∧
+        (stA.mem.read32 (frame + 32)).toNat = j := by
+  sorry
+
+private theorem func10_hwp [WasmHeapGS]
+    (st : Store Unit) (ptr : UInt32) (xs : List UInt32) (g0 : UInt32)
+    (hlen    : 1 ≤ xs.length)
+    (hpg     : ptr.toNat + 4 * xs.length ≤ st.mem.pages * 65536)
+    (hptr    : (52 : Nat) ≤ ptr.toNat)
+    (hg0     : st.globals.globals[0]? = some (.i32 g0))
+    (hg0_ok  : (52 : Nat) ≤ g0.toNat)
+    (hframe  : g0.toNat ≤ ptr.toNat)
+    (hmem    : wordsAt st.mem ptr xs.length = xs)
+    (P10     : Store Unit → List Value → Prop)
+    (lbody   : Program)
+    (hlbody  : func10.getLast? = some (.loop 0 1 lbody))
+    (h_loop  : ∀ (st_pre : Store Unit) (loc_pre : Locals),
+        loc_pre.get 2 = some (.i32 (g0 - 48)) →
+        loc_pre.get 4 = some (.i32 xs.getLast!) →
+        st_pre.mem.read32 (g0 - 48 + 28) = UInt32.ofNat 0 →
+        st_pre.mem.read32 (g0 - 48 + 32) = UInt32.ofNat 0 →
+        st_pre.mem.read32 (g0 - 48 + 36) = UInt32.ofNat (xs.length - 1) →
+        st_pre.globals.globals[0]? = some (.i32 (g0 - 48)) →
+        wordsAt st_pre.mem ptr xs.length = xs →
+        st_pre.mem.pages = st.mem.pages →
+        wp_wasm_prop «module» st_pre loc_pre [.loop 0 1 lbody] {} P10) :
+    wp_wasm_prop «module» st
+      (func10Def.toLocals (List.take func10Def.numParams [.i32 (UInt32.ofNat xs.length), .i32 ptr]).reverse)
+      func10Def.body {} P10 := by
+  sorry
+
 theorem func10_spec (st : Store Unit)
     (ptr : UInt32) (xs : List UInt32) (g0 : UInt32)
     (hlen     : 1 ≤ xs.length)
@@ -914,7 +1042,7 @@ theorem func10_spec (st : Store Unit)
     --   total fuel = N_pre + N_loop, where N_loop comes from wp_wasm_prop_loop.
     --   exec (N_pre + N_loop) ... func10.body {} = exec N_loop ... [.loop ...] {} = .Return ...
     -- lbody: the instruction list inside .loop 0 1 [...] (func10's last instruction).
-    obtain ⟨lbody, _⟩ : ∃ lbody : Program,
+    obtain ⟨lbody, hlbody⟩ : ∃ lbody : Program,
         func10.getLast? = some (.loop 0 1 lbody) := ⟨_, rfl⟩
     -- frame = g0 - 48 (set by preamble; invariant-maintained through loop).
     let frame : UInt32 := g0 - 48
@@ -961,12 +1089,12 @@ theorem func10_spec (st : Store Unit)
           -- Exec: func5 flag=0, exhausted branch → func7 final swap arr[i]↔arr[len-1],
           -- restore global0 := frame, return [.i32 i].
           -- P10: from partition_inv after swap arr[i]↔arr[len-1] (pivot_idx = UInt32.ofNat i).
-          refine ⟨0, fun fuel _ => Or.inr (Or.inr ?_)⟩
-          obtain ⟨stR, hexec_a, hP10_a⟩ : ∃ stR : Store Unit,
-              exec fuel «module» stA locA lbody {} = .Return stR [.i32 (UInt32.ofNat i)] ∧
-              P10 stR [.i32 (UInt32.ofNat i)] := by
-            sorry  -- exec trace (exhausted): func5 flag=0 → exhausted branch → func7 → return i
-                   -- P10: pivot_idx=i, arr' = swapElems arr i (len-1), from partition_inv + final swap
+          have hi_lt_a : i < xs.length := Nat.lt_of_le_of_lt hinvA.2.1 hinvA.2.2.1
+          obtain ⟨Na, hNa⟩ := lbody_exec_case_a_N stA locA frame g0 ptr xs i j lbody
+              hlen hinvA hloc2A hloc4A hframe28A hframe32A hframe36A hglobal0A
+              rfl hg0_ok hinvA.2.2.2.2.2.2.2 hptr hframe hi_lt_a hj hlbody P10
+          refine ⟨Na, fun fuel hfuel_a => Or.inr (Or.inr ?_)⟩
+          obtain ⟨stR, hexec_a, hP10_a⟩ := hNa fuel hfuel_a
           exact ⟨stR, [.i32 (UInt32.ofNat i)], hexec_a, hP10_a⟩
         · -- j < xs.length - 1 (not exhausted; func5 will yield j this iteration)
           have hj_lt : j + 1 < xs.length := by
@@ -977,21 +1105,13 @@ theorem func10_spec (st : Store Unit)
             -- D block: frame[40]=1 (has value), local9:=j, j<len-1 → br D.
             -- B block: arr[j]>pivot → br 2 → propagates to lbody = Break 0 stB_b sB_b.
             -- Store change: stB_b differs from stA only in frame region (below ptr, above array).
-            refine ⟨0, fun fuel _ => Or.inr (Or.inl ?_)⟩
+            obtain ⟨Nb, hNb⟩ := lbody_exec_case_b_N stA locA frame g0 ptr xs i j lbody
+                hlen hinvA hloc2A hloc4A hframe28A hframe32A hframe36A hglobal0A
+                rfl hg0_ok hinvA.2.2.2.2.2.2.2 hptr hframe hj hj_lt harr hlbody
+            refine ⟨Nb, fun fuel hfuel_b => Or.inr (Or.inl ?_)⟩
             obtain ⟨stB_b, sB_b, hexec_b, hinvB_b, hlocB2, hlocB4, hframeB28, hframeB32,
-                    hframeB36, hglobal0B, hframeB32_toNat, hframe32A_toNat⟩ :
-                ∃ stB_b : Store Unit, ∃ sB_b : Locals,
-                exec fuel «module» stA locA lbody {} = .Break 0 stB_b sB_b ∧
-                partition_inv ptr xs i (j + 1) stB_b ∧
-                sB_b.get 2 = some (.i32 frame) ∧
-                sB_b.get 4 = some (.i32 xs.getLast!) ∧
-                stB_b.mem.read32 (frame + 28) = UInt32.ofNat i ∧
-                stB_b.mem.read32 (frame + 32) = UInt32.ofNat (j + 1) ∧
-                stB_b.mem.read32 (frame + 36) = UInt32.ofNat (xs.length - 1) ∧
-                stB_b.globals.globals[0]? = some (.i32 frame) ∧
-                (stB_b.mem.read32 (frame + 32)).toNat = j + 1 ∧
-                (stA.mem.read32 (frame + 32)).toNat = j := by
-              sorry  -- exec trace: func5 call (frame[32]:=j+1), gt branch, Break 0
+                    hframeB36, hglobal0B, hframeB32_toNat, hframe32A_toNat⟩ :=
+                hNb fuel hfuel_b
             simp only [List.take_zero, List.drop_zero, List.nil_append]
             exact ⟨stB_b, sB_b, hexec_b,
               ⟨i, j + 1, hinvB_b, hlocB2, hlocB4, hframeB28, hframeB32,
@@ -1009,21 +1129,13 @@ theorem func10_spec (st : Store Unit)
               UInt32.not_lt.mp harr
             have hi_lt : i < xs.length := by
               have := hinvA.2.1; have := hinvA.2.2.1; omega
-            refine ⟨0, fun fuel _ => Or.inr (Or.inl ?_)⟩
+            obtain ⟨Nc, hNc⟩ := lbody_exec_case_c_N stA locA frame g0 ptr xs i j lbody
+                hlen hinvA hloc2A hloc4A hframe28A hframe32A hframe36A hglobal0A
+                rfl hg0_ok hinvA.2.2.2.2.2.2.2 hptr hframe hj hj_lt harr hi_lt hlbody
+            refine ⟨Nc, fun fuel hfuel_c => Or.inr (Or.inl ?_)⟩
             obtain ⟨stC, sC, hexec_c, hinvC, hlocC2, hlocC4, hframeC28, hframeC32,
-                    hframeC36, hglobal0C, hframeC32_toNat, hframe32A_toNat⟩ :
-                ∃ stC : Store Unit, ∃ sC : Locals,
-                exec fuel «module» stA locA lbody {} = .Break 0 stC sC ∧
-                partition_inv ptr xs (i + 1) (j + 1) stC ∧
-                sC.get 2 = some (.i32 frame) ∧
-                sC.get 4 = some (.i32 xs.getLast!) ∧
-                stC.mem.read32 (frame + 28) = UInt32.ofNat (i + 1) ∧
-                stC.mem.read32 (frame + 32) = UInt32.ofNat (j + 1) ∧
-                stC.mem.read32 (frame + 36) = UInt32.ofNat (xs.length - 1) ∧
-                stC.globals.globals[0]? = some (.i32 frame) ∧
-                (stC.mem.read32 (frame + 32)).toNat = j + 1 ∧
-                (stA.mem.read32 (frame + 32)).toNat = j := by
-              sorry  -- exec trace: func5 call, le branch, func7 swap, frame[28]:=i+1, Break 0
+                    hframeC36, hglobal0C, hframeC32_toNat, hframe32A_toNat⟩ :=
+                hNc fuel hfuel_c
             simp only [List.take_zero, List.drop_zero, List.nil_append]
             exact ⟨stC, sC, hexec_c,
               ⟨i + 1, j + 1, hinvC, hlocC2, hlocC4, hframeC28, hframeC32,
@@ -1047,7 +1159,7 @@ theorem func10_spec (st : Store Unit)
     --   array unchanged              (preamble writes only to frame region, below ptr)
     -- Then h_loop provides wp_wasm_prop for [.loop 0 1 lbody] from (st_pre, loc_pre).
     -- Fuel composition: fuel_total = fuel_preamble + fuel_loop.
-    sorry
+    exact func10_hwp st ptr xs g0 hlen hpg hptr hg0 hg0_ok hframe hmem P10 lbody hlbody h_loop
   -- Strategy:
   --
   -- A. PROLOGUE (straight-line exec_cons chain):
@@ -1194,7 +1306,74 @@ theorem func11_spec (n : Nat) : ∀
     --   epilogue: restore global0, ret
     --   postcondition: combine sorted halves + pivot via sorted_of_sorted_split
     -- All exec stepping and auxiliary specs (func1, func2) are sorry'd.
-    sorry
+    by_cases hn1 : n ≤ 1
+    · -- Base case n ≤ 1: preamble runs, br_if in block fires immediately, memory unchanged.
+      have hle1 : UInt32.ofNat n ≤ (1 : UInt32) := by
+        have : n = 0 ∨ n = 1 := by omega
+        rcases this with rfl | rfl <;> decide
+      have h_pairwise : xs.Pairwise (· ≤ ·) := by
+        have hn_len : xs.length ≤ 1 := by omega
+        rcases xs with (_ | ⟨x₀, (_ | ⟨x₁, xs'⟩)⟩)
+        · exact List.Pairwise.nil
+        · exact List.pairwise_singleton _ _
+        · simp only [List.length_cons] at hn_len; omega
+      have hge16 : (16 : UInt32) ≤ g0 := UInt32.le_iff_toNat_le.mpr hg0_ok
+      have h_g016 : (g0 - 16 : UInt32).toNat = g0.toNat - 16 :=
+          UInt32.toNat_sub_of_le g0 16 hge16
+      have h_add_ok : (16 : UInt32) + (g0 - 16) = g0 := by
+        apply UInt32.toNat_inj.mp
+        simp only [UInt32.toNat_add, h_g016,
+                   show UInt32.toNat (16 : UInt32) = 16 from by decide]
+        rw [show (16 + (g0.toNat - 16) : Nat) = g0.toNat from by omega]
+        exact Nat.mod_eq_of_lt (UInt32.toNat_lt_size g0)
+      obtain ⟨g_head, g_tail, h_globals_cons⟩ : ∃ g_h g_t, st.globals.globals = g_h :: g_t := by
+        cases h : st.globals.globals with
+        | nil => simp [h] at hg0
+        | cons g_h g_t => exact ⟨g_h, g_t, rfl⟩
+      have h_head_val : g_head = Value.i32 g0 := by
+        have := hg0; rw [h_globals_cons, List.getElem?_cons_zero] at this
+        exact Option.some.inj this
+      have h_globals_mid_ok : (st.globals.globals.set 0 (Value.i32 (g0 - 16)))[0]? =
+          some (Value.i32 (g0 - 16)) := by
+        rw [h_globals_cons, h_head_val, List.set_cons_zero, List.getElem?_cons_zero]
+      have h_globals_restore :
+          (st.globals.globals.set 0 (Value.i32 (g0 - 16))).set 0 (Value.i32 g0) =
+          st.globals.globals := by
+        rw [h_globals_cons, h_head_val, List.set_cons_zero, List.set_cons_zero]
+      have hlp : (func11Def.toLocals (List.take func11Def.numParams
+            [Value.i32 (UInt32.ofNat n), Value.i32 ptr]).reverse).params
+          = [Value.i32 ptr, Value.i32 (UInt32.ofNat n)] := rfl
+      have hll : (func11Def.toLocals (List.take func11Def.numParams
+            [Value.i32 (UInt32.ofNat n), Value.i32 ptr]).reverse).locals
+          = [Value.i32 0, Value.i32 0, Value.i32 0, Value.i32 0, Value.i32 0, Value.i32 0] := rfl
+      have hvv : (func11Def.toLocals (List.take func11Def.numParams
+            [Value.i32 (UInt32.ofNat n), Value.i32 ptr]).reverse).values
+          = [] := rfl
+      unfold wp_wasm_prop
+      refine ⟨2, ?_⟩
+      simp only [show func11Def.body = func11 from rfl, func11,
+                 exec, execOne.eq_def, hlp, hll, hvv,
+                 Locals.get, Locals.set?,
+                 List.getElem?_cons_zero, List.getElem?_cons_succ, List.getElem?_nil,
+                 List.set_cons_zero, List.set_cons_succ,
+                 List.length_cons, List.length_nil, List.length_set,
+                 show ¬(2 : Nat) < 2 from by omega,
+                 show (2 : Nat) < 2 + 6 from by omega,
+                 show (2 - 2 : Nat) = 0 from by omega,
+                 show (0 : Nat) < 2 from by omega,
+                 show (1 : Nat) < 2 from by omega,
+                 hg0, h_globals_mid_ok, h_add_ok,
+                 if_pos hle1,
+                 show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide,
+                 if_neg (show ¬(1 : UInt32) = 0 from by decide),
+                 ite_true, ite_false, and_true, true_and,
+                 List.take_zero, List.drop_zero, List.nil_append, List.append_nil]
+      refine ⟨xs, ?_, h_pairwise, List.Perm.refl xs, ?_, rfl⟩
+      · exact hmem
+      · show { globals := (st.globals.globals.set 0 (Value.i32 (g0 - 16))).set 0 (Value.i32 g0) }
+            = st.globals
+        rw [h_globals_restore]
+    · sorry
     -- Strategy:
     --
     -- CASE n ≤ 1 (BASE):
