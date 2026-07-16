@@ -1239,6 +1239,150 @@ theorem func10_spec (st : Store Unit)
 -- §5  func11 spec — recursive quicksort (strong induction on len)
 -- ======================================================================
 
+-- Helper: func1 (funcIdx 1) takes (frame, pivot_idx, ptr, n, err) on the stack
+-- and writes the left-slice descriptor frame[0]=ptr, frame[4]=pivot_idx.
+-- args stack top-first: [.i32 err, .i32 n, .i32 ptr, .i32 pivot_idx, .i32 frame]
+private theorem func1_terminates
+    (st : Store Unit) (frame pivot_idx ptr n err : UInt32)
+    (hbounds : frame.toNat + 16 ≤ st.mem.pages * 65536)
+    (hg0 : st.globals.globals[0]? = some (.i32 (frame + 16)))
+    (hframe_min : 32 ≤ (frame + 16).toNat) :
+    TerminatesWith {} «module» 1 st
+      [.i32 err, .i32 n, .i32 ptr, .i32 pivot_idx, .i32 frame]
+      (fun st' _ =>
+        st'.mem.read32 frame = ptr ∧
+        st'.mem.read32 (frame + 4) = pivot_idx ∧
+        st'.mem.pages = st.mem.pages ∧
+        st'.globals = st.globals) := by
+  sorry
+
+-- Helper: func2 (funcIdx 2) takes (frame+8, pivot_succ, ptr, n, err) on the stack
+-- and writes: (frame+8)[0] = ptr + pivot_succ*4, (frame+8)[4] = n - pivot_succ.
+-- args stack top-first: [.i32 err, .i32 n, .i32 ptr, .i32 pivot_succ, .i32 (frame+8)]
+-- Precondition: pivot_succ.toNat ≤ n.toNat (no panic branch taken).
+private theorem func2_terminates
+    (st : Store Unit) (frame ptr pivot_succ n err : UInt32)
+    (hpivot_le : pivot_succ.toNat ≤ n.toNat)
+    (hbounds : frame.toNat + 16 ≤ st.mem.pages * 65536)
+    (hg0 : st.globals.globals[0]? = some (.i32 (frame + 16)))
+    (hframe_min : 32 ≤ (frame + 16).toNat) :
+    TerminatesWith {} «module» 2 st
+      [.i32 err, .i32 n, .i32 ptr, .i32 pivot_succ, .i32 (frame + 8)]
+      (fun st' _ =>
+        st'.mem.read32 (frame + 8) = ptr + pivot_succ * 4 ∧
+        st'.mem.read32 (frame + 12) = n - pivot_succ ∧
+        st'.mem.pages = st.mem.pages ∧
+        st'.globals = st.globals) := by
+  sorry
+
+-- Helper: sorted three-way composition.
+-- If left is sorted, right is sorted, all elements of left ≤ pivot, pivot < all elements of right,
+-- then (left ++ [pivot] ++ right) is sorted.
+private theorem sorted_of_sorted_split (left : List UInt32) (pivot : UInt32) (right : List UInt32)
+    (hl  : left.Pairwise (· ≤ ·))
+    (hr  : right.Pairwise (· ≤ ·))
+    (hle : ∀ x ∈ left,  x ≤ pivot)
+    (hgt : ∀ x ∈ right, pivot < x) :
+    (left ++ [pivot] ++ right).Pairwise (· ≤ ·) := by
+  sorry
+
+-- Main inductive-case lemma for func11_spec (n ≥ 2).
+-- This captures the full exec proof for the non-base case.
+-- It uses: func10_spec (partition), func1_terminates (left descriptor),
+--          the IH for the left half, func2_terminates (right descriptor),
+--          the IH for the right half, and sorted_of_sorted_split.
+-- All exec-level stepping is carried out inside this sorry.
+private theorem func11_ind_wp (n : Nat) (hn2 : 2 ≤ n)
+    -- The strong-induction hypothesis (same type as func11_spec)
+    (IH : ∀ m < n,
+          ∀ (st : Store Unit) (ptr : UInt32) (xs : List UInt32) (g0 : UInt32),
+          xs.length = m →
+          ptr.toNat + 4 * m ≤ st.mem.pages * 65536 →
+          (1048576 : Nat) ≤ st.mem.pages * 65536 →
+          64 * (m + 1) ≤ ptr.toNat →
+          st.globals.globals[0]? = some (.i32 g0) →
+          g0.toNat ≤ ptr.toNat →
+          16 ≤ g0.toNat →
+          wordsAt st.mem ptr m = xs →
+          TerminatesWith {} «module» 11 st [.i32 (UInt32.ofNat m), .i32 ptr]
+            (fun st' _ =>
+              ∃ ys : List UInt32,
+                wordsAt st'.mem ptr m = ys ∧ ys.Pairwise (· ≤ ·) ∧ ys.Perm xs ∧
+                st'.globals = st.globals ∧ st'.mem.pages = st.mem.pages))
+    -- func11 preconditions
+    (st : Store Unit) (ptr : UInt32) (xs : List UInt32) (g0 : UInt32)
+    (hlen    : xs.length = n)
+    (hpg     : ptr.toNat + 4 * n ≤ st.mem.pages * 65536)
+    (hpg_min : (1048576 : Nat) ≤ st.mem.pages * 65536)
+    (hptr    : 64 * (n + 1) ≤ ptr.toNat)
+    (hg0     : st.globals.globals[0]? = some (.i32 g0))
+    (hg0_le  : g0.toNat ≤ ptr.toNat)
+    (hg0_ok  : 16 ≤ g0.toNat)
+    (hmem    : wordsAt st.mem ptr n = xs) :
+    wp_wasm_prop «module» st
+      (func11Def.toLocals ([.i32 (UInt32.ofNat n), .i32 ptr].take func11Def.numParams).reverse)
+      func11Def.body {}
+      (fun st' _ =>
+        ∃ ys : List UInt32,
+          wordsAt st'.mem ptr n = ys ∧ ys.Pairwise (· ≤ ·) ∧ ys.Perm xs ∧
+          st'.globals = st.globals ∧ st'.mem.pages = st.mem.pages) := by
+  -- let frame := g0 - 16
+  -- Proof plan:
+  --
+  -- STEP A: Pure preamble (6 instrs): globalGet 0, const 16, sub, localSet 2, localGet 2, globalSet 0
+  --   State after preamble (st1, loc1):
+  --     loc1.get 2 = some (.i32 (g0-16))     (local2 = frame)
+  --     st1.globals.globals[0]? = some (.i32 (g0-16))
+  --     st1.mem = st.mem
+  --
+  -- STEP B: wp_wasm_prop_block for block 0 0 body:
+  --   Since n ≥ 2, br_if NOT taken (n ≤ 1 → 0; 0 & 1 = 0; br_if on 0 falls through).
+  --   The block body FALLS THROUGH after all calls complete.
+  --   Inside the block body:
+  --
+  --   B.1  Pure: localGet 0 (ptr), localGet 1 (n) → values = [n, ptr]
+  --   B.2  wp_wasm_prop_call func10_spec:
+  --          func10 st1 ptr xs (g0-16) ... → ∃ pivot_idx < n, ...
+  --   B.3  localSet 3 (consume pivot_idx from stack) → local3 = pivot_idx
+  --   B.4  Pure: localGet 2, localGet 3, localGet 0, localGet 1, const 1048664
+  --              → values = [1048664, n, ptr, pivot_idx, frame]
+  --   B.5  wp_wasm_prop_call func1_terminates:
+  --          func1 st2 frame pivot_idx ptr n 1048664 ...
+  --          → st2_after.mem.read32 frame = ptr, .read32 (frame+4) = pivot_idx
+  --   B.6  Pure: localGet 2, load32 4 → frame[4] = pivot_idx; localSet 4 (local4 = pivot_idx)
+  --              localGet 2, load32 0 → frame[0] = ptr; localGet 4 (pivot_idx)
+  --              → values = [pivot_idx, ptr]
+  --   B.7  wp_wasm_prop_call (IH pivot_idx.toNat) for LEFT half:
+  --          func11 st3 ptr xs_left (g0-16) pivot_idx.toNat ...
+  --          → ∃ ys_left sorted perm xs_left; globals restored; mem.pages same
+  --   B.8  Pure: localGet 3 (pivot_idx), const 1, add → pivot_idx+1; localSet 5
+  --              const 1048680; localSet 6
+  --              localGet 2, const 8, add → frame+8
+  --              localGet 5 (pivot_idx+1), localGet 0 (ptr), localGet 1 (n), localGet 6 (1048680)
+  --              → values = [1048680, n, ptr, pivot_idx+1, frame+8]
+  --   B.9  wp_wasm_prop_call func2_terminates:
+  --          func2 st4 (frame+8) (pivot_idx+1) ptr n 1048680 ...
+  --          → st4_after.mem.read32 (frame+8) = ptr + (pivot_idx+1)*4
+  --             st4_after.mem.read32 (frame+12) = n - (pivot_idx+1)
+  --   B.10 Pure: localGet 2, load32 12 → frame[12] = n-(pivot_idx+1); localSet 7
+  --              localGet 2, load32 8 → frame[8] = right_ptr; localGet 7 (right_len)
+  --              → values = [right_len, right_ptr]
+  --   B.11 wp_wasm_prop_call (IH right_len) for RIGHT half:
+  --          func11 st5 right_ptr xs_right (g0-16) right_len ...
+  --          → ∃ ys_right sorted perm xs_right; globals restored; mem.pages same
+  --
+  --   Block falls through: values = [] after last call.
+  --
+  -- STEP C: Pure epilogue: localGet 2 (frame), const 16, add → frame+16=g0, globalSet 0 (restored), ret
+  --   → Return st_final []
+  --
+  -- POSTCONDITION: sorted_of_sorted_split (ys_left ++ [pivot] ++ ys_right) is sorted + Perm xs
+  --
+  -- Full exec stepping and memory bookkeeping (frame allocation, wordsAt frame-disjointness,
+  -- right_ptr = ptr + (pivot_idx+1)*4, right_len = n - pivot_idx - 1) are sorry'd here
+  -- pending complete mechanisation.
+  sorry
+
 /-!
 func11 (funcIdx 11)  params [ptr, len]  results []
 
@@ -1373,7 +1517,8 @@ theorem func11_spec (n : Nat) : ∀
       · show { globals := (st.globals.globals.set 0 (Value.i32 (g0 - 16))).set 0 (Value.i32 g0) }
             = st.globals
         rw [h_globals_restore]
-    · sorry
+    · -- Inductive case n ≥ 2: delegate to func11_ind_wp which sorry's the exec stepping.
+      exact func11_ind_wp n (by omega) IH st ptr xs g0 hlen hpg hpg_min hptr hg0 hg0_le hg0_ok hmem
     -- Strategy:
     --
     -- CASE n ≤ 1 (BASE):
