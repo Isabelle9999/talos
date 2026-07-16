@@ -1284,7 +1284,16 @@ private theorem sorted_of_sorted_split (left : List UInt32) (pivot : UInt32) (ri
     (hle : ∀ x ∈ left,  x ≤ pivot)
     (hgt : ∀ x ∈ right, pivot < x) :
     (left ++ [pivot] ++ right).Pairwise (· ≤ ·) := by
-  sorry
+  rw [List.pairwise_append]
+  refine ⟨?_, hr, ?_⟩
+  · rw [List.pairwise_append]
+    exact ⟨hl, List.pairwise_singleton _ _, fun a ha b hb => by
+      simp only [List.mem_singleton] at hb; subst hb; exact hle a ha⟩
+  · intro a ha b hb
+    simp only [List.mem_append, List.mem_singleton] at ha
+    rcases ha with ha_left | rfl
+    · exact UInt32.le_trans (hle a ha_left) (UInt32.le_of_lt (hgt b hb))
+    · exact UInt32.le_of_lt (hgt b hb)
 
 -- Main inductive-case lemma for func11_spec (n ≥ 2).
 -- This captures the full exec proof for the non-base case.
