@@ -1273,7 +1273,107 @@ private theorem func2_terminates
         st'.mem.read32 (frame + 12) = n - pivot_succ ∧
         st'.mem.pages = st.mem.pages ∧
         st'.globals = st.globals) := by
-  sorry
+  apply wp_wasm_prop_to_TerminatesWith (f := func2Def)
+    (by rfl) (by rfl) (by rfl)
+    (by simp [func2Def, Function.numParams])
+    (by intro _ _ h; exact h)
+  -- Overflow-free address arithmetic: hframe_min rules out wrap in frame+16,
+  -- which gives frame.toNat + 16 < 2^32 and hence frame+8, frame+12 also no-wrap.
+  have h_f16_toNat : (frame + 16).toNat = frame.toNat + 16 := by
+    have h_frame_lt : frame.toNat < 4294967296 := UInt32.toNat_lt_size frame
+    simp only [UInt32.toNat_add, show (16:UInt32).toNat = 16 from rfl,
+               show (2:Nat)^32 = 4294967296 from by norm_num] at hframe_min ⊢
+    omega
+  have h_f8_toNat : (frame + 8).toNat = frame.toNat + 8 := by
+    have h_f16_lt : (frame + 16).toNat < 4294967296 := UInt32.toNat_lt_size (frame + 16)
+    simp only [UInt32.toNat_add, show (8:UInt32).toNat = 8 from rfl,
+               show (2:Nat)^32 = 4294967296 from by norm_num]
+    omega
+  have h_f12_toNat : (frame + 12).toNat = frame.toNat + 12 := by
+    have h_f16_lt : (frame + 16).toNat < 4294967296 := UInt32.toNat_lt_size (frame + 16)
+    simp only [UInt32.toNat_add, show (12:UInt32).toNat = 12 from rfl,
+               show (2:Nat)^32 = 4294967296 from by norm_num]
+    omega
+  -- Branch: pivot_succ > n is false under hpivot_le
+  have h_nogt : ¬(pivot_succ > n) := by
+    intro h; exact absurd (UInt32.lt_iff_toNat_lt.mp h) (by omega)
+  -- Shift: pivot_succ <<< (2 % 32) = pivot_succ * 4
+  have h_shl : pivot_succ <<< ((2:UInt32) % 32) = pivot_succ * 4 := by
+    rw [show (2:UInt32) % 32 = 2 from by decide]
+    apply UInt32.toNat_inj.mp
+    simp [UInt32.shiftLeft, Fin.shiftLeft, Nat.shiftLeft_eq,
+          UInt32.toNat_mul, show (4:UInt32).toNat = 4 from rfl]
+  -- Store bounds: both writes within pages
+  have h_bnd_s4 : ¬((frame + 8).toNat + (4:UInt32).toNat + 4 > st.mem.pages * 65536) := by
+    simp only [show (4:UInt32).toNat = 4 from rfl]; omega
+  have h_bnd_s0 : ¬((frame + 8).toNat + (0:UInt32).toNat + 4 > st.mem.pages * 65536) := by
+    simp only [show (0:UInt32).toNat = 0 from rfl]; omega
+  -- Disjointness: write at frame+8, read at frame+12 are non-overlapping
+  have h_disj : (frame + 8).toNat + 4 ≤ (frame + 12).toNat := by
+    rw [h_f8_toNat, h_f12_toNat]
+  -- Address identity for rewriting: (frame+8)+4 = frame+12
+  have h_addr_eq : (frame + 8 : UInt32) + 4 = frame + 12 := by
+    apply UInt32.toNat_inj.mp
+    rw [UInt32.toNat_add, h_f8_toNat, h_f12_toNat,
+        show (4:UInt32).toNat = 4 from rfl]
+    have hlt : (frame + 16).toNat < 4294967296 := UInt32.toNat_lt_size (frame + 16)
+    simp only [show (2:Nat)^32 = 4294967296 from by norm_num]
+    omega
+  -- Initial locals (5 params + 2 extra)
+  have hlp : (func2Def.toLocals
+      ([.i32 err, .i32 n, .i32 ptr, .i32 pivot_succ, .i32 (frame + 8)].take
+        func2Def.numParams).reverse).params
+      = [.i32 (frame + 8), .i32 pivot_succ, .i32 ptr, .i32 n, .i32 err] := rfl
+  have hll : (func2Def.toLocals
+      ([.i32 err, .i32 n, .i32 ptr, .i32 pivot_succ, .i32 (frame + 8)].take
+        func2Def.numParams).reverse).locals
+      = [.i32 0, .i32 0] := rfl
+  have hlv : (func2Def.toLocals
+      ([.i32 err, .i32 n, .i32 ptr, .i32 pivot_succ, .i32 (frame + 8)].take
+        func2Def.numParams).reverse).values
+      = [] := rfl
+  -- Proof: unfold wp_wasm_prop, exhibit fuel=2, and simp through the execution trace.
+  -- The block body runs at fuel=1 (exec 1); execOne for .block needs fuel 2 = 1+1.
+  -- br_if 0 not taken (pivot_succ ≤ n), so happy path:
+  --   store32 4  writes (n-pivot_succ)   at (frame+8)+4 = frame+12
+  --   store32 0  writes (ptr+pivot_succ*4) at frame+8
+  --   ret         → Return with empty stack
+  unfold wp_wasm_prop
+  refine ⟨2, ?_⟩
+  simp only [show func2Def.body = func2 from rfl, func2,
+             exec, execOne.eq_def,
+             hlp, hll, hlv,
+             Locals.get, Locals.set?,
+             List.getElem?_cons_zero, List.getElem?_cons_succ, List.getElem?_nil,
+             List.set_cons_zero, List.set_cons_succ,
+             List.length_cons, List.length_nil, List.length_set,
+             if_pos (show (0:Nat) < 5 from by omega),
+             if_pos (show (1:Nat) < 5 from by omega),
+             if_pos (show (2:Nat) < 5 from by omega),
+             if_pos (show (3:Nat) < 5 from by omega),
+             if_pos (show (4:Nat) < 5 from by omega),
+             if_neg (show ¬(5:Nat) < 5 from by omega),
+             if_neg (show ¬(6:Nat) < 5 from by omega),
+             if_pos (show (5:Nat) < 5 + 2 from by omega),
+             if_pos (show (6:Nat) < 5 + 2 from by omega),
+             show (5 - 5:Nat) = 0 from by omega,
+             show (6 - 5:Nat) = 1 from by omega,
+             if_pos (show (0:Nat) < 2 from by omega),
+             if_pos (show (1:Nat) < 2 from by omega),
+             show (0 - 0:Nat) = 0 from by omega,
+             show (1 - 1:Nat) = 0 from by omega,
+             if_neg h_nogt,
+             show (1:UInt32) &&& 0 = 0 from by decide,
+             h_shl,
+             if_neg h_bnd_s4, if_neg h_bnd_s0,
+             Mem.read32_write32_same, Mem.write32_pages,
+             UInt32.add_zero,
+             ite_true, ite_false, and_true, true_and]
+  -- After simp: pages and globals are resolved; read32(frame+8) reduced to
+  -- pivot_succ*4+ptr by read32_write32_same; remaining goal for frame+12.
+  exact ⟨UInt32.add_comm (pivot_succ * 4) ptr,
+         by rw [read32_write32_ne _ (frame + 8) (frame + 12) _ (Or.inr h_disj),
+                ← h_addr_eq, Mem.read32_write32_same]⟩
 
 -- Helper: sorted three-way composition.
 -- If left is sorted, right is sorted, all elements of left ≤ pivot, pivot < all elements of right,
@@ -1518,6 +1618,7 @@ theorem func11_spec (n : Nat) : ∀
                  hg0, h_globals_mid_ok, h_add_ok,
                  if_pos hle1,
                  show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide,
+                 show (Value.i32 (1 : UInt32) = Value.i32 (0 : UInt32)) = False from by decide,
                  if_neg (show ¬(1 : UInt32) = 0 from by decide),
                  ite_true, ite_false, and_true, true_and,
                  List.take_zero, List.drop_zero, List.nil_append, List.append_nil]
