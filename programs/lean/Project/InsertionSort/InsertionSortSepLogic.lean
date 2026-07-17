@@ -327,6 +327,7 @@ private def I_inner (ptr : UInt32) (xs : List UInt32) (frame i₀ : UInt32)
     (wordsAt stA.mem ptr xs.length).Perm xs
 
 omit inst in
+set_option maxHeartbeats 800000 in
 /-- Inner-loop termination and correctness: starting from stBC1 / locA4 (after EXIT_BLOCK,
     GET_i, and BOUNDS_CHECK_1 have run), the INNER_BLOCK + GET_j + STORE_KEY suffix
     terminates and re-establishes I_outer with i+1.
@@ -351,7 +352,8 @@ private theorem inner_loop_terminates
     (hperm       : (wordsAt stA.mem ptr xs.length).Perm xs)
     (hlen        : xs.length = len.toNat)
     (hdisj_frame : ptr.toNat + 4 * xs.length ≤ frame.toNat)
-    (hpg_arr     : ptr.toNat + 4 * xs.length ≤ 4294967296) :
+    (hpg_arr     : ptr.toNat + 4 * xs.length ≤ 4294967296)
+    (hframe_lt   : frame.toNat + 16 ≤ 4294967296) :
     ∃ (N : Nat) (stFinal : Store Unit) (locFinal : Locals),
       (∀ fuel ≥ N, exec fuel «module»
           { stA with mem := stA.mem.write32 (frame + (12 : UInt32)) i }
@@ -407,9 +409,9 @@ private theorem inner_loop_terminates
   let key : UInt32 := stA.mem.read32 (ptr + 4 * i)
   -- Address toNat helpers
   have hf12_toNat : (frame + (12 : UInt32)).toNat = frame.toNat + 12 := by
-    rw [UInt32.toNat_add]; simp [UInt32.toNat_ofNat']; sorry
+    rw [UInt32.toNat_add]; simp [UInt32.toNat_ofNat']; omega
   have hf8_toNat : (frame + (8 : UInt32)).toNat = frame.toNat + 8 := by
-    rw [UInt32.toNat_add]; simp [UInt32.toNat_ofNat']; sorry
+    rw [UInt32.toNat_add]; simp [UInt32.toNat_ofNat']; omega
   have hi_ofNat : UInt32.ofNat i.toNat = i := by
     apply UInt32.toNat_inj.mp
     simp [UInt32.toNat_ofNat', Nat.mod_eq_of_lt i.toNat_lt]
@@ -740,17 +742,49 @@ private theorem inner_loop_terminates
             have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
                            show (2:Nat) < 2 + 8 from by omega, show (2:Nat) - 2 = 0 from by omega] at h
             exact h
-          simp only [exec, execOne.eq_def, hg9, hg1_upd, if_pos h0_lt_len,
+          have hns8_J_w : ¬(frame.toNat + (8 : UInt32).toNat + 4 >
+              (stJ.mem.write32 ptr key).pages * 65536) := by
+            rw [write32_pages]; exact hns8_J
+          have h_f8_read : (stJ.mem.write32 ptr key).read32 (frame + (8 : UInt32)) = i := by
+            have h1 : 1 ≤ xs.length := by omega
+            have h_disj : ptr.toNat + 4 ≤ (frame + (8 : UInt32)).toNat := by
+              linarith [Nat.mul_le_mul_left 4 h1, hdisj_frame, hf8_toNat]
+            rw [read32_write32_ne _ _ _ _ (Or.inr h_disj)]
+            exact hf8_J
+          have hparams0 : locJ.params[0]? = some (.i32 ptr) := by
+            have h := hg0; simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega] at h; exact h
+          have hparams1 : locJ.params[1]? = some (.i32 len) := by
+            have h := hg1; simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega] at h; exact h
+          have hlocals0 : locJ.locals[0]? = some (.i32 frame) := by
+            have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+              show (2:Nat) < 2 + 8 from by omega, show (2:Nat) - 2 = 0 from by omega] at h; exact h
+          have hlocals2 : locJ.locals[2]? = some (.i32 key) := by
+            have h := hg4; simp only [Locals.get, hlp, hll, show ¬(4 < 2) from by omega,
+              show (4:Nat) < 2 + 8 from by omega, show (4:Nat) - 2 = 2 from by omega] at h; exact h
+          simp only [exec, execOne.eq_def,
+                     Locals.get, hlp, hll, List.length_set,
+                     show (0 : Nat) < 2 from by omega, show (1 : Nat) < 2 from by omega,
+                     show ¬(2 < 2) from by omega, show ¬(4 < 2) from by omega, show ¬(9 < 2) from by omega,
+                     show (2 : Nat) < 2 + 8 from by omega, show (4 : Nat) < 2 + 8 from by omega,
+                     show (9 : Nat) < 2 + 8 from by omega,
+                     show (2 : Nat) - 2 = 0 from by omega, show (4 : Nat) - 2 = 2 from by omega,
+                     show (9 : Nat) - 2 = 7 from by omega,
+                     List.getElem?_set,
+                     if_pos (show (7 : Nat) = 7 from rfl), if_pos (show (7 : Nat) < 8 from by omega),
+                     if_neg (show ¬(7 : Nat) = 2 from by omega), if_neg (show ¬(7 : Nat) = 0 from by omega),
+                     if_true, if_false,
+                     hg9, hg0_upd, hg1_upd, hg4_upd, hg2_upd,
+                     hparams0, hparams1, hlocals0, hlocals2,
+                     if_pos h0_lt_len,
                      show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide,
                      show (if (1 : UInt32) = 0 then (1 : UInt32) else 0) = 0 from by decide,
-                     hg0_upd, h0_shl, show (0:UInt32) + (0:UInt32) = 0 from by decide,
-                     if_neg hptr_bnd, hg4_upd,
-                     hg2_upd, if_neg hns8_J, hf8_J,
-                     show (1 : UInt32) + (1 : UInt32) = 2 from by decide,
-                     show ¬(1 : UInt32) = 0 from by decide,
-                     show stFinalA = { stJ with mem := stJ.mem.write32 ptr key |>.write32 (frame + 8) (i + 1) } from rfl,
-                     show locFinalA = { locJ with locals := locJ.locals.set 7 (.i32 (0:UInt32)), values := [] } from rfl]
-          sorry -- remaining simp after store32 operations; likely needs explicit store32 address proofs
+                     if_pos (show (0 : UInt32) = 0 from rfl),
+                     h0_shl, UInt32.add_zero,
+                     show (0 : UInt32) + ptr = ptr from (UInt32.add_comm 0 ptr).trans (UInt32.add_zero ptr),
+                     show (1 : UInt32) + i = i + 1 from UInt32.add_comm 1 i,
+                     if_neg hptr_bnd, if_neg hns8_J_w, h_f8_read,
+                     show stFinalA = { stJ with mem := (stJ.mem.write32 ptr key).write32 (frame + (8 : UInt32)) (i + 1) } from rfl,
+                     show locFinalA = { locJ with locals := locJ.locals.set 7 (.i32 (0 : UInt32)), values := [] } from rfl]
         rw [hstore_body]
       · -- frame[8] = i+1
         exact read32_write32_same (stJ.mem.write32 ptr key) (frame + (8 : UInt32)) (i + 1)
@@ -785,16 +819,142 @@ private theorem inner_loop_terminates
                        if_true, if_false] at h
         exact h
       · -- sorted postcondition
-        sorry
-        /- SORTED SKETCH (case a, j=0):
-           stFinalA writes key=stA.arr[i] to position 0 of the array, then shifts nothing.
-           But shape invariants say:
-             shape2: ∀ k, 0 ≤ k < i.toNat, stJ.arr[k+1] = stA.arr[k] (all shifted right)
-             hgt_key: ∀ k, 0 ≤ k < i.toNat, key < stA.arr[k] (all > key)
-           So stFinalA.arr = [key, stA.arr[0], stA.arr[1], ..., stA.arr[i-1]]
-           which is sorted: key < all others, and stA.arr[0..i-1] already sorted. -/
+        have hi1 : (i + 1).toNat = i.toNat + 1 := by
+          rw [UInt32.toNat_add, show (1 : UInt32).toNat = 1 from rfl]
+          exact Nat.mod_eq_of_lt (by linarith [hi_lt, hpg_arr])
+        rw [hi1]
+        have wsp : ∀ (m : Mem) (base : UInt32) (n mid : Nat) (h : mid ≤ n),
+            wordsAt m base n = wordsAt m base mid ++
+            wordsAt m (base + 4 * UInt32.ofNat mid) (n - mid) := by
+          intro m base n mid h
+          simp only [wordsAt]
+          conv_lhs => rw [← Nat.add_sub_cancel' h, List.range_add, List.map_append, List.map_map]
+          congr 1; apply List.map_congr_left; intro k _
+          have key' : base + 4 * UInt32.ofNat (mid + k) = (base + 4 * UInt32.ofNat mid) + 4 * UInt32.ofNat k := by
+            simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+          simp only [Function.comp, key']
+        have h0 : wordsAt stFinalA.mem ptr 1 = [key] := by
+          have hstepA : ((stJ.mem.write32 ptr key).write32 (frame + (8 : UInt32)) (i + 1)).read32 ptr = key := by
+            rw [read32_write32_ne _ (frame + (8 : UInt32)) ptr (i + 1) (Or.inl (by
+                rw [hf8_toNat]; linarith [Nat.mul_le_mul_left 4 (show 1 ≤ xs.length by omega), hdisj_frame]))]
+            exact read32_write32_same _ _ _
+          have hmem0 : stFinalA.mem = (stJ.mem.write32 ptr key).write32 (frame + (8 : UInt32)) (i + 1) := rfl
+          have haddr0 : ptr + 4 * UInt32.ofNat 0 = ptr := by
+            simp [show (4 : UInt32) * UInt32.ofNat 0 = 0 from by decide]
+          rw [hmem0]
+          simp only [wordsAt, List.range_succ, List.range_zero, List.map_nil, List.map_cons,
+                     List.nil_append, haddr0, hstepA]
+        have h1 : wordsAt stFinalA.mem (ptr + 4 * UInt32.ofNat 1) i.toNat = wordsAt stA.mem ptr i.toNat := by
+          simp only [wordsAt,
+                     show stFinalA.mem = (stJ.mem.write32 ptr key).write32 (frame + (8:UInt32)) (i+1) from rfl]
+          apply List.map_congr_left; intro k hk
+          rw [List.mem_range] at hk
+          have haddr : (ptr + 4 * UInt32.ofNat 1) + 4 * UInt32.ofNat k = ptr + 4 * UInt32.ofNat (k + 1) := by
+            have hh : ptr + 4 * UInt32.ofNat (1 + k) = (ptr + 4 * UInt32.ofNat 1) + 4 * UInt32.ofNat k := by
+              simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+            rw [← hh, show 1 + k = k + 1 from by omega]
+          rw [haddr]
+          have ha := toNat_wordAddr ptr xs.length (k + 1) (by omega) hpg_arr
+          rw [read32_write32_ne _ (frame+(8:UInt32)) _ (i+1) (Or.inl (by
+              rw [hf8_toNat, ha]; linarith [Nat.mul_le_mul_left 4 (show k + 2 ≤ xs.length by omega), hdisj_frame]))]
+          rw [read32_write32_ne stJ.mem ptr _ key (Or.inr (by linarith [ha]))]
+          exact hshape2 k (Nat.zero_le k) hk
+        rw [show i.toNat + 1 = 1 + i.toNat from by omega, wsp stFinalA.mem ptr _ 1 (by omega)]
+        rw [show 1 + i.toNat - 1 = i.toNat from by omega, h0, h1, List.singleton_append, List.pairwise_cons]
+        exact ⟨fun x hx => by
+          simp only [wordsAt, List.mem_map, List.mem_range] at hx
+          obtain ⟨k, hk, rfl⟩ := hx
+          exact UInt32.le_iff_toNat_le.mpr
+            (Nat.le_of_lt (UInt32.lt_iff_toNat_lt_toNat.mp (hgt_key k (Nat.zero_le k) hk))),
+        hpairwise⟩
       · -- perm postcondition
-        sorry
+        have wsp : ∀ (m : Mem) (base : UInt32) (n mid : Nat) (h : mid ≤ n),
+            wordsAt m base n = wordsAt m base mid ++
+            wordsAt m (base + 4 * UInt32.ofNat mid) (n - mid) := by
+          intro m base n mid h
+          simp only [wordsAt]
+          conv_lhs => rw [← Nat.add_sub_cancel' h, List.range_add, List.map_append, List.map_map]
+          congr 1; apply List.map_congr_left; intro k _
+          have key' : base + 4 * UInt32.ofNat (mid + k) = (base + 4 * UInt32.ofNat mid) + 4 * UInt32.ofNat k := by
+            simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+          simp only [Function.comp, key']
+        let L0 := wordsAt stA.mem ptr i.toNat
+        let L2 := wordsAt stA.mem (ptr + 4 * UInt32.ofNat (i.toNat + 1)) (xs.length - i.toNat - 1)
+        have haddr1 : (ptr + 4 * UInt32.ofNat i.toNat) + 4 * UInt32.ofNat 1 =
+            ptr + 4 * UInt32.ofNat (i.toNat + 1) := by
+          symm; simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+        have haddr4 : (ptr + 4 * UInt32.ofNat 1) + 4 * UInt32.ofNat i.toNat =
+            ptr + 4 * UInt32.ofNat (i.toNat + 1) := by
+          have hh : ptr + 4 * UInt32.ofNat (1 + i.toNat) = (ptr + 4 * UInt32.ofNat 1) + 4 * UInt32.ofNat i.toNat := by
+            simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+          rw [← hh, show 1 + i.toNat = i.toNat + 1 from by omega]
+        have hkey_elem : wordsAt stA.mem (ptr + 4 * UInt32.ofNat i.toNat) 1 = [key] := by
+          have hmem_i : stA.mem.read32 (ptr + 4 * UInt32.ofNat i.toNat) = key := by
+            rw [hi_ofNat]
+          have haddr0 : (ptr + 4 * UInt32.ofNat i.toNat) + 4 * UInt32.ofNat 0 = ptr + 4 * UInt32.ofNat i.toNat := by
+            simp [show (4 : UInt32) * UInt32.ofNat 0 = 0 from by decide]
+          simp only [wordsAt, List.range_succ, List.range_zero, List.map_nil, List.map_cons,
+                     List.nil_append, haddr0, hmem_i]
+        have equB : wordsAt stA.mem ptr xs.length = L0 ++ key :: L2 := by
+          rw [wsp stA.mem ptr xs.length i.toNat (by omega)]
+          congr 1
+          rw [show xs.length - i.toNat = 1 + (xs.length - i.toNat - 1) from by omega]
+          rw [wsp stA.mem _ _ 1 (by omega)]
+          rw [show 1 + (xs.length - i.toNat - 1) - 1 = xs.length - i.toNat - 1 from by omega]
+          rw [hkey_elem, haddr1, List.singleton_append]
+        have hL0 : wordsAt stFinalA.mem (ptr + 4 * UInt32.ofNat 1) i.toNat = L0 := by
+          simp only [wordsAt,
+                     show stFinalA.mem = (stJ.mem.write32 ptr key).write32 (frame + (8:UInt32)) (i+1) from rfl]
+          apply List.map_congr_left; intro k hk
+          rw [List.mem_range] at hk
+          have haddr : (ptr + 4 * UInt32.ofNat 1) + 4 * UInt32.ofNat k = ptr + 4 * UInt32.ofNat (k + 1) := by
+            have hh : ptr + 4 * UInt32.ofNat (1 + k) = (ptr + 4 * UInt32.ofNat 1) + 4 * UInt32.ofNat k := by
+              simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+            rw [← hh, show 1 + k = k + 1 from by omega]
+          rw [haddr]
+          have ha := toNat_wordAddr ptr xs.length (k + 1) (by omega) hpg_arr
+          rw [read32_write32_ne _ (frame+(8:UInt32)) _ (i+1) (Or.inl (by
+              rw [hf8_toNat, ha]; linarith [Nat.mul_le_mul_left 4 (show k + 2 ≤ xs.length by omega), hdisj_frame]))]
+          rw [read32_write32_ne stJ.mem ptr _ key (Or.inr (by linarith [ha]))]
+          exact hshape2 k (Nat.zero_le k) hk
+        have hL2 : wordsAt stFinalA.mem (ptr + 4 * UInt32.ofNat (i.toNat + 1)) (xs.length - i.toNat - 1) = L2 := by
+          simp only [wordsAt,
+                     show stFinalA.mem = (stJ.mem.write32 ptr key).write32 (frame + (8:UInt32)) (i+1) from rfl]
+          apply List.map_congr_left; intro k hk
+          rw [List.mem_range] at hk
+          have haddr_k : (ptr + 4 * UInt32.ofNat (i.toNat+1)) + 4 * UInt32.ofNat k =
+              ptr + 4 * UInt32.ofNat (i.toNat + 1 + k) := by
+            have hh : ptr + 4 * UInt32.ofNat ((i.toNat+1) + k) =
+                (ptr + 4 * UInt32.ofNat (i.toNat+1)) + 4 * UInt32.ofNat k := by
+              simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+            rw [← hh]
+          rw [haddr_k]
+          have hik := toNat_wordAddr ptr xs.length (i.toNat+1+k) (by omega) hpg_arr
+          rw [read32_write32_ne _ (frame+(8:UInt32)) _ (i+1) (Or.inl (by
+              rw [hf8_toNat, hik]; linarith [Nat.mul_le_mul_left 4 (show i.toNat+1+k+1 ≤ xs.length by omega), hdisj_frame]))]
+          rw [read32_write32_ne stJ.mem ptr _ key (Or.inr (by linarith [hik]))]
+          exact hshape3 (i.toNat+1+k) (by omega) (by omega)
+        have h0 : wordsAt stFinalA.mem ptr 1 = [key] := by
+          have hstepA : ((stJ.mem.write32 ptr key).write32 (frame + (8 : UInt32)) (i + 1)).read32 ptr = key := by
+            rw [read32_write32_ne _ (frame + (8 : UInt32)) ptr (i + 1) (Or.inl (by
+                rw [hf8_toNat]; linarith [Nat.mul_le_mul_left 4 (show 1 ≤ xs.length by omega), hdisj_frame]))]
+            exact read32_write32_same _ _ _
+          have hmem0 : stFinalA.mem = (stJ.mem.write32 ptr key).write32 (frame + (8 : UInt32)) (i + 1) := rfl
+          have haddr0 : ptr + 4 * UInt32.ofNat 0 = ptr := by
+            simp [show (4 : UInt32) * UInt32.ofNat 0 = 0 from by decide]
+          rw [hmem0]
+          simp only [wordsAt, List.range_succ, List.range_zero, List.map_nil, List.map_cons,
+                     List.nil_append, haddr0, hstepA]
+        have equA : wordsAt stFinalA.mem ptr xs.length = key :: (L0 ++ L2) := by
+          rw [show xs.length = 1 + (xs.length - 1) from by omega, wsp stFinalA.mem ptr _ 1 (by omega)]
+          rw [show 1 + (xs.length - 1) - 1 = xs.length - 1 from by omega]
+          rw [h0, show xs.length - 1 = i.toNat + (xs.length - i.toNat - 1) from by omega,
+              wsp stFinalA.mem _ _ i.toNat (by omega)]
+          rw [show (i.toNat + (xs.length - i.toNat - 1)) - i.toNat = xs.length - i.toNat - 1 from by omega,
+              haddr4, hL0, hL2, List.singleton_append]
+        apply List.Perm.trans _ hperm
+        rw [equA, equB]
+        exact List.perm_middle.symm
     | succ n' =>
       -- ── Cases (b) and (c): j = n'+1 > 0 ────────────────────────────────────
       -- hj12 : stJ.mem.read32(frame+12) = UInt32.ofNat(n'+1)
@@ -836,9 +996,830 @@ private theorem inner_loop_terminates
         rw [UInt32.lt_iff_toNat_lt_toNat]; simp [UInt32.toNat_ofNat']; omega
       by_cases hbc : arr_jm1 > key
       · -- ── Case (c): arr[n'] > key → shift arr[n'] to arr[n'+1], decrement j ──
-        -- Apply IH at n' with updated state stJ' after the shift
         -- stJ' = stJ.write32 (ptr+4*(n'+1)) arr[n'] |>.write32 (frame+12) n'
-        sorry
+        -- ── Arithmetic auxiliaries ────────────────────────────────────────────
+        have hjm1_sub : UInt32.ofNat (n' + 1) - 1 = UInt32.ofNat n' := by
+          apply UInt32.toNat_inj.mp; simp [UInt32.toNat_sub_of_le, UInt32.toNat_ofNat']
+        have hn1_addr : (ptr + 4 * UInt32.ofNat (n' + 1)).toNat = ptr.toNat + 4 * (n' + 1) :=
+          toNat_wordAddr ptr xs.length (n' + 1) (by omega) hpg_arr
+        have h_n1_disj : (ptr + 4 * UInt32.ofNat (n' + 1)).toNat + 4 ≤ (frame + (12 : UInt32)).toNat := by
+          rw [hn1_addr, hf12_toNat]; have : n' + 2 ≤ xs.length := by omega
+          linarith [hdisj_frame, Nat.mul_le_mul_left 4 this]
+        have hbnd_n1_store : ¬((ptr + 4 * UInt32.ofNat (n' + 1)).toNat + (0 : UInt32).toNat + 4 >
+            stJ.mem.pages * 65536) := by
+          simp only [show (0 : UInt32).toNat = 0 from rfl, Nat.add_zero, hn1_addr, hpages_J]
+          have : n' + 2 ≤ xs.length := by omega
+          linarith [Nat.mul_le_mul_left 4 this]
+        have hbnd_n1_store_c : ¬((4 * UInt32.ofNat (n' + 1) + ptr).toNat + (0 : UInt32).toNat + 4 >
+            stJ.mem.pages * 65536) := by
+          rw [show (4 * UInt32.ofNat (n' + 1) + ptr : UInt32) = ptr + 4 * UInt32.ofNat (n' + 1)
+              from UInt32.add_comm _ _]
+          exact hbnd_n1_store
+        have h_m1_bnd12 : ¬((frame + (12 : UInt32)).toNat + (0 : UInt32).toNat + 4 >
+            (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) arr_jm1).pages * 65536) := by
+          rw [show (0 : UInt32).toNat = 0 from rfl, write32_pages, hpages_J, hf12_toNat]
+          linarith [hbnd_frame]
+        have h_m1_read12 : (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) arr_jm1).read32
+            (frame + (12 : UInt32)) = UInt32.ofNat (n' + 1) :=
+          (read32_write32_ne _ _ _ _ (Or.inr h_n1_disj)).trans hj12_succ
+        have harr_n'_read : stJ.mem.read32 ((ptr + 4 * UInt32.ofNat n') + (0 : UInt32)) = arr_jm1 := by
+          have h0 : (ptr + 4 * UInt32.ofNat n') + (0 : UInt32) = ptr + 4 * UInt32.ofNat n' := by simp
+          rw [h0]
+        have hbnd_n'_c : ¬((4 * UInt32.ofNat n' + ptr).toNat + (0 : UInt32).toNat + 4 >
+            stJ.mem.pages * 65536) := by
+          rw [show (4 * UInt32.ofNat n' + ptr : UInt32) = ptr + 4 * UInt32.ofNat n' from UInt32.add_comm _ _]
+          exact hbnd_n'
+        have harr_n'_read_c : stJ.mem.read32 ((4 * UInt32.ofNat n' + ptr) + (0 : UInt32)) = arr_jm1 := by
+          rw [show (4 * UInt32.ofNat n' + ptr : UInt32) = ptr + 4 * UInt32.ofNat n' from UInt32.add_comm _ _]
+          exact harr_n'_read
+        -- ── Post-shift state ──────────────────────────────────────────────────
+        let stJ' : Store Unit :=
+          { stJ with mem := stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) arr_jm1
+                              |>.write32 (frame + (12 : UInt32)) (UInt32.ofNat n') }
+        let locJ' : Locals :=
+          { locJ with
+            locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n'))
+                      |>.set 4 (.i32 (UInt32.ofNat n'))
+                      |>.set 5 (.i32 arr_jm1)
+                      |>.set 6 (.i32 (UInt32.ofNat (n' + 1))),
+            values := [] }
+        -- ── Local read lemmas ─────────────────────────────────────────────────
+        -- loc1 = {locJ with set 3 n', values=[]}
+        have hg2_loc1 : { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }.get 2 = some (.i32 frame) := by
+          simp only [Locals.get, hlp, hll, List.length_set,
+                     show ¬(2 < 2) from by omega, show (2 : Nat) < 2 + 8 from by omega,
+                     show (2 : Nat) - 2 = 0 from by omega, List.getElem?_set,
+                     if_neg (show ¬(3 : Nat) = 0 from by omega)]
+          have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+            show (2 : Nat) < 2 + 8 from by omega, show (2 : Nat) - 2 = 0 from by omega] at h; exact h
+        have hg5_loc1 : { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }.get 5 = some (.i32 (UInt32.ofNat n')) := by
+          simp only [Locals.get, hlp, hll, List.length_set,
+                     show ¬(5 < 2) from by omega, show (5 : Nat) < 2 + 8 from by omega,
+                     show (5 : Nat) - 2 = 3 from by omega, List.getElem?_set,
+                     if_pos (show (3 : Nat) = 3 from rfl), if_pos (show (3 : Nat) < 8 from by omega),
+                     if_true, if_false]
+        have hg4_loc1 : { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }.get 4 = some (.i32 key) := by
+          simp only [Locals.get, hlp, hll, List.length_set,
+                     show ¬(4 < 2) from by omega, show (4 : Nat) < 2 + 8 from by omega,
+                     show (4 : Nat) - 2 = 2 from by omega, List.getElem?_set,
+                     if_neg (show ¬(3 : Nat) = 2 from by omega)]
+          have h := hg4; simp only [Locals.get, hlp, hll, show ¬(4 < 2) from by omega,
+            show (4 : Nat) < 2 + 8 from by omega, show (4 : Nat) - 2 = 2 from by omega] at h; exact h
+        -- loc2 = {locJ with set 3 n', set 4 n', values=[]}
+        have hg6_loc2 : { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 4 (.i32 (UInt32.ofNat n')), values := [] }.get 6 = some (.i32 (UInt32.ofNat n')) := by
+          simp only [Locals.get, hlp, hll, List.length_set,
+                     show ¬(6 < 2) from by omega, show (6 : Nat) < 2 + 8 from by omega,
+                     show (6 : Nat) - 2 = 4 from by omega, List.getElem?_set,
+                     if_pos (show (4 : Nat) = 4 from rfl), if_pos (show (4 : Nat) < 8 from by omega),
+                     if_neg (show ¬(3 : Nat) = 4 from by omega), if_true, if_false]
+        -- loc3mid = {locJ with set 3,4,5, values=[]} (state after localSet 7 in BC3_INNERMOST)
+        have hg2_loc3mid : { locJ with locals := ((locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 4 (.i32 (UInt32.ofNat n'))).set 5 (.i32 arr_jm1), values := [] }.get 2 = some (.i32 frame) := by
+          simp only [Locals.get, hlp, hll, List.length_set,
+                     show ¬(2 < 2) from by omega, show (2 : Nat) < 2 + 8 from by omega,
+                     show (2 : Nat) - 2 = 0 from by omega, List.getElem?_set,
+                     if_neg (show ¬(5 : Nat) = 0 from by omega),
+                     if_neg (show ¬(4 : Nat) = 0 from by omega),
+                     if_neg (show ¬(3 : Nat) = 0 from by omega)]
+          have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+            show (2 : Nat) < 2 + 8 from by omega, show (2 : Nat) - 2 = 0 from by omega] at h; exact h
+        -- locJ' = {locJ with set 3,4,5,6, values=[]}
+        have hg8_locJ' : locJ'.get 8 = some (.i32 (UInt32.ofNat (n' + 1))) := by
+          show { locJ with locals := (((locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 4 (.i32 (UInt32.ofNat n'))).set 5 (.i32 arr_jm1)).set 6 (.i32 (UInt32.ofNat (n' + 1))), values := [] }.get 8 = some (.i32 (UInt32.ofNat (n' + 1)))
+          simp only [Locals.get, hlp, hll, List.length_set,
+                     show ¬(8 < 2) from by omega, show (8 : Nat) < 2 + 8 from by omega,
+                     show (8 : Nat) - 2 = 6 from by omega, List.getElem?_set,
+                     if_pos (show (6 : Nat) = 6 from rfl), if_pos (show (6 : Nat) < 8 from by omega),
+                     if_true, if_false]
+        have hg7_locJ' : locJ'.get 7 = some (.i32 arr_jm1) := by
+          show { locJ with locals := (((locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 4 (.i32 (UInt32.ofNat n'))).set 5 (.i32 arr_jm1)).set 6 (.i32 (UInt32.ofNat (n' + 1))), values := [] }.get 7 = some (.i32 arr_jm1)
+          simp only [Locals.get, hlp, hll, List.length_set,
+                     show ¬(7 < 2) from by omega, show (7 : Nat) < 2 + 8 from by omega,
+                     show (7 : Nat) - 2 = 5 from by omega, List.getElem?_set,
+                     if_pos (show (5 : Nat) = 5 from rfl), if_pos (show (5 : Nat) < 8 from by omega),
+                     if_neg (show ¬(6 : Nat) = 5 from by omega), if_true, if_false]
+        have hg2_locJ' : locJ'.get 2 = some (.i32 frame) := by
+          show { locJ with locals := (((locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 4 (.i32 (UInt32.ofNat n'))).set 5 (.i32 arr_jm1)).set 6 (.i32 (UInt32.ofNat (n' + 1))), values := [] }.get 2 = some (.i32 frame)
+          simp only [Locals.get, hlp, hll, List.length_set,
+                     show ¬(2 < 2) from by omega, show (2 : Nat) < 2 + 8 from by omega,
+                     show (2 : Nat) - 2 = 0 from by omega, List.getElem?_set,
+                     if_neg (show ¬(6 : Nat) = 0 from by omega),
+                     if_neg (show ¬(5 : Nat) = 0 from by omega),
+                     if_neg (show ¬(4 : Nat) = 0 from by omega),
+                     if_neg (show ¬(3 : Nat) = 0 from by omega)]
+          have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+            show (2 : Nat) < 2 + 8 from by omega, show (2 : Nat) - 2 = 0 from by omega] at h; exact h
+        have hg4_locJ' : locJ'.get 4 = some (.i32 key) := by
+          show { locJ with locals := (((locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 4 (.i32 (UInt32.ofNat n'))).set 5 (.i32 arr_jm1)).set 6 (.i32 (UInt32.ofNat (n' + 1))), values := [] }.get 4 = some (.i32 key)
+          simp only [Locals.get, hlp, hll, List.length_set,
+                     show ¬(4 < 2) from by omega, show (4 : Nat) < 2 + 8 from by omega,
+                     show (4 : Nat) - 2 = 2 from by omega, List.getElem?_set,
+                     if_neg (show ¬(6 : Nat) = 2 from by omega),
+                     if_neg (show ¬(5 : Nat) = 2 from by omega),
+                     if_neg (show ¬(4 : Nat) = 2 from by omega),
+                     if_neg (show ¬(3 : Nat) = 2 from by omega)]
+          have h := hg4; simp only [Locals.get, hlp, hll, show ¬(4 < 2) from by omega,
+            show (4 : Nat) < 2 + 8 from by omega, show (4 : Nat) - 2 = 2 from by omega] at h; exact h
+        -- ── IH preconditions for (stJ', locJ') at j = n' ─────────────────────
+        have hj12' : stJ'.mem.read32 (frame + (12 : UInt32)) = UInt32.ofNat n' :=
+          read32_write32_same (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) arr_jm1)
+            (frame + (12 : UInt32)) (UInt32.ofNat n')
+        have hf8_J' : stJ'.mem.read32 (frame + (8 : UInt32)) = i := by
+          show (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) arr_jm1
+               |>.write32 (frame + (12 : UInt32)) (UInt32.ofNat n')).read32
+               (frame + (8 : UInt32)) = i
+          rw [read32_write32_ne _ _ _ _ (Or.inl (by linarith [hf8_toNat, hf12_toNat]))]
+          rw [read32_write32_ne _ _ _ _ (Or.inr (by
+            rw [hn1_addr, hf8_toNat]; have : n' + 2 ≤ xs.length := by omega
+            linarith [hdisj_frame, Nat.mul_le_mul_left 4 this]))]
+          exact hf8_J
+        have hpages_J' : stJ'.mem.pages = stA.mem.pages := by
+          show (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) arr_jm1
+               |>.write32 (frame + (12 : UInt32)) (UInt32.ofNat n')).pages = stA.mem.pages
+          simp only [write32_pages, hpages_J]
+        have hll_J' : locJ'.locals.length = 8 := by
+          show ((((locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 4 (.i32 (UInt32.ofNat n'))).set 5 (.i32 arr_jm1)).set 6 (.i32 (UInt32.ofNat (n' + 1)))).length = 8
+          simp only [List.length_set, hll]
+        have hshape1' : ∀ k < n',
+            stJ'.mem.read32 (ptr + 4 * UInt32.ofNat k) =
+            stA.mem.read32 (ptr + 4 * UInt32.ofNat k) := by
+          intro k hk
+          have hk_addr : (ptr + 4 * UInt32.ofNat k).toNat = ptr.toNat + 4 * k :=
+            toNat_wordAddr ptr xs.length k (by omega) hpg_arr
+          show (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) arr_jm1
+               |>.write32 (frame + (12 : UInt32)) (UInt32.ofNat n')).read32
+               (ptr + 4 * UInt32.ofNat k) = stA.mem.read32 (ptr + 4 * UInt32.ofNat k)
+          rw [read32_write32_ne _ _ _ _ (Or.inl (by rw [hk_addr, hf12_toNat]; omega))]
+          rw [read32_write32_ne _ _ _ _ (Or.inl (by rw [hn1_addr, hk_addr]; linarith))]
+          exact hshape1 k (by omega)
+        have hshape2' : ∀ k, n' ≤ k → k < i.toNat →
+            stJ'.mem.read32 (ptr + 4 * UInt32.ofNat (k + 1)) =
+            stA.mem.read32 (ptr + 4 * UInt32.ofNat k) := by
+          intro k hk1 hk2
+          have hk1_addr : (ptr + 4 * UInt32.ofNat (k + 1)).toNat = ptr.toNat + 4 * (k + 1) :=
+            toNat_wordAddr ptr xs.length (k + 1) (by omega) hpg_arr
+          show (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) arr_jm1
+               |>.write32 (frame + (12 : UInt32)) (UInt32.ofNat n')).read32
+               (ptr + 4 * UInt32.ofNat (k + 1)) = stA.mem.read32 (ptr + 4 * UInt32.ofNat k)
+          by_cases hkeq : k = n'
+          · simp only [hkeq] at hk1_addr ⊢
+            rw [read32_write32_ne _ _ _ _ (Or.inl (by rw [hk1_addr, hf12_toNat]; omega))]
+            rw [read32_write32_same]
+            exact hshape1 n' (by omega)
+          · have hkgt : n' < k := Nat.lt_of_le_of_ne hk1 (Ne.symm hkeq)
+            have hn1k1 : (ptr + 4 * UInt32.ofNat (n' + 1)).toNat + 4 ≤
+                (ptr + 4 * UInt32.ofNat (k + 1)).toNat := by
+              rw [hn1_addr, hk1_addr]; omega
+            rw [read32_write32_ne _ _ _ _ (Or.inl (by rw [hk1_addr, hf12_toNat]; omega))]
+            rw [read32_write32_ne _ _ _ _ (Or.inr hn1k1)]
+            exact hshape2 k (by omega) hk2
+        have hshape3' : ∀ k, i.toNat < k → k < xs.length →
+            stJ'.mem.read32 (ptr + 4 * UInt32.ofNat k) =
+            stA.mem.read32 (ptr + 4 * UInt32.ofNat k) := by
+          intro k hk1 hk2
+          have hk_addr : (ptr + 4 * UInt32.ofNat k).toNat = ptr.toNat + 4 * k :=
+            toNat_wordAddr ptr xs.length k hk2 hpg_arr
+          show (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) arr_jm1
+               |>.write32 (frame + (12 : UInt32)) (UInt32.ofNat n')).read32
+               (ptr + 4 * UInt32.ofNat k) = stA.mem.read32 (ptr + 4 * UInt32.ofNat k)
+          rw [read32_write32_ne _ _ _ _ (Or.inl (by rw [hk_addr, hf12_toNat]; omega))]
+          have hn1k : (ptr + 4 * UInt32.ofNat (n' + 1)).toNat + 4 ≤
+              (ptr + 4 * UInt32.ofNat k).toNat := by
+            rw [hn1_addr, hk_addr]; omega
+          rw [read32_write32_ne _ _ _ _ (Or.inr hn1k)]
+          exact hshape3 k hk1 hk2
+        have hgt_key' : ∀ k, n' ≤ k → k < i.toNat →
+            key < stA.mem.read32 (ptr + 4 * UInt32.ofNat k) := by
+          intro k hk1 hk2
+          by_cases hkeq : k = n'
+          · simp only [hkeq]; rw [← hshape1 n' (by omega)]; exact hbc
+          · exact hgt_key k (by omega) hk2
+        -- ── Apply IH ──────────────────────────────────────────────────────────
+        have hg0_J' : locJ'.get 0 = some (.i32 ptr) := by
+          have hparams : locJ'.params = locJ.params := rfl
+          simp only [Locals.get, hparams, hlp, show (0:Nat) < 2 from by omega]
+          have h := hg0; simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega] at h; exact h
+        have hg1_J' : locJ'.get 1 = some (.i32 len) := by
+          have hparams : locJ'.params = locJ.params := rfl
+          simp only [Locals.get, hparams, hlp, show (1:Nat) < 2 from by omega]
+          have h := hg1; simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega] at h; exact h
+        obtain ⟨N', stFinalC, locFinalC, hIH_exec, hIH_f8, hIH_glob, hIH_pages,
+                hIH_hlp, hIH_hll, hIH_vals, hIH_g0, hIH_g1, hIH_g2, hIH_sorted, hIH_perm⟩ :=
+          IH n' (Nat.lt_succ_self n') stJ' locJ' hj12' (by omega) hf8_J' hglob_J hpages_J'
+            hlp hll_J' rfl hg0_J' hg1_J' hg2_locJ' hg4_locJ' hshape1' hshape2' hshape3' hgt_key'
+        -- ── Body execution at fuel 4 ──────────────────────────────────────────
+        have h_body : exec 4 «module» stJ locJ
+            [.localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+             .const (1 : UInt32), .and, .eqz, .br_if 1,
+             .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+             .block 0 0 [
+               .block 0 0 [
+                 .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                 .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                 .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                 .br_if 1, .br 3],
+               .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+             .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+             .block 0 0 [
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localSet 7,
+                   .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                   .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 2],
+                 .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+               .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+               .store32 (0 : UInt32), .localGet 2, .localGet 2,
+               .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+               .br 1]] {} = .Break 0 stJ' locJ' := by
+          -- Phase 1: CHECK (no fire: j=n'+1>0) + j'_set (localSet 5 = n')
+          -- Per-instruction unfolding to avoid over-reducing blocks
+          have hg2_v : ({ locJ with values := [] } : Locals).get 2 = some (.i32 frame) := hg2
+          conv_lhs => unfold exec; simp only [execOne.eq_def, hg2, hvals]
+          conv_lhs => unfold exec; simp only [execOne.eq_def, if_neg hns12_J, hj12_succ]
+          conv_lhs => unfold exec; simp only [execOne.eq_def]
+          conv_lhs => unfold exec; simp only [execOne.eq_def, if_pos hj12_pos]
+          conv_lhs => unfold exec; simp only [execOne.eq_def]
+          conv_lhs => unfold exec; simp only [execOne.eq_def,
+              show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide]
+          conv_lhs => unfold exec; simp only [execOne.eq_def,
+              show (if (1 : UInt32) = 0 then (1 : UInt32) else 0) = 0 from by decide]
+          conv_lhs => unfold exec; simp only [execOne.eq_def,
+              if_pos (show (0 : UInt32) = 0 from rfl)]
+          conv_lhs => unfold exec; simp only [execOne.eq_def, hg2_v]
+          conv_lhs => unfold exec; simp only [execOne.eq_def, if_neg hns12_J, hj12_succ]
+          conv_lhs => unfold exec; simp only [execOne.eq_def]
+          conv_lhs => unfold exec; simp only [execOne.eq_def, hjm1_sub]
+          conv_lhs => unfold exec; simp only [execOne.eq_def, Locals.set?, hlp, hll,
+              List.length_set, show ¬(5 < 2) from by omega,
+              show (5 : Nat) < 2 + 8 from by omega,
+              show (5 : Nat) - 2 = 3 from by omega, if_true, if_false]
+          -- Phase 2: BC2_OUTER → Fallthrough (arr[n'] > key fires br_if 1 in BC2_INNER)
+          rw [show (4 : Nat) = 3 + 1 from rfl, exec_block_cons]
+          have h_bc2 : exec 3 «module» stJ
+              { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }
+              [.block 0 0 [
+                 .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                 .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                 .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                 .br_if 1, .br 3],
+               .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable]
+              {} = .Break 0 stJ
+                { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] } := by
+            rw [show (3 : Nat) = 2 + 1 from rfl, exec_block_cons]
+            have hparams0 : locJ.params[0]? = some (.i32 ptr) := by
+              have h := hg0; simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega] at h; exact h
+            have hparams1 : locJ.params[1]? = some (.i32 len) := by
+              have h := hg1; simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega] at h; exact h
+            have hlocals2 : locJ.locals[2]? = some (.i32 key) := by
+              have h := hg4; simp only [Locals.get, hlp, hll, show ¬(4 < 2) from by omega,
+                show (4:Nat) < 2 + 8 from by omega, show (4:Nat) - 2 = 2 from by omega] at h; exact h
+            have hlocals0 : locJ.locals[0]? = some (.i32 frame) := by
+              have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+                show (2:Nat) < 2 + 8 from by omega, show (2:Nat) - 2 = 0 from by omega] at h; exact h
+            have hbc2_inner : exec 2 «module» stJ
+                { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }
+                [.localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                 .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                 .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                 .br_if 1, .br 3]
+                {} = .Break 1 stJ
+                { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] } := by
+              simp only [exec, execOne.eq_def,
+                         Locals.get, hlp, hll, List.length_set, List.getElem?_set,
+                         show (0:Nat) < 2 from by omega, show (1:Nat) < 2 from by omega,
+                         show ¬(4 < 2) from by omega, show (4:Nat) < 2 + 8 from by omega,
+                         show (4:Nat) - 2 = 2 from by omega,
+                         show ¬(5 < 2) from by omega, show (5:Nat) < 2 + 8 from by omega,
+                         show (5:Nat) - 2 = 3 from by omega,
+                         if_neg (show ¬(3:Nat) = 2 from by omega),
+                         if_pos (show (3:Nat) = 3 from rfl),
+                         if_pos (show (3:Nat) < 8 from by omega),
+                         if_true, if_false,
+                         hparams0, hparams1, hlocals2,
+                         if_pos hn'_lt_len,
+                         show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide,
+                         show (if (1 : UInt32) = 0 then (1 : UInt32) else 0) = 0 from by decide,
+                         if_pos (show (0 : UInt32) = 0 from rfl), hn'_shl,
+                         if_neg hbnd_n'_c, harr_n'_read_c,
+                         if_pos hbc,
+                         if_neg (show ¬(1:UInt32) = 0 from by decide)]
+              rfl
+            simp only [hbc2_inner]
+          rw [h_bc2]; simp only [List.take_zero, List.nil_append, List.drop_zero]
+          -- Phase 3: j_set2 (localSet 6 = n')
+          conv_lhs => unfold exec; simp only [execOne.eq_def, hg2_loc1]
+          conv_lhs => unfold exec; simp only [execOne.eq_def, if_neg hns12_J, hj12_succ]
+          conv_lhs => unfold exec; simp only [execOne.eq_def]
+          conv_lhs => unfold exec; simp only [execOne.eq_def, hjm1_sub]
+          conv_lhs => unfold exec; simp only [execOne.eq_def, Locals.set?, hlp, hll,
+                          List.length_set,
+                          show ¬(6 < 2) from by omega, show (6 : Nat) < 2 + 8 from by omega,
+                          show (6 : Nat) - 2 = 4 from by omega, if_true, if_false]
+          -- Phase 4: BC3_OUTER → .Break 0 stJ' locJ'
+          rw [show (4 : Nat) = 3 + 1 from rfl, exec_block_cons]
+          have h_bc3 : exec 3 «module» stJ
+              { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 4 (.i32 (UInt32.ofNat n')), values := [] }
+              [.block 0 0 [
+                 .block 0 0 [
+                   .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localSet 7,
+                   .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                   .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 2],
+                 .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+               .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+               .store32 (0 : UInt32), .localGet 2, .localGet 2,
+               .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+               .br 1] {} = .Break 1 stJ' locJ' := by
+            rw [show (3 : Nat) = 2 + 1 from rfl, exec_block_cons]
+            have h_bc3_inner : exec 2 «module» stJ
+                { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 4 (.i32 (UInt32.ofNat n')), values := [] }
+                [.block 0 0 [
+                   .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localSet 7,
+                   .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                   .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 2],
+                 .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable]
+                {} = .Break 0 stJ locJ' := by
+              rw [show (2 : Nat) = 1 + 1 from rfl, exec_block_cons]
+              -- Prove inner body: 23 instructions, br_if 1 fires
+              have h_inner_body : exec 1 «module» stJ
+                  { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 4 (.i32 (UInt32.ofNat n')), values := [] }
+                  [.localGet 6, .localGet 1, .ltU, .const (1:UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 6, .const (2:UInt32), .shl, .add,
+                   .load32 (0:UInt32), .localSet 7,
+                   .localGet 2, .load32 (12:UInt32), .localSet 8,
+                   .localGet 8, .localGet 1, .ltU, .const (1:UInt32), .and,
+                   .br_if 1, .br 2]
+                  {} = .Break 1 stJ locJ' := by
+                -- Re-derive component facts (hparams0/1, hlocals0 are from outer h_bc2 scope)
+                have hparams0_i : locJ.params[0]? = some (.i32 ptr) := by
+                  have h := hg0; simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega] at h; exact h
+                have hparams1_i : locJ.params[1]? = some (.i32 len) := by
+                  have h := hg1; simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega] at h; exact h
+                have hlocals0_i : locJ.locals[0]? = some (.i32 frame) := by
+                  have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+                    show (2:Nat) < 2 + 8 from by omega, show (2:Nat) - 2 = 0 from by omega] at h; exact h
+                simp only [exec, execOne.eq_def,
+                           Locals.get, Locals.set?, hlp, hll, List.length_set, List.getElem?_set,
+                           show (0:Nat) < 2 from by omega, show (1:Nat) < 2 from by omega,
+                           show ¬(2 < 2) from by omega, show (2:Nat) < 2 + 8 from by omega,
+                           show (2:Nat) - 2 = 0 from by omega,
+                           show ¬(6 < 2) from by omega, show (6:Nat) < 2 + 8 from by omega,
+                           show (6:Nat) - 2 = 4 from by omega,
+                           if_neg (show ¬(3:Nat) = 4 from by omega),
+                           if_pos (show (4:Nat) = 4 from rfl),
+                           if_pos (show (4:Nat) < 8 from by omega),
+                           show ¬(7 < 2) from by omega, show (7:Nat) < 2 + 8 from by omega,
+                           show (7:Nat) - 2 = 5 from by omega,
+                           show ¬(8 < 2) from by omega, show (8:Nat) < 2 + 8 from by omega,
+                           show (8:Nat) - 2 = 6 from by omega,
+                           if_pos (show (6:Nat) = 6 from rfl),
+                           if_pos (show (6:Nat) < 8 from by omega),
+                           if_neg (show ¬(5:Nat) = 0 from by omega),
+                           if_neg (show ¬(4:Nat) = 0 from by omega),
+                           if_neg (show ¬(3:Nat) = 0 from by omega),
+                           if_true, if_false,
+                           hparams0_i, hparams1_i, hlocals0_i,
+                           if_pos hn'_lt_len, if_pos hn_lt_len,
+                           show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide,
+                           show (if (1 : UInt32) = 0 then (1 : UInt32) else 0) = 0 from by decide,
+                           if_pos (show (0 : UInt32) = 0 from rfl), hn'_shl,
+                           if_neg hbnd_n'_c, harr_n'_read_c,
+                           if_neg hns12_J, hj12_succ,
+                           if_neg (show ¬(1:UInt32) = 0 from by decide)]
+                rfl
+              simp only [h_inner_body]
+            rw [h_bc3_inner]; simp only [List.take_zero, List.nil_append, List.drop_zero]
+            -- UInt32.add_zero in the simp fires first (eliminating store32's +0),
+            -- so h_m1_read12_c must be about the simplified address (without +0)
+            have h_m1_read12_c : (stJ.mem.write32 (4 * UInt32.ofNat (n' + 1) + ptr) arr_jm1).read32
+                (frame + (12 : UInt32)) = UInt32.ofNat (n' + 1) := by
+              rw [UInt32.add_comm]
+              exact h_m1_read12
+            -- Concrete param/local values needed after Locals.get unfolds in the WRITE_SHIFT
+            have hparams0_W : locJ.params[0]? = some (.i32 ptr) := by
+              have h := hg0
+              simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega] at h; exact h
+            have hlocals0_W : locJ.locals[0]? = some (.i32 frame) := by
+              have h := hg2
+              simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+                show (2:Nat) < 2 + 8 from by omega, show (2:Nat) - 2 = 0 from by omega] at h; exact h
+            -- WRITE_SHIFT: store arr_jm1 at arr[n'+1], store n' at frame[12], br 1
+            -- Use Locals.get + index arithmetic (exec_block_cons produces { params := locJ'.params,
+            -- locals := locJ'.locals } forms that the hgX_locJ' lemmas can't match directly)
+            simp only [exec, execOne.eq_def,
+                       Locals.get,
+                       show locJ'.params = locJ.params from rfl,
+                       show locJ'.locals = (((locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 4
+                         (.i32 (UInt32.ofNat n'))).set 5 (.i32 arr_jm1)).set 6
+                         (.i32 (UInt32.ofNat (n' + 1))) from rfl,
+                       hlp, hll, List.length_set, List.getElem?_set,
+                       show (0:Nat) < 2 from by omega,
+                       show ¬(2 < 2) from by omega, show (2:Nat) < 2 + 8 from by omega,
+                       show (2:Nat) - 2 = 0 from by omega,
+                       show ¬(7 < 2) from by omega, show (7:Nat) < 2 + 8 from by omega,
+                       show (7:Nat) - 2 = 5 from by omega,
+                       show ¬(8 < 2) from by omega, show (8:Nat) < 2 + 8 from by omega,
+                       show (8:Nat) - 2 = 6 from by omega,
+                       if_pos (show (6:Nat) = 6 from rfl), if_pos (show (6:Nat) < 8 from by omega),
+                       if_neg (show ¬(6:Nat) = 5 from by omega),
+                       if_pos (show (5:Nat) = 5 from rfl), if_pos (show (5:Nat) < 8 from by omega),
+                       if_neg (show ¬(6:Nat) = 0 from by omega),
+                       if_neg (show ¬(5:Nat) = 0 from by omega),
+                       if_neg (show ¬(4:Nat) = 0 from by omega),
+                       if_neg (show ¬(3:Nat) = 0 from by omega),
+                       if_true, if_false,
+                       hparams0_W, hlocals0_W,
+                       hn_shl, UInt32.add_zero,
+                       if_neg hbnd_n1_store_c, write32_pages, if_neg hns12_J,
+                       h_m1_read12_c, hjm1_sub,
+                       show stJ' = { stJ with mem := stJ.mem.write32 (4 * UInt32.ofNat (n' + 1) + ptr)
+                                               arr_jm1 |>.write32 (frame + (12 : UInt32)) (UInt32.ofNat n') }
+                         from by rw [UInt32.add_comm]]
+            rfl
+          rw [h_bc3]
+        -- ── execOne fuel chain ────────────────────────────────────────────────
+        have h_inner_ne : exec N' «module» stJ' locJ'
+            [.loop 0 0 [
+               .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localSet 7,
+                     .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                     .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 2],
+                   .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                 .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                 .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                 .br 1]],
+             .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable]
+            {} ≠ .OutOfFuel := by
+          intro h
+          have hstep := hIH_exec (N' + 1) (Nat.le_succ N')
+          rw [show N' + 1 = N' + 1 from rfl, exec_block_cons, h] at hstep
+          exact absurd hstep (by simp)
+        have hexecOne_loop_ne : execOne N' «module» stJ' locJ'
+            (.loop 0 0 [
+               .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localSet 7,
+                     .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                     .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 2],
+                   .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                 .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                 .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                 .br 1]]) {} ≠ .OutOfFuel := by
+          intro h; apply h_inner_ne; simp only [exec, h]
+        have hexecOne_mono : execOne (max N' 4) «module» stJ' locJ'
+            (.loop 0 0 [
+               .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localSet 7,
+                     .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                     .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 2],
+                   .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                 .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                 .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                 .br 1]]) {} =
+            execOne N' «module» stJ' locJ'
+            (.loop 0 0 [
+               .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localSet 7,
+                     .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                     .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 2],
+                   .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                 .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                 .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                 .br 1]]) {} :=
+          execOne_fuel_mono (Nat.le_max_left N' 4) hexecOne_loop_ne
+        have hexecOne_max_ne : execOne (max N' 4) «module» stJ' locJ' (.loop 0 0 _) {} ≠ .OutOfFuel :=
+          hexecOne_mono ▸ hexecOne_loop_ne
+        have hexecOne_succ : execOne (max N' 4 + 1) «module» stJ' locJ' (.loop 0 0 _) {} =
+            execOne (max N' 4) «module» stJ' locJ' (.loop 0 0 _) {} :=
+          execOne_fuel_mono (Nat.le_succ _) hexecOne_max_ne
+        -- Body at fuel max N' 4
+        have h_body_ne : exec 4 «module» stJ locJ
+            [.localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+             .const (1 : UInt32), .and, .eqz, .br_if 1,
+             .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+             .block 0 0 [
+               .block 0 0 [
+                 .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                 .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                 .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                 .br_if 1, .br 3],
+               .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+             .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+             .block 0 0 [
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localSet 7,
+                   .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                   .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 2],
+                 .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+               .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+               .store32 (0 : UInt32), .localGet 2, .localGet 2,
+               .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+               .br 1]] {} ≠ .OutOfFuel := by
+          intro h; simp [h_body] at h
+        have h_body_fueled : exec (max N' 4) «module» stJ locJ
+            [.localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+             .const (1 : UInt32), .and, .eqz, .br_if 1,
+             .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+             .block 0 0 [
+               .block 0 0 [
+                 .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                 .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                 .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                 .br_if 1, .br 3],
+               .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+             .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+             .block 0 0 [
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localSet 7,
+                   .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                   .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 2],
+                 .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+               .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+               .store32 (0 : UInt32), .localGet 2, .localGet 2,
+               .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+               .br 1]] {} = .Break 0 stJ' locJ' :=
+          (exec_fuel_mono (Nat.le_max_right N' 4) h_body_ne).trans h_body
+        -- execOne at level max N' 4 + 1: stJ locJ LOOP = stJ' locJ' LOOP
+        have hexecOne_eq : execOne (max N' 4 + 1) «module» stJ locJ
+            (.loop 0 0 [
+               .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localSet 7,
+                     .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                     .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 2],
+                   .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                 .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                 .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                 .br 1]]) {} =
+            execOne (max N' 4 + 1) «module» stJ' locJ'
+            (.loop 0 0 [
+               .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+               .const (1 : UInt32), .and, .eqz, .br_if 1,
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+               .block 0 0 [
+                 .block 0 0 [
+                   .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                   .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                   .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                   .br_if 1, .br 3],
+                 .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+               .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+               .block 0 0 [
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localSet 7,
+                     .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                     .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 2],
+                   .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                 .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                 .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                 .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                 .br 1]]) {} := by
+          conv_lhs => rw [execOne_loop_succ]
+          simp only [hvals, List.drop_zero, h_body_fueled, List.take_zero, List.nil_append]
+          exact hexecOne_succ.symm
+        -- ── Build base and provide witnesses ──────────────────────────────────
+        have hbase : exec (max N' 4 + 2) «module» stJ locJ
+            [.block 0 0 [
+               .loop 0 0 [
+                 .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+                 .const (1 : UInt32), .and, .eqz, .br_if 1,
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 3],
+                   .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .block 0 0 [
+                       .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                       .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                       .load32 (0 : UInt32), .localSet 7,
+                       .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                       .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                       .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]],
+               .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable],
+             .localGet 2, .load32 (12 : UInt32), .localSet 9,
+             .block 0 0 [
+               .localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+               .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+               .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]
+            {} = .Break 0 stFinalC locFinalC := by
+          conv_lhs => rw [show max N' 4 + 2 = (max N' 4 + 1) + 1 from by omega, exec_block_cons]
+          have h_exec_eq : exec (max N' 4 + 1) «module» stJ locJ
+              [.loop 0 0 [
+                 .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+                 .const (1 : UInt32), .and, .eqz, .br_if 1,
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 3],
+                   .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .block 0 0 [
+                       .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                       .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                       .load32 (0 : UInt32), .localSet 7,
+                       .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                       .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                       .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]],
+               .localGet 8, .localGet 1, .const 1048668, .call 54, .unreachable] {} =
+              exec (max N' 4 + 1) «module» stJ' locJ'
+              [.loop 0 0 [
+                 .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+                 .const (1 : UInt32), .and, .eqz, .br_if 1,
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 3],
+                   .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .block 0 0 [
+                       .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                       .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                       .load32 (0 : UInt32), .localSet 7,
+                       .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                       .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                       .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]],
+               .localGet 8, .localGet 1, .const 1048668, .call 54, .unreachable] {} := by
+            simp only [exec, hexecOne_eq]
+          rw [h_exec_eq]
+          have h_rhs := hIH_exec (max N' 4 + 2) (by omega)
+          rw [show max N' 4 + 2 = (max N' 4 + 1) + 1 from by omega, exec_block_cons] at h_rhs
+          rw [show locJ.values = locJ'.values from hvals.trans (show locJ'.values = [] from rfl).symm]
+          exact h_rhs
+        have hbase_ne : exec (max N' 4 + 2) «module» stJ locJ
+            [.block 0 0 [
+               .loop 0 0 [
+                 .localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+                 .const (1 : UInt32), .and, .eqz, .br_if 1,
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 3],
+                   .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .block 0 0 [
+                       .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                       .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                       .load32 (0 : UInt32), .localSet 7,
+                       .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                       .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                       .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]],
+               .localGet 8, .localGet 1, .const (1048668 : UInt32), .call 54, .unreachable],
+             .localGet 2, .load32 (12 : UInt32), .localSet 9,
+             .block 0 0 [
+               .localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+               .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+               .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]]
+            {} ≠ .OutOfFuel := by
+          intro h; simp [hbase] at h
+        refine ⟨max N' 4 + 2, stFinalC, locFinalC, ?_, hIH_f8, hIH_glob, hIH_pages,
+                hIH_hlp, hIH_hll, hIH_vals, hIH_g0, hIH_g1, hIH_g2, hIH_sorted, hIH_perm⟩
+        intro fuel hfuel
+        exact (exec_fuel_mono hfuel hbase_ne).trans hbase
         /- CASE (c) SKETCH (j=n'+1>0, arr[n'] > key):
            After:
            - CHECK: gtU(n'+1, 0) = n'+1>0 = true → 1; eqz→0; br_if 1 no fire
@@ -1093,6 +2074,11 @@ private theorem inner_loop_terminates
           simp only [show (0:UInt32).toNat = 0 from rfl, Nat.add_zero, hn1_addr, hpages_J]
           have : n'+2 ≤ xs.length := by omega
           linarith [Nat.mul_le_mul_left 4 this]
+        have hbnd_n1_store_c : ¬((4 * UInt32.ofNat (n' + 1) + ptr).toNat + (0 : UInt32).toNat + 4 >
+            stJ.mem.pages * 65536) := by
+          rw [show (4 * UInt32.ofNat (n' + 1) + ptr : UInt32) = ptr + 4 * UInt32.ofNat (n' + 1)
+              from UInt32.add_comm _ _]
+          exact hbnd_n1_store
         -- bounds for store32 at frame+8 (memory after write32 at ptr+4*(n'+1))
         have hbnd_frame8_b : ¬((frame + (8:UInt32)).toNat + (0:UInt32).toNat + 4 >
             (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n'+1)) key).pages * 65536) := by
@@ -1108,6 +2094,13 @@ private theorem inner_loop_terminates
         have harr_n'_read : stJ.mem.read32 ((ptr + 4 * UInt32.ofNat n') + (0:UInt32)) = arr_jm1 := by
           have h0 : (ptr + 4 * UInt32.ofNat n') + (0:UInt32) = ptr + 4 * UInt32.ofNat n' := by simp
           rw [h0]
+        have hbnd_n'_c : ¬((4 * UInt32.ofNat n' + ptr).toNat + (0 : UInt32).toNat + 4 >
+            stJ.mem.pages * 65536) := by
+          rw [show (4 * UInt32.ofNat n' + ptr : UInt32) = ptr + 4 * UInt32.ofNat n' from UInt32.add_comm _ _]
+          exact hbnd_n'
+        have harr_n'_read_c : stJ.mem.read32 ((4 * UInt32.ofNat n' + ptr) + (0 : UInt32)) = arr_jm1 := by
+          rw [show (4 * UInt32.ofNat n' + ptr : UInt32) = ptr + 4 * UInt32.ofNat n' from UInt32.add_comm _ _]
+          exact harr_n'_read
         -- bc2: br_if 1 no fire (arr[n'] ≤ key), br 3 fires
         have hle_show : ¬(arr_jm1 > key) := hbc
         -- jm1 = n' = frame[12] - 1; sub is in WASM
@@ -1163,7 +2156,132 @@ private theorem inner_loop_terminates
             rw [show k + 19 = k + 18 + 1 from by omega]
             conv_lhs => unfold exec; rw [show k + 18 + 1 = k + 18 + 1 from rfl, execOne_loop_succ]
             -- Loop body at k+17 produces .Break 1 (case b: bc2_outer → .Break 1 from inner_loop body)
-            sorry -- loop body exec for case (b) — needs careful simp through CHECK + j'_set + BC2_OUTER
+            -- Pre-compute local gets for state after j'_set (locals[3] = n')
+            have hg2_v : ({ locJ with values := [] } : Locals).get 2 = some (.i32 frame) := hg2
+            have hg5_b : { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }.get 5 = some (.i32 (UInt32.ofNat n')) := by
+              simp only [Locals.get, hlp, hll, List.length_set,
+                         show ¬(5 < 2) from by omega, show (5 : Nat) < 2 + 8 from by omega,
+                         show (5 : Nat) - 2 = 3 from by omega, List.getElem?_set,
+                         if_pos (show (3 : Nat) = 3 from rfl),
+                         if_pos (show (3 : Nat) < 8 from by omega),
+                         if_true, if_false]
+            have hg0_b' : { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }.get 0 = some (.i32 ptr) := by
+              simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega]
+              have h := hg0; simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega] at h; exact h
+            have hg1_b' : { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }.get 1 = some (.i32 len) := by
+              simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega]
+              have h := hg1; simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega] at h; exact h
+            have hg4_b' : { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }.get 4 = some (.i32 key) := by
+              simp only [Locals.get, hlp, hll, List.length_set,
+                         show ¬(4 < 2) from by omega, show (4 : Nat) < 2 + 8 from by omega,
+                         show (4 : Nat) - 2 = 2 from by omega, List.getElem?_set,
+                         if_neg (show ¬(3 : Nat) = 2 from by omega)]
+              have h := hg4; simp only [Locals.get, hlp, hll, show ¬(4 < 2) from by omega,
+                             show (4 : Nat) < 2 + 8 from by omega,
+                             show (4 : Nat) - 2 = 2 from by omega] at h; exact h
+            -- Body: CHECK no fire, j'_set, BC2_OUTER → br3 → .Break 1
+            have hbody_b : exec (k + 18) «module» stJ locJ
+                [.localGet 2, .load32 (12 : UInt32), .const (0 : UInt32), .gtU,
+                 .const (1 : UInt32), .and, .eqz, .br_if 1,
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 5,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 3],
+                   .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable],
+                 .localGet 2, .load32 (12 : UInt32), .const (1 : UInt32), .sub, .localSet 6,
+                 .block 0 0 [
+                   .block 0 0 [
+                     .block 0 0 [
+                       .localGet 6, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                       .localGet 0, .localGet 6, .const (2 : UInt32), .shl, .add,
+                       .load32 (0 : UInt32), .localSet 7,
+                       .localGet 2, .load32 (12 : UInt32), .localSet 8,
+                       .localGet 8, .localGet 1, .ltU, .const (1 : UInt32), .and,
+                       .br_if 1, .br 2],
+                     .localGet 6, .localGet 1, .const (1048652 : UInt32), .call 54, .unreachable],
+                   .localGet 0, .localGet 8, .const (2 : UInt32), .shl, .add, .localGet 7,
+                   .store32 (0 : UInt32), .localGet 2, .localGet 2,
+                   .load32 (12 : UInt32), .const (1 : UInt32), .sub, .store32 (12 : UInt32),
+                   .br 1]]
+                {} = .Break 1 stJ
+                  { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] } := by
+              have hparams0_b : locJ.params[0]? = some (.i32 ptr) := by
+                have h := hg0; simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega] at h; exact h
+              have hparams1_b : locJ.params[1]? = some (.i32 len) := by
+                have h := hg1; simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega] at h; exact h
+              have hlocals0_b : locJ.locals[0]? = some (.i32 frame) := by
+                have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+                  show (2:Nat) < 2 + 8 from by omega, show (2:Nat) - 2 = 0 from by omega] at h; exact h
+              have hlocals2_b : locJ.locals[2]? = some (.i32 key) := by
+                have h := hg4; simp only [Locals.get, hlp, hll, show ¬(4 < 2) from by omega,
+                  show (4:Nat) < 2 + 8 from by omega, show (4:Nat) - 2 = 2 from by omega] at h; exact h
+              -- Per-instruction unfolding for CHECK + j'_set prefix
+              conv_lhs => unfold exec; simp only [execOne.eq_def, hg2, hvals]
+              conv_lhs => unfold exec; simp only [execOne.eq_def, if_neg hns12_J, hj12_succ]
+              conv_lhs => unfold exec; simp only [execOne.eq_def]
+              conv_lhs => unfold exec; simp only [execOne.eq_def, if_pos hj12_pos]
+              conv_lhs => unfold exec; simp only [execOne.eq_def]
+              conv_lhs => unfold exec; simp only [execOne.eq_def,
+                  show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide]
+              conv_lhs => unfold exec; simp only [execOne.eq_def,
+                  show (if (1 : UInt32) = 0 then (1 : UInt32) else 0) = 0 from by decide]
+              conv_lhs => unfold exec; simp only [execOne.eq_def,
+                  if_pos (show (0 : UInt32) = 0 from rfl)]
+              conv_lhs => unfold exec; simp only [execOne.eq_def, hg2_v]
+              conv_lhs => unfold exec; simp only [execOne.eq_def, if_neg hns12_J, hj12_succ]
+              conv_lhs => unfold exec; simp only [execOne.eq_def]
+              conv_lhs => unfold exec; simp only [execOne.eq_def, hjm1_sub]
+              conv_lhs => unfold exec; simp only [execOne.eq_def, Locals.set?, hlp, hll,
+                  List.length_set, show ¬(5 < 2) from by omega,
+                  show (5 : Nat) < 2 + 8 from by omega,
+                  show (5 : Nat) - 2 = 3 from by omega, if_true, if_false]
+              -- BC2_OUTER block
+              rw [show k + 18 = (k + 17) + 1 from by omega, exec_block_cons]
+              -- BC2_OUTER body: [BC2_INNER_block, error_path] → .Break 2
+              have h_bc2_b : exec (k + 17) «module» stJ
+                  { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }
+                  [.block 0 0 [
+                     .localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 3],
+                   .localGet 5, .localGet 1, .const (1048620 : UInt32), .call 54, .unreachable]
+                  {} = .Break 2 stJ
+                  { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] } := by
+                rw [show k + 17 = (k + 16) + 1 from by omega, exec_block_cons]
+                have hbc2b_inner : exec (k + 16) «module» stJ
+                    { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] }
+                    [.localGet 5, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+                     .localGet 0, .localGet 5, .const (2 : UInt32), .shl, .add,
+                     .load32 (0 : UInt32), .localGet 4, .gtU, .const (1 : UInt32), .and,
+                     .br_if 1, .br 3]
+                    {} = .Break 3 stJ
+                    { locJ with locals := locJ.locals.set 3 (.i32 (UInt32.ofNat n')), values := [] } := by
+                  simp only [exec, execOne.eq_def,
+                             Locals.get, hlp, hll, List.length_set, List.getElem?_set,
+                             show (0:Nat) < 2 from by omega, show (1:Nat) < 2 from by omega,
+                             show ¬(4 < 2) from by omega, show (4:Nat) < 2 + 8 from by omega,
+                             show (4:Nat) - 2 = 2 from by omega,
+                             show ¬(5 < 2) from by omega, show (5:Nat) < 2 + 8 from by omega,
+                             show (5:Nat) - 2 = 3 from by omega,
+                             if_neg (show ¬(3:Nat) = 2 from by omega),
+                             if_pos (show (3:Nat) = 3 from rfl),
+                             if_pos (show (3:Nat) < 8 from by omega),
+                             if_true, if_false,
+                             hparams0_b, hparams1_b, hlocals2_b,
+                             if_pos hn'_lt_len,
+                             show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide,
+                             show (if (1 : UInt32) = 0 then (1 : UInt32) else 0) = 0 from by decide,
+                             if_pos (show (0 : UInt32) = 0 from rfl), hn'_shl,
+                             if_neg hbnd_n'_c, harr_n'_read_c,
+                             if_neg hle_show,
+                             show (1 : UInt32) &&& (0 : UInt32) = 0 from by decide]
+                simp only [hbc2b_inner]
+              rw [h_bc2_b]
+            rw [hbody_b]
           rw [hinner_b]
           simp only [List.take_zero, List.nil_append, List.drop_zero, hvals]
           -- GET_j + STORE_KEY_BLOCK
@@ -1206,7 +2324,98 @@ private theorem inner_loop_terminates
           -- STORE_KEY_BLOCK exec_block_cons
           rw [show k + 20 = k + 19 + 1 from by omega, exec_block_cons]
           -- STORE_KEY_BODY produces .Break 1 → exec_block_cons gives .Break 0 (= stFinalB, locFinalB)
-          sorry -- store key at arr[n'+1] and i+1 at frame[8], prove .Break 1 → exec_block_cons .Break 0
+          -- Pre-compute local reads from locFinalB
+          have hg9_b : locFinalB.get 9 = some (.i32 (UInt32.ofNat (n' + 1))) := by
+            simp only [show locFinalB = { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 7 (.i32 (UInt32.ofNat (n' + 1))), values := [] } from rfl,
+                       Locals.get, hlp, hll, List.length_set,
+                       show ¬(9 < 2) from by omega, show (9 : Nat) < 2 + 8 from by omega,
+                       show (9 : Nat) - 2 = 7 from by omega, List.getElem?_set,
+                       if_pos (show (7 : Nat) = 7 from rfl),
+                       if_pos (show (7 : Nat) < 8 from by omega),
+                       if_true, if_false]
+          have hg1_b2 : locFinalB.get 1 = some (.i32 len) := by
+            simp only [show locFinalB = { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 7 (.i32 (UInt32.ofNat (n' + 1))), values := [] } from rfl,
+                       Locals.get, hlp, show (1:Nat) < 2 from by omega]
+            have h := hg1; simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega] at h; exact h
+          have hg0_b2 : locFinalB.get 0 = some (.i32 ptr) := by
+            simp only [show locFinalB = { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 7 (.i32 (UInt32.ofNat (n' + 1))), values := [] } from rfl,
+                       Locals.get, hlp, show (0:Nat) < 2 from by omega]
+            have h := hg0; simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega] at h; exact h
+          have hg4_b2 : locFinalB.get 4 = some (.i32 key) := by
+            simp only [show locFinalB = { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 7 (.i32 (UInt32.ofNat (n' + 1))), values := [] } from rfl,
+                       Locals.get, hlp, hll, List.length_set,
+                       show ¬(4 < 2) from by omega, show (4 : Nat) < 2 + 8 from by omega,
+                       show (4 : Nat) - 2 = 2 from by omega, List.getElem?_set,
+                       if_neg (show ¬(7 : Nat) = 2 from by omega),
+                       if_neg (show ¬(3 : Nat) = 2 from by omega)]
+            have h := hg4; simp only [Locals.get, hlp, hll, show ¬(4 < 2) from by omega,
+                           show (4 : Nat) < 2 + 8 from by omega,
+                           show (4 : Nat) - 2 = 2 from by omega] at h; exact h
+          have hg2_b2 : locFinalB.get 2 = some (.i32 frame) := by
+            simp only [show locFinalB = { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 7 (.i32 (UInt32.ofNat (n' + 1))), values := [] } from rfl,
+                       Locals.get, hlp, hll, List.length_set,
+                       show ¬(2 < 2) from by omega, show (2 : Nat) < 2 + 8 from by omega,
+                       show (2 : Nat) - 2 = 0 from by omega, List.getElem?_set,
+                       if_neg (show ¬(7 : Nat) = 0 from by omega),
+                       if_neg (show ¬(3 : Nat) = 0 from by omega)]
+            have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+                           show (2 : Nat) < 2 + 8 from by omega,
+                           show (2 : Nat) - 2 = 0 from by omega] at h; exact h
+          have hns8_J_b : ¬(frame.toNat + (8 : UInt32).toNat + 4 >
+              (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) key).pages * 65536) := by
+            rw [write32_pages]; exact hns8_J
+          have h_f8_read_b : (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) key).read32
+              (frame + (8 : UInt32)) = i := by
+            have hn1_addr' : (ptr + 4 * UInt32.ofNat (n' + 1)).toNat = ptr.toNat + 4 * (n' + 1) :=
+              toNat_wordAddr ptr xs.length (n' + 1) (by omega) hpg_arr
+            have h_disj : (ptr + 4 * UInt32.ofNat (n' + 1)).toNat + 4 ≤
+                (frame + (8 : UInt32)).toNat := by
+              have h2 : n' + 2 ≤ xs.length := by omega
+              linarith [hn1_addr', hf8_toNat, Nat.mul_le_mul_left 4 h2, hdisj_frame]
+            rw [read32_write32_ne _ _ _ _ (Or.inr h_disj)]
+            exact hf8_J
+          have hstore_b : exec (k + 19) «module» stJ locFinalB
+              [.localGet 9, .localGet 1, .ltU, .const (1 : UInt32), .and, .eqz, .br_if 0,
+               .localGet 0, .localGet 9, .const (2 : UInt32), .shl, .add, .localGet 4,
+               .store32 (0 : UInt32), .localGet 2, .localGet 2, .load32 (8 : UInt32),
+               .const (1 : UInt32), .add, .store32 (8 : UInt32), .br 1]
+              {} = .Break 1 stFinalB locFinalB := by
+            have hparams0_b2 : locJ.params[0]? = some (.i32 ptr) := by
+              have h := hg0; simp only [Locals.get, hlp, show (0:Nat) < 2 from by omega] at h; exact h
+            have hparams1_b2 : locJ.params[1]? = some (.i32 len) := by
+              have h := hg1; simp only [Locals.get, hlp, show (1:Nat) < 2 from by omega] at h; exact h
+            have hlocals0_b2 : locJ.locals[0]? = some (.i32 frame) := by
+              have h := hg2; simp only [Locals.get, hlp, hll, show ¬(2 < 2) from by omega,
+                show (2:Nat) < 2 + 8 from by omega, show (2:Nat) - 2 = 0 from by omega] at h; exact h
+            have hlocals2_b2 : locJ.locals[2]? = some (.i32 key) := by
+              have h := hg4; simp only [Locals.get, hlp, hll, show ¬(4 < 2) from by omega,
+                show (4:Nat) < 2 + 8 from by omega, show (4:Nat) - 2 = 2 from by omega] at h; exact h
+            simp only [exec, execOne.eq_def,
+                       Locals.get, hlp, hll, List.length_set,
+                       show (0 : Nat) < 2 from by omega, show (1 : Nat) < 2 from by omega,
+                       show ¬(2 < 2) from by omega, show ¬(4 < 2) from by omega, show ¬(9 < 2) from by omega,
+                       show (2 : Nat) < 2 + 8 from by omega, show (4 : Nat) < 2 + 8 from by omega,
+                       show (9 : Nat) < 2 + 8 from by omega,
+                       show (2 : Nat) - 2 = 0 from by omega, show (4 : Nat) - 2 = 2 from by omega,
+                       show (9 : Nat) - 2 = 7 from by omega,
+                       List.getElem?_set,
+                       if_pos (show (7 : Nat) = 7 from rfl), if_pos (show (7 : Nat) < 8 from by omega),
+                       if_neg (show ¬(7 : Nat) = 2 from by omega), if_neg (show ¬(7 : Nat) = 0 from by omega),
+                       if_neg (show ¬(3 : Nat) = 2 from by omega), if_neg (show ¬(3 : Nat) = 0 from by omega),
+                       if_true, if_false,
+                       hg9_b, hg1_b2, hg0_b2, hg4_b2, hg2_b2,
+                       hparams0_b2, hparams1_b2, hlocals0_b2, hlocals2_b2,
+                       if_pos hn1_lt_len,
+                       show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide,
+                       show (if (1 : UInt32) = 0 then (1 : UInt32) else 0) = 0 from by decide,
+                       if_pos (show (0 : UInt32) = 0 from rfl),
+                       hn1_shl_eq, UInt32.add_zero,
+                       show (4 * UInt32.ofNat (n' + 1) + ptr : UInt32) = ptr + 4 * UInt32.ofNat (n' + 1) from UInt32.add_comm _ _,
+                       show (1 : UInt32) + i = i + 1 from UInt32.add_comm _ _,
+                       if_neg hbnd_n1_store, if_neg hns8_J_b, h_f8_read_b,
+                       show stFinalB = { stJ with mem := (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n' + 1)) key).write32 (frame + (8 : UInt32)) (i + 1) } from rfl,
+                       show locFinalB = { locJ with locals := (locJ.locals.set 3 (.i32 (UInt32.ofNat n'))).set 7 (.i32 (UInt32.ofNat (n' + 1))), values := [] } from rfl]
+          rw [hstore_b]
         · -- frame[8] = i+1
           exact read32_write32_same (stJ.mem.write32 _ _) (frame + (8:UInt32)) (i+1)
         · -- globals unchanged
@@ -1241,9 +2450,287 @@ private theorem inner_loop_terminates
                          if_true, if_false] at h
           exact h
         · -- sorted postcondition
-          sorry
+          have hi1 : (i + 1).toNat = i.toNat + 1 := by
+            rw [UInt32.toNat_add, show (1 : UInt32).toNat = 1 from rfl]
+            exact Nat.mod_eq_of_lt (by linarith [hi_lt, hpg_arr])
+          rw [hi1]
+          have wsp : ∀ (m : Mem) (base : UInt32) (n mid : Nat) (h : mid ≤ n),
+              wordsAt m base n = wordsAt m base mid ++
+              wordsAt m (base + 4 * UInt32.ofNat mid) (n - mid) := by
+            intro m base n mid h
+            simp only [wordsAt]
+            conv_lhs => rw [← Nat.add_sub_cancel' h, List.range_add, List.map_append, List.map_map]
+            congr 1; apply List.map_congr_left; intro k _
+            have key' : base + 4 * UInt32.ofNat (mid + k) = (base + 4 * UInt32.ofNat mid) + 4 * UInt32.ofNat k := by
+              simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+            simp only [Function.comp, key']
+          have hn1_addr : (ptr + 4 * UInt32.ofNat (n'+1)).toNat = ptr.toNat + 4*(n'+1) :=
+            toNat_wordAddr ptr xs.length (n'+1) (by omega) hpg_arr
+          let L_pre := wordsAt stA.mem ptr (n'+1)
+          let L_suf := wordsAt stA.mem (ptr + 4 * UInt32.ofNat (n'+1)) (i.toNat - n' - 1)
+          have hpairwise_split : wordsAt stA.mem ptr i.toNat = L_pre ++ L_suf := by
+            have h := wsp stA.mem ptr i.toNat (n'+1) (by omega)
+            rw [show i.toNat - (n'+1) = i.toNat - n' - 1 from by omega] at h
+            exact h
+          have hpairwise_full : (L_pre ++ L_suf).Pairwise (· ≤ ·) :=
+            hpairwise_split ▸ hpairwise
+          have hpre_sorted := (List.pairwise_append.mp hpairwise_full).1
+          have hsuf_sorted := (List.pairwise_append.mp hpairwise_full).2.1
+          have hle_key : ∀ a ∈ L_pre, a ≤ key := by
+            intro a ha
+            simp only [L_pre, wordsAt, List.mem_map, List.mem_range] at ha
+            obtain ⟨j, hj, rfl⟩ := ha
+            suffices h : stA.mem.read32 (ptr + 4 * UInt32.ofNat j) ≤
+                stA.mem.read32 (ptr + 4 * UInt32.ofNat n') by
+              have heq : arr_jm1 = stA.mem.read32 (ptr + 4 * UInt32.ofNat n') :=
+                hshape1 n' (Nat.lt_succ_self n')
+              have hle : arr_jm1 ≤ key := by
+                rw [UInt32.le_iff_toNat_le]
+                have hbc' : ¬(key.toNat < arr_jm1.toNat) :=
+                  fun h => hbc (UInt32.lt_iff_toNat_lt_toNat.mpr h)
+                omega
+              exact UInt32.le_iff_toNat_le.mpr (Nat.le_trans
+                (UInt32.le_iff_toNat_le.mp h)
+                (UInt32.le_iff_toNat_le.mp (heq ▸ hle)))
+            rcases Nat.eq_or_lt_of_le (Nat.lt_succ_iff.mp hj) with rfl | hjn
+            · exact UInt32.le_iff_toNat_le.mpr (Nat.le_refl _)
+            · have hpre_n : L_pre = wordsAt stA.mem ptr n' ++
+                  [stA.mem.read32 (ptr + 4 * UInt32.ofNat n')] := by
+                simp only [L_pre]
+                rw [show n'+1 = n' + 1 from rfl, wsp stA.mem ptr _ n' (by omega),
+                    show n'+1-n' = 1 from by omega]
+                simp only [wordsAt, List.range_succ, List.range_zero, List.map_nil, List.map_cons,
+                           show (4 : UInt32) * UInt32.ofNat 0 = 0 from by decide,
+                           UInt32.add_zero, List.nil_append]
+              rw [hpre_n] at hpre_sorted
+              exact ((List.pairwise_append.mp hpre_sorted).2.2
+                (stA.mem.read32 (ptr + 4 * UInt32.ofNat j))
+                (by simp only [wordsAt, List.mem_map, List.mem_range]; exact ⟨j, hjn, rfl⟩)
+                (stA.mem.read32 (ptr + 4 * UInt32.ofNat n'))
+                (List.mem_singleton.mpr rfl))
+          have hpiece_pre : wordsAt stFinalB.mem ptr (n'+1) = L_pre := by
+            simp only [L_pre, wordsAt,
+                       show stFinalB.mem = (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n'+1)) key).write32 (frame + (8:UInt32)) (i+1) from rfl]
+            apply List.map_congr_left; intro k hk
+            rw [List.mem_range] at hk
+            have hk_addr := toNat_wordAddr ptr xs.length k (by omega) hpg_arr
+            rw [read32_write32_ne _ (frame+(8:UInt32)) _ (i+1) (Or.inl (by
+                rw [hf8_toNat, hk_addr]
+                linarith [Nat.mul_le_mul_left 4 (show k+1 ≤ xs.length by omega), hdisj_frame]))]
+            rw [read32_write32_ne stJ.mem (ptr + 4 * UInt32.ofNat (n'+1)) _ key (Or.inl (by
+                linarith [hk_addr, hn1_addr]))]
+            exact hshape1 k hk
+          have hpiece_key : wordsAt stFinalB.mem (ptr + 4 * UInt32.ofNat (n'+1)) 1 = [key] := by
+            simp only [wordsAt,
+                       show stFinalB.mem = (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n'+1)) key).write32 (frame + (8:UInt32)) (i+1) from rfl,
+                       List.range_succ, List.range_zero, List.map_nil, List.map_cons,
+                       show (4 : UInt32) * UInt32.ofNat 0 = 0 from by decide,
+                       UInt32.add_zero, List.nil_append]
+            rw [read32_write32_ne _ (frame+(8:UInt32)) _ (i+1) (Or.inl (by
+                rw [hf8_toNat, hn1_addr]; linarith [Nat.mul_le_mul_left 4 (show n'+2 ≤ xs.length by omega), hdisj_frame])),
+                read32_write32_same]
+          have haddr_n2 : (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat 1 =
+              ptr + 4 * UInt32.ofNat (n'+2) := by
+            symm; simp only [show n'+2 = (n'+1)+1 from by omega, UInt32.ofNat_add, UInt32.mul_add]
+            rw [← UInt32.add_assoc]
+          have hpiece_suf : wordsAt stFinalB.mem (ptr + 4 * UInt32.ofNat (n'+2)) (i.toNat - n' - 1) = L_suf := by
+            simp only [L_suf, wordsAt,
+                       show stFinalB.mem = (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n'+1)) key).write32 (frame + (8:UInt32)) (i+1) from rfl]
+            apply List.map_congr_left; intro m hm
+            rw [List.mem_range] at hm
+            have haddr_lhs : (ptr + 4 * UInt32.ofNat (n'+2)) + 4 * UInt32.ofNat m =
+                ptr + 4 * UInt32.ofNat (n'+2+m) := by
+              have hh : ptr + 4 * UInt32.ofNat ((n'+2) + m) =
+                  (ptr + 4 * UInt32.ofNat (n'+2)) + 4 * UInt32.ofNat m := by
+                simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+              rw [← hh]
+            have haddr_rhs : (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat m =
+                ptr + 4 * UInt32.ofNat (n'+1+m) := by
+              have hh : ptr + 4 * UInt32.ofNat ((n'+1) + m) =
+                  (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat m := by
+                simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+              rw [← hh]
+            rw [haddr_lhs]
+            have hn2m := toNat_wordAddr ptr xs.length (n'+2+m) (by omega) hpg_arr
+            rw [read32_write32_ne _ (frame+(8:UInt32)) _ (i+1) (Or.inl (by
+                rw [hf8_toNat, hn2m]
+                linarith [Nat.mul_le_mul_left 4 (show n'+2+m+1 ≤ xs.length by omega), hdisj_frame]))]
+            rw [read32_write32_ne stJ.mem (ptr + 4 * UInt32.ofNat (n'+1)) _ key (Or.inr (by
+                linarith [hn2m, hn1_addr]))]
+            rw [show n'+2+m = n'+1+m+1 from by omega,
+                hshape2 (n'+1+m) (by omega) (by omega), haddr_rhs]
+          have hlist_b : wordsAt stFinalB.mem ptr (i.toNat + 1) = L_pre ++ key :: L_suf := by
+            rw [show i.toNat + 1 = (n'+1) + (1 + (i.toNat - n' - 1)) from by omega]
+            rw [wsp stFinalB.mem ptr _ (n'+1) (by omega)]
+            rw [show (n'+1) + (1 + (i.toNat - n' - 1)) - (n'+1) = 1 + (i.toNat - n' - 1) from by omega]
+            rw [wsp stFinalB.mem (ptr + 4 * UInt32.ofNat (n'+1)) _ 1 (by omega)]
+            rw [show 1 + (i.toNat - n' - 1) - 1 = i.toNat - n' - 1 from by omega]
+            rw [hpiece_pre, hpiece_key, haddr_n2, hpiece_suf, List.singleton_append]
+          rw [hlist_b, List.pairwise_append]
+          refine ⟨hpre_sorted, List.pairwise_cons.mpr ⟨fun x hx => ?_, hsuf_sorted⟩, fun a ha b hb => ?_⟩
+          · simp only [L_suf, wordsAt, List.mem_map, List.mem_range] at hx
+            obtain ⟨m, hm, rfl⟩ := hx
+            have haddr_m : (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat m =
+                ptr + 4 * UInt32.ofNat (n'+1+m) := by
+              have hh : ptr + 4 * UInt32.ofNat ((n'+1) + m) =
+                  (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat m := by
+                simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+              rw [← hh]
+            rw [haddr_m]
+            exact UInt32.le_iff_toNat_le.mpr (Nat.le_of_lt (UInt32.lt_iff_toNat_lt_toNat.mp (hgt_key (n'+1+m) (by omega) (by omega))))
+          · simp only [List.mem_cons] at hb
+            rcases hb with rfl | hb
+            · exact hle_key a ha
+            · simp only [L_suf, wordsAt, List.mem_map, List.mem_range] at hb
+              obtain ⟨m, hm, rfl⟩ := hb
+              have haddr_m : (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat m =
+                  ptr + 4 * UInt32.ofNat (n'+1+m) := by
+                have hh : ptr + 4 * UInt32.ofNat ((n'+1) + m) =
+                    (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat m := by
+                  simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+                rw [← hh]
+              rw [haddr_m]
+              exact UInt32.le_iff_toNat_le.mpr (Nat.le_trans
+                (UInt32.le_iff_toNat_le.mp (hle_key a ha))
+                (Nat.le_of_lt (UInt32.lt_iff_toNat_lt_toNat.mp (hgt_key (n'+1+m) (by omega) (by omega)))))
         · -- perm postcondition
-          sorry
+          have wsp : ∀ (m : Mem) (base : UInt32) (n mid : Nat) (h : mid ≤ n),
+              wordsAt m base n = wordsAt m base mid ++
+              wordsAt m (base + 4 * UInt32.ofNat mid) (n - mid) := by
+            intro m base n mid h
+            simp only [wordsAt]
+            conv_lhs => rw [← Nat.add_sub_cancel' h, List.range_add, List.map_append, List.map_map]
+            congr 1; apply List.map_congr_left; intro k _
+            have key' : base + 4 * UInt32.ofNat (mid + k) = (base + 4 * UInt32.ofNat mid) + 4 * UInt32.ofNat k := by
+              simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+            simp only [Function.comp, key']
+          have hn1_addr : (ptr + 4 * UInt32.ofNat (n'+1)).toNat = ptr.toNat + 4*(n'+1) :=
+            toNat_wordAddr ptr xs.length (n'+1) (by omega) hpg_arr
+          let L0b := wordsAt stA.mem ptr (n'+1)
+          let L_mid := wordsAt stA.mem (ptr + 4 * UInt32.ofNat (n'+1)) (i.toNat - n' - 1)
+          let L_tail := wordsAt stA.mem (ptr + 4 * UInt32.ofNat (i.toNat+1)) (xs.length - i.toNat - 1)
+          have haddr_n2 : (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat 1 =
+              ptr + 4 * UInt32.ofNat (n'+2) := by
+            symm; simp only [show n'+2 = (n'+1)+1 from by omega, UInt32.ofNat_add, UInt32.mul_add]
+            rw [← UInt32.add_assoc]
+          have haddr_n2_i : (ptr + 4 * UInt32.ofNat (n'+2)) + 4 * UInt32.ofNat (i.toNat - n' - 1) =
+              ptr + 4 * UInt32.ofNat (i.toNat+1) := by
+            have hh : ptr + 4 * UInt32.ofNat (n'+2 + (i.toNat-n'-1)) =
+                (ptr + 4 * UInt32.ofNat (n'+2)) + 4 * UInt32.ofNat (i.toNat-n'-1) := by
+              simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+            rw [← hh, show n'+2 + (i.toNat-n'-1) = i.toNat+1 from by omega]
+          have haddr_nm : (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat (i.toNat-n'-1) =
+              ptr + 4 * UInt32.ofNat i.toNat := by
+            have hh : ptr + 4 * UInt32.ofNat ((n'+1) + (i.toNat-n'-1)) =
+                (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat (i.toNat-n'-1) := by
+              simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+            rw [← hh, show (n'+1) + (i.toNat-n'-1) = i.toNat from by omega, hi_ofNat]
+          have haddr_i1 : (ptr + 4 * UInt32.ofNat i.toNat) + 4 * UInt32.ofNat 1 =
+              ptr + 4 * UInt32.ofNat (i.toNat+1) := by
+            symm; simp only [show i.toNat+1 = i.toNat+1 from rfl, UInt32.ofNat_add, UInt32.mul_add]
+            rw [← UInt32.add_assoc]
+          have hkey_elem : wordsAt stA.mem (ptr + 4 * UInt32.ofNat i.toNat) 1 = [key] := by
+            have haddr0 : (ptr + 4 * UInt32.ofNat i.toNat) + 4 * UInt32.ofNat 0 = ptr + 4 * i := by
+              have : (4 : UInt32) * UInt32.ofNat 0 = 0 := by decide
+              simp only [this, UInt32.add_zero, hi_ofNat]
+            simp only [wordsAt, List.range_succ, List.range_zero, List.map_nil, List.map_cons,
+                       List.nil_append, haddr0, show stA.mem.read32 (ptr + 4 * i) = key from rfl]
+          have equB_b : wordsAt stA.mem ptr xs.length = L0b ++ (L_mid ++ key :: L_tail) := by
+            have h1 := wsp stA.mem ptr xs.length (n'+1) (by omega)
+            rw [show xs.length - (n'+1) = (i.toNat-n'-1)+1+(xs.length-i.toNat-1) from by omega] at h1
+            rw [h1]
+            have h2 := wsp stA.mem (ptr + 4*UInt32.ofNat (n'+1))
+                ((i.toNat-n'-1)+1+(xs.length-i.toNat-1)) (i.toNat-n'-1) (by omega)
+            rw [show (i.toNat-n'-1)+1+(xs.length-i.toNat-1) - (i.toNat-n'-1) =
+                1+(xs.length-i.toNat-1) from by omega] at h2
+            rw [h2]
+            have h3 := wsp stA.mem (ptr + 4*UInt32.ofNat (n'+1) + 4*UInt32.ofNat (i.toNat-n'-1))
+                (1+(xs.length-i.toNat-1)) 1 (by omega)
+            rw [show 1+(xs.length-i.toNat-1) - 1 = xs.length-i.toNat-1 from by omega] at h3
+            rw [h3, haddr_nm, hkey_elem, haddr_i1, List.singleton_append]
+          have hpre_B : wordsAt stFinalB.mem ptr (n'+1) = L0b := by
+            simp only [L0b, wordsAt,
+                       show stFinalB.mem = (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n'+1)) key).write32 (frame + (8:UInt32)) (i+1) from rfl]
+            apply List.map_congr_left; intro k hk
+            rw [List.mem_range] at hk
+            have hk_addr := toNat_wordAddr ptr xs.length k (by omega) hpg_arr
+            rw [read32_write32_ne _ (frame+(8:UInt32)) _ (i+1) (Or.inl (by
+                rw [hf8_toNat, hk_addr]
+                linarith [Nat.mul_le_mul_left 4 (show k+1 ≤ xs.length by omega), hdisj_frame]))]
+            rw [read32_write32_ne stJ.mem (ptr + 4 * UInt32.ofNat (n'+1)) _ key (Or.inl (by
+                linarith [hk_addr, hn1_addr]))]
+            exact hshape1 k hk
+          have hkey_B : wordsAt stFinalB.mem (ptr + 4 * UInt32.ofNat (n'+1)) 1 = [key] := by
+            simp only [wordsAt,
+                       show stFinalB.mem = (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n'+1)) key).write32 (frame + (8:UInt32)) (i+1) from rfl,
+                       List.range_succ, List.range_zero, List.map_nil, List.map_cons,
+                       show (4 : UInt32) * UInt32.ofNat 0 = 0 from by decide,
+                       UInt32.add_zero, List.nil_append]
+            rw [read32_write32_ne _ (frame+(8:UInt32)) _ (i+1) (Or.inl (by
+                rw [hf8_toNat, hn1_addr]; linarith [Nat.mul_le_mul_left 4 (show n'+2 ≤ xs.length by omega), hdisj_frame])),
+                read32_write32_same]
+          have hmid_B : wordsAt stFinalB.mem (ptr + 4 * UInt32.ofNat (n'+2)) (i.toNat - n' - 1) = L_mid := by
+            simp only [L_mid, wordsAt,
+                       show stFinalB.mem = (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n'+1)) key).write32 (frame + (8:UInt32)) (i+1) from rfl]
+            apply List.map_congr_left; intro m hm
+            rw [List.mem_range] at hm
+            have haddr_lhs : (ptr + 4 * UInt32.ofNat (n'+2)) + 4 * UInt32.ofNat m =
+                ptr + 4 * UInt32.ofNat (n'+2+m) := by
+              have hh : ptr + 4 * UInt32.ofNat ((n'+2) + m) =
+                  (ptr + 4 * UInt32.ofNat (n'+2)) + 4 * UInt32.ofNat m := by
+                simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+              rw [← hh]
+            have haddr_rhs : (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat m =
+                ptr + 4 * UInt32.ofNat (n'+1+m) := by
+              have hh : ptr + 4 * UInt32.ofNat ((n'+1) + m) =
+                  (ptr + 4 * UInt32.ofNat (n'+1)) + 4 * UInt32.ofNat m := by
+                simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+              rw [← hh]
+            rw [haddr_lhs]
+            have hn2m := toNat_wordAddr ptr xs.length (n'+2+m) (by omega) hpg_arr
+            rw [read32_write32_ne _ (frame+(8:UInt32)) _ (i+1) (Or.inl (by
+                rw [hf8_toNat, hn2m]
+                linarith [Nat.mul_le_mul_left 4 (show n'+2+m+1 ≤ xs.length by omega), hdisj_frame]))]
+            rw [read32_write32_ne stJ.mem (ptr + 4 * UInt32.ofNat (n'+1)) _ key (Or.inr (by
+                linarith [hn2m, hn1_addr]))]
+            rw [show n'+2+m = n'+1+m+1 from by omega,
+                hshape2 (n'+1+m) (by omega) (by omega), haddr_rhs]
+          have htail_B : wordsAt stFinalB.mem (ptr + 4 * UInt32.ofNat (i.toNat+1)) (xs.length - i.toNat - 1) = L_tail := by
+            simp only [L_tail, wordsAt,
+                       show stFinalB.mem = (stJ.mem.write32 (ptr + 4 * UInt32.ofNat (n'+1)) key).write32 (frame + (8:UInt32)) (i+1) from rfl]
+            apply List.map_congr_left; intro m hm
+            rw [List.mem_range] at hm
+            have haddr_k : (ptr + 4 * UInt32.ofNat (i.toNat+1)) + 4 * UInt32.ofNat m =
+                ptr + 4 * UInt32.ofNat (i.toNat+1+m) := by
+              have hh : ptr + 4 * UInt32.ofNat ((i.toNat+1) + m) =
+                  (ptr + 4 * UInt32.ofNat (i.toNat+1)) + 4 * UInt32.ofNat m := by
+                simp only [UInt32.ofNat_add, UInt32.mul_add]; rw [← UInt32.add_assoc]
+              rw [← hh]
+            rw [haddr_k]
+            have him := toNat_wordAddr ptr xs.length (i.toNat+1+m) (by omega) hpg_arr
+            rw [read32_write32_ne _ (frame+(8:UInt32)) _ (i+1) (Or.inl (by
+                rw [hf8_toNat, him]
+                linarith [Nat.mul_le_mul_left 4 (show i.toNat+1+m+1 ≤ xs.length by omega), hdisj_frame]))]
+            rw [read32_write32_ne stJ.mem (ptr + 4 * UInt32.ofNat (n'+1)) _ key (Or.inr (by
+                linarith [him, hn1_addr]))]
+            exact hshape3 (i.toNat+1+m) (by omega) (by omega)
+          have equA_b : wordsAt stFinalB.mem ptr xs.length = L0b ++ key :: (L_mid ++ L_tail) := by
+            have ha1 := wsp stFinalB.mem ptr xs.length (n'+1) (by omega)
+            rw [show xs.length - (n'+1) = 1+(i.toNat-n'-1)+(xs.length-i.toNat-1) from by omega] at ha1
+            rw [ha1]
+            have ha2 := wsp stFinalB.mem (ptr + 4*UInt32.ofNat (n'+1))
+                (1+(i.toNat-n'-1)+(xs.length-i.toNat-1)) 1 (by omega)
+            rw [show 1+(i.toNat-n'-1)+(xs.length-i.toNat-1) - 1 =
+                (i.toNat-n'-1)+(xs.length-i.toNat-1) from by omega] at ha2
+            rw [ha2]
+            have ha3 := wsp stFinalB.mem (ptr + 4*UInt32.ofNat (n'+1) + 4*UInt32.ofNat 1)
+                ((i.toNat-n'-1)+(xs.length-i.toNat-1)) (i.toNat-n'-1) (by omega)
+            rw [show (i.toNat-n'-1)+(xs.length-i.toNat-1) - (i.toNat-n'-1) =
+                xs.length-i.toNat-1 from by omega] at ha3
+            rw [ha3, hpre_B, hkey_B, haddr_n2, hmid_B, haddr_n2_i, htail_B, List.singleton_append]
+          apply List.Perm.trans _ hperm
+          rw [equA_b, equB_b]
+          exact (List.perm_middle.append_left L0b).symm
 
 set_option maxHeartbeats 800000 in
 omit inst in
@@ -1268,7 +2755,8 @@ private theorem outer_loop_continue_step
     (hbnd_frame  : frame.toNat + 16 ≤ stA.mem.pages * 65536)
     (hpairwise   : (wordsAt stA.mem ptr i.toNat).Pairwise (· ≤ ·))
     (hperm       : (wordsAt stA.mem ptr xs.length).Perm xs)
-    (hlen        : xs.length = len.toNat) :
+    (hlen        : xs.length = len.toNat)
+    (hframe_lt   : frame.toNat + 16 ≤ 4294967296) :
     ∃ (N : Nat) (stFinal : Store Unit) (locFinal : Locals),
       (∀ fuel ≥ N,
         exec fuel «module» stA locA
@@ -1332,7 +2820,7 @@ private theorem outer_loop_continue_step
           hpairwise_new, hperm_new⟩ :=
     inner_loop_terminates stA locA ptr len frame xs i
       hlparams hllocals hget0 hget1 hget2 hlocA_vals hread8 hi_pos hi_lt
-      hglob hbnd_arr hbnd_frame hpairwise hperm hlen hdisj_frame hpg_arr
+      hglob hbnd_arr hbnd_frame hpairwise hperm hlen hdisj_frame hpg_arr hframe_lt
   -- Arithmetic helpers
   have hi_lt_u32 : i < len := by rw [UInt32.lt_iff_toNat_lt_toNat]; omega
   have hno_load8 : ¬(frame.toNat + (8 : UInt32).toNat + 4 > stA.mem.pages * 65536) := by
@@ -2007,11 +3495,12 @@ private theorem func0_wp_prop
           rw [hframe_toNat]; omega
         have hpg_arr : ptr.toNat + 4 * xs.length ≤ 4294967296 := by
           have := hsp_lt; omega
+        have hframe_lt : frame.toNat + 16 ≤ 4294967296 := by omega
         obtain ⟨N, stFinal, locFinal, hexec, hI_next, hmu⟩ :=
           outer_loop_continue_step stA locA ptr len frame xs i
             hget0 hget1 hget2 hlocA_vals hlparams hllocals hdisj_frame hpg_arr
             hread8 hi_pos hi_lt hi_le
-            hglob hbnd_arr hbnd_frame hpairwise hperm hlen
+            hglob hbnd_arr hbnd_frame hpairwise hperm hlen hframe_lt
         refine ⟨N, fun fuel hfuel => Or.inr (Or.inl ⟨stFinal, locFinal, hexec fuel hfuel, ?_, ?_⟩)⟩
         · -- I_outer holds: locA.values = [] so take 0 ++ drop 0 = [] = locA.values
           simp only [List.take_zero, List.nil_append, List.drop_zero]
