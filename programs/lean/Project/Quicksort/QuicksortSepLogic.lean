@@ -920,7 +920,147 @@ theorem func11_spec (n : Nat) : ∀
   induction n using Nat.strong_induction_on with
   | _ n IH =>
     intro st ptr xs g0 hlen hpg hpg_min hptr hg0 hg0_le hg0_ok hmem
-    sorry
+    by_cases hbase : n ≤ 1
+    · -- Base case: n ≤ 1; block exits via br_if 0 (leU = 1 ∧ 1 → taken)
+      apply wp_wasm_prop_to_TerminatesWith (f := func11Def)
+        (by rfl) (by rfl) (by rfl) (by simp [func11Def, Function.numParams])
+        (by intro _ _ h; exact h)
+      have hlp11 : (func11Def.toLocals ([.i32 (UInt32.ofNat n), .i32 ptr].take
+            func11Def.numParams).reverse).params =
+          [.i32 ptr, .i32 (UInt32.ofNat n)] := rfl
+      have hll11 : (func11Def.toLocals ([.i32 (UInt32.ofNat n), .i32 ptr].take
+            func11Def.numParams).reverse).locals =
+          [.i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0] := rfl
+      have hlv11 : (func11Def.toLocals ([.i32 (UInt32.ofNat n), .i32 ptr].take
+            func11Def.numParams).reverse).values =
+          ([] : List Value) := rfl
+      -- UInt32: 16 ≤ g0 and (g0 - 16).toNat = g0.toNat - 16
+      have hge16 : (16 : UInt32) ≤ g0 := UInt32.le_iff_toNat_le.mpr
+          (show (16 : UInt32).toNat ≤ g0.toNat from by
+            simp only [show (16 : UInt32).toNat = 16 from rfl]; exact hg0_ok)
+      have h_g016 : (g0 - 16 : UInt32).toNat = g0.toNat - 16 :=
+        UInt32.toNat_sub_of_le g0 16 hge16
+      -- epilogue: (16 : UInt32) + (g0 - 16) = g0
+      have hframe_add : (16 : UInt32) + (g0 - 16 : UInt32) = g0 := by
+        apply UInt32.toNat_inj.mp
+        simp only [UInt32.toNat_add, h_g016,
+                   show (16 : UInt32).toNat = 16 from by decide,
+                   show (2 : Nat) ^ 32 = 4294967296 from by norm_num]
+        have hlt : g0.toNat < 4294967296 := UInt32.toNat_lt_size g0
+        omega
+      -- global 0 after preamble globalSet 0 (g0 - 16)
+      have hg0_pre : ({ st with globals :=
+              { globals := st.globals.globals.set 0 (.i32 (g0 - 16)) } } : Store Unit).globals.globals[0]? =
+          some (.i32 (g0 - 16)) := by
+        cases h : st.globals.globals with
+        | nil => simp [h] at hg0
+        | cons _ _ => simp [h, List.set_cons_zero]
+      -- globals restoration: (set 0 (g0-16); set 0 g0) = original
+      have hglob_restore : (st.globals.globals.set 0 (.i32 (g0 - 16))).set 0 (.i32 g0) =
+          st.globals.globals := by
+        cases h : st.globals.globals with
+        | nil => simp [h] at hg0
+        | cons v rest =>
+          have hv : v = .i32 g0 := by
+            simp only [h, List.getElem?_cons_zero] at hg0; exact Option.some.inj hg0
+          subst hv; simp [List.set_cons_zero]
+      -- Globals eta: { globals := st.globals.globals } = st.globals
+      have hglob_eta : { globals := st.globals.globals } = st.globals := by
+        cases st.globals; rfl
+      -- leU condition: UInt32.ofNat n ≤ 1 (from hbase : n ≤ 1)
+      have hleU : UInt32.ofNat n ≤ (1 : UInt32) := by
+        have h0 : n = 0 ∨ n = 1 := by omega
+        rcases h0 with rfl | rfl <;> decide
+      -- xs is sorted: n ≤ 1 → length ≤ 1 → trivially Pairwise
+      have hxs_sorted : xs.Pairwise (· ≤ ·) := by
+        rcases xs with _ | ⟨x, _ | ⟨y, rest⟩⟩
+        · exact List.Pairwise.nil
+        · exact List.pairwise_singleton _ _
+        · simp only [List.length_cons, List.length_nil] at hlen; omega
+      -- length normalizations for Locals.get / Locals.set?
+      have h_plen : (0 + 1 + 1 : Nat) = 2 := rfl
+      have h_llen : (0 + 1 + 1 + 1 + 1 + 1 + 1 : Nat) = 6 := rfl
+      -- block inner body exec: base case path exits via br_if 0 (leU=1 ∧ 1 → taken).
+      -- Stated as a function-application equality so simp CAN fire it as a rewrite rule
+      -- (unlike a match-expression LHS, which simp cannot match).
+      have h_body_c : exec 1 «module»
+          ({ st with globals :=
+               { globals := st.globals.globals.set 0 (.i32 (g0 - 16)) } } : Store Unit)
+          ({ params := [.i32 ptr, .i32 (UInt32.ofNat n)],
+             locals := [.i32 (g0 - 16), .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
+             values := [] } : Locals)
+          [.localGet 1, .const (1 : UInt32), .leU, .const (1 : UInt32), .and, .br_if 0,
+           .localGet 0, .localGet 1, .call 10,
+           .localSet 3,
+           .localGet 2, .localGet 3, .localGet 0, .localGet 1, .const (1048664 : UInt32), .call 1,
+           .localGet 2, .load32 (4 : UInt32), .localSet 4,
+           .localGet 2, .load32 (0 : UInt32), .localGet 4, .call 11,
+           .localGet 3, .const (1 : UInt32), .add, .localSet 5,
+           .const (1048680 : UInt32), .localSet 6,
+           .localGet 2, .const (8 : UInt32), .add,
+           .localGet 5, .localGet 0, .localGet 1, .localGet 6, .call 2,
+           .localGet 2, .load32 (12 : UInt32), .localSet 7,
+           .localGet 2, .load32 (8 : UInt32), .localGet 7, .call 11] {} =
+          .Break 0
+          ({ st with globals :=
+               { globals := st.globals.globals.set 0 (.i32 (g0 - 16)) } } : Store Unit)
+          ({ params := [.i32 ptr, .i32 (UInt32.ofNat n)],
+             locals := [.i32 (g0 - 16), .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
+             values := [] } : Locals) := by
+        simp only [exec, execOne.eq_def,
+          show ({ params := [.i32 ptr, .i32 (UInt32.ofNat n)],
+                  locals := [.i32 (g0 - 16), .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
+                  values := [] } : Locals).params =
+               [.i32 ptr, .i32 (UInt32.ofNat n)] from rfl,
+          show ({ params := [.i32 ptr, .i32 (UInt32.ofNat n)],
+                  locals := [.i32 (g0 - 16), .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
+                  values := [] } : Locals).locals =
+               [.i32 (g0 - 16), .i32 0, .i32 0, .i32 0, .i32 0, .i32 0] from rfl,
+          show ({ params := [.i32 ptr, .i32 (UInt32.ofNat n)],
+                  locals := [.i32 (g0 - 16), .i32 0, .i32 0, .i32 0, .i32 0, .i32 0],
+                  values := [] } : Locals).values = [] from rfl,
+          Locals.get,
+          List.getElem?_cons_zero, List.getElem?_cons_succ, List.getElem?_nil,
+          List.length_cons, List.length_nil,
+          if_pos (show (0 : Nat) < 2 from by omega),
+          if_pos (show (1 : Nat) < 2 from by omega),
+          if_pos hleU,
+          show (1 : UInt32) &&& (1 : UInt32) = 1 from by decide]
+        -- match [Value.i32 1] with | Value.i32 0 :: vs => ... reduces by kernel (1 ≠ 0 : UInt32)
+        rfl
+      -- exec equality at fuel 2: preamble sets global→g0-16, block exits via br_if,
+      -- epilogue restores global→g0.  h_body_c fires for the block body (function-app equality);
+      -- hg0_pre fires for the epilogue's globalSet on the post-preamble state.
+      have h_exec : exec 2 «module» st
+          (func11Def.toLocals ([.i32 (UInt32.ofNat n), .i32 ptr].take func11Def.numParams).reverse)
+          func11Def.body {} =
+          .Return
+            { st with globals :=
+                { globals := (st.globals.globals.set 0 (.i32 (g0 - 16))).set 0 (.i32 g0) } }
+            [] := by
+        set_option maxHeartbeats 2000000 in
+        simp only [show func11Def.body = func11 from rfl, hlp11, hll11, hlv11, func11,
+          exec, execOne.eq_def,
+          Locals.get, Locals.set?,
+          List.getElem?_cons_zero, List.getElem?_cons_succ, List.getElem?_nil,
+          List.set_cons_zero, List.set_cons_succ,
+          List.length_cons, List.length_nil, List.length_set,
+          h_plen, h_llen, List.nil_append, List.take_zero, List.drop_zero,
+          if_pos (show (0 : Nat) < 2 from by omega),
+          if_pos (show (1 : Nat) < 2 from by omega),
+          if_neg (show ¬(2 : Nat) < 2 from by omega),
+          if_pos (show (2 : Nat) < 2 + 6 from by omega),
+          show (2 - 2 : Nat) = 0 from by omega,
+          hg0, hg0_pre, h_body_c, hframe_add,
+          ite_true, ite_false]
+      -- use h_exec to close the wp_wasm_prop goal
+      unfold wp_wasm_prop
+      refine ⟨2, ?_⟩
+      rw [h_exec]
+      dsimp only
+      exact ⟨xs, hmem, hxs_sorted, List.Perm.refl xs, by rw [hglob_restore, hglob_eta], rfl⟩
+    · -- Inductive case: n ≥ 2 (requires func10_spec, IH, helper lemmas)
+      sorry
     -- Strategy:
     --
     -- CASE n ≤ 1 (BASE):
