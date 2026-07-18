@@ -1061,67 +1061,184 @@ theorem func12_spec (st : Store Unit)
   apply wp_wasm_prop_to_TerminatesWith (f := func12Def)
     (by rfl) (by rfl) (by rfl) (by simp [func12Def, Function.numParams])
     (by intro _ _ h; exact h)
-  sorry
-  -- Strategy (wp_wasm_prop composition):
-  --
-  -- 1. PROLOGUE (exec_cons for each straight-line instruction):
-  --    globalGet 0 → 1048576; const 16; sub → 1048560; localSet 2 → frame := 1048560.
-  --    localGet 2; globalSet 0 → global0 := 1048560.
-  --    const 1048724; localSet 3 → local3 := 1048724.
-  --
-  -- 2. wp_wasm_prop_call with func8_terminates:
-  --    func8(frame+8, ptr, len, 1048724) = func8(1048568, ptr, len, 1048724).
-  --    func8Def: params [dst_ptr, ptr, len, data], results [].
-  --    func8 body:
-  --      dst_ptr[4] := len     →  mem[1048572] := len
-  --      dst_ptr[0] := ptr     →  mem[1048568] := ptr
-  --    Preconditions:
-  --      1048568 + 4 ≤ pages (from hpg_min: pages ≥ 1048576 > 1048568+4).
-  --      1048572 + 4 ≤ pages.
-  --      [1048568, 1048576) disjoint from array at ptr ≥ 64*(len+1) ≥ 64.
-  --        Actually we need ptr ≥ 1048576 for disjointness with [1048544, 1048576).
-  --        This is a SPEC GAP: hptr only gives 64*(len+1) ≤ ptr,
-  --        not necessarily ptr ≥ 1048576 when len is small.
-  --        Resolution: strengthen hptr or add separate hptr_min: 1048576 ≤ ptr.toNat.
-  --        (Same gap as in SwapSepLogic.lean swap_spec_sep.)
-  --    Postcondition: st_f8.mem.read32 1048568 = ptr ∧ st_f8.mem.read32 1048572 = len.
-  --
-  -- 3. load32 at frame+12 = 1048572 → local4 := len.
-  --
-  -- 4. load32 at frame+8  = 1048568 → push ptr.
-  --    push local4 = len.
-  --
-  -- 5. wp_wasm_prop_call with func11_spec (xs.length):
-  --    func11_spec (xs.length)
-  --      st_f8 ptr xs g0_f11
-  --      where g0_f11 = 1048560  (global0 after func12 allocated its frame).
-  --    Preconditions:
-  --      hlen: xs.length = xs.length  ✓
-  --      hpg: ptr + 4*xs.length ≤ pages  (from hpg)
-  --      hpg_min: 1048576 ≤ pages  (from hpg_min)
-  --      hptr_f11: 64*(xs.length+1) ≤ ptr  (from hptr)
-  --      hg0_f11: g0_f11 = 1048560 ≤ ptr  (from hptr and xs.length ≥ 0)
-  --      hg0_le_f11: 1048560 ≤ ptr  (from hptr ≥ 64 ≥ 16)
-  --        Actually: hptr gives 64*(len+1) ≤ ptr, and 64*(len+1) ≥ 64 ≥ 16.
-  --      hmem_f11: wordsAt st_f8.mem ptr xs.length = xs
-  --        (wordsAt unchanged because func8 only wrote to [1048568, 1048576)
-  --         which is disjoint from [ptr, ptr+4*len) when ptr ≥ 1048576.)
-  --    Postcondition: ∃ ys, wordsAt st'.mem ptr ys.length = ys ∧ sorted ∧ perm.
-  --    The continuation: pull out ys, check ys.length = xs.length from hmem.
-  --
-  -- 6. EPILOGUE:
-  --    localGet 2 = 1048560; const 16; add → 1048576.
-  --    globalSet 0 → global0 := 1048576 (restored).
-  --    ret → Fallthrough.
-  --
-  -- Postcondition: pass through from func11_spec postcondition.
-  --   ys.length = xs.length  (from wordsAt length and hmem ← func11 sorted same-length array).
-  --
-  -- Supporting lemmas needed:
-  --   func8_terminates: TerminatesWith {} «module» 8 st ... (straight-line, provable by exec_cons)
-  --   func11_spec (at n = xs.length)
-  --   wordsAt_write32_ne for [1048568, 1048576) vs [ptr, ptr+4*len) disjointness
-  --   read32_write32_same to recover ptr and len from frame after func8
+  -- initial locals state for func12
+  have hlp12 : (func12Def.toLocals ([.i32 len, .i32 ptr].take func12Def.numParams).reverse).params =
+      [.i32 ptr, .i32 len] := rfl
+  have hll12 : (func12Def.toLocals ([.i32 len, .i32 ptr].take func12Def.numParams).reverse).locals =
+      [.i32 0, .i32 0, .i32 0] := rfl
+  have hlv12 : (func12Def.toLocals ([.i32 len, .i32 ptr].take func12Def.numParams).reverse).values =
+      ([] : List Value) := rfl
+  -- nat length normalizations (params.length = 2, locals.length = 3)
+  have h_plen : ((0 : Nat) + 1 + 1) = 2 := rfl
+  have h_llen : ((0 : Nat) + 1 + 1 + 1) = 3 := rfl
+  -- global 0 after preamble sets frame = 1048560
+  have hg0_pre : ({ st with globals := { globals := st.globals.globals.set 0 (.i32 (1048560 : UInt32)) } } : Store Unit).globals.globals[0]? =
+      some (.i32 (1048560 : UInt32)) := by
+    cases h : st.globals.globals with
+    | nil  => simp [h] at hg0
+    | cons _ _ => simp [h, List.set_cons_zero]
+  -- bounds for func8's store32 instructions at frame+8 = 1048568
+  have hb4' : ¬((1048568 : UInt32).toNat + UInt32.toNat (4 : UInt32) + 4 >
+      st.mem.pages * 65536) := by
+    simp only [show (1048568 : UInt32).toNat = 1048568 from rfl,
+               show UInt32.toNat (4 : UInt32) = 4 from rfl]; omega
+  have hb0' : ¬((1048568 : UInt32).toNat + UInt32.toNat (0 : UInt32) + 4 >
+      st.mem.pages * 65536) := by
+    simp only [show (1048568 : UInt32).toNat = 1048568 from rfl,
+               show UInt32.toNat (0 : UInt32) = 0 from rfl]; omega
+  -- memory properties after func8 writes mem[1048572]=len and mem[1048568]=ptr
+  have hpages_f8 : ((st.mem.write32 (1048572 : UInt32) len).write32 (1048568 : UInt32) ptr).pages =
+      st.mem.pages := by simp [Mem.write32_pages]
+  have hread_ptr8 : ((st.mem.write32 (1048572 : UInt32) len).write32 (1048568 : UInt32) ptr).read32
+      (1048568 : UInt32) = ptr :=
+    read32_write32_same _ _ _
+  have hread_len8 : ((st.mem.write32 (1048572 : UInt32) len).write32 (1048568 : UInt32) ptr).read32
+      (1048572 : UInt32) = len := by
+    rw [read32_write32_ne _ (1048568 : UInt32) (1048572 : UInt32) ptr
+        (Or.inr (by simp only [show (1048568 : UInt32).toNat = 1048568 from rfl,
+                               show (1048572 : UInt32).toNat = 1048572 from rfl]; omega))]
+    exact read32_write32_same _ _ _
+  -- bounds for load32 12 and load32 8 at frame = 1048560
+  have hload12_ok : ¬((1048560 : UInt32).toNat + UInt32.toNat (12 : UInt32) + 4 >
+      st.mem.pages * 65536) := by
+    simp only [show (1048560 : UInt32).toNat = 1048560 from rfl,
+               show UInt32.toNat (12 : UInt32) = 12 from rfl]; omega
+  have hload8_ok : ¬((1048560 : UInt32).toNat + UInt32.toNat (8 : UInt32) + 4 >
+      st.mem.pages * 65536) := by
+    simp only [show (1048560 : UInt32).toNat = 1048560 from rfl,
+               show UInt32.toNat (8 : UInt32) = 8 from rfl]; omega
+  -- spec gap: wordsAt unchanged through func8's writes to [1048568, 1048576)
+  have hmem_f8 : wordsAt ((st.mem.write32 (1048572 : UInt32) len).write32 (1048568 : UInt32) ptr)
+      ptr xs.length = xs := by
+    sorry
+  -- apply func11_spec at the state after func8 allocated the frame and wrote the header
+  have hf11 := func11_spec xs.length
+      { st with
+        globals := { globals := st.globals.globals.set 0 (.i32 (1048560 : UInt32)) }
+        mem := (st.mem.write32 (1048572 : UInt32) len).write32 (1048568 : UInt32) ptr }
+      ptr xs (1048560 : UInt32)
+      rfl
+      (by rw [hpages_f8]; exact hpg)
+      (by rw [hpages_f8]; exact hpg_min)
+      hptr
+      hg0_pre
+      (by simp only [show (1048560 : UInt32).toNat = 1048560 from rfl]; omega)
+      (by decide)
+      hmem_f8
+  obtain ⟨N11, hN11⟩ := hf11
+  obtain ⟨vs11, st11, hrun11, ys, hys_mem, hys_sorted, hys_perm, hglob11, hpages11⟩ :=
+      hN11 N11 le_rfl
+  -- UInt32.ofNat xs.length = len (since xs.length = len.toNat)
+  have hlen_eq : UInt32.ofNat xs.length = len := by rw [hlen]; exact UInt32.ofNat_toNat
+  -- restate hrun11 with concrete arg .i32 len (not .i32 (UInt32.ofNat xs.length))
+  have hrun11' : run N11 «module» 11
+      { st with
+        globals := { globals := st.globals.globals.set 0 (.i32 (1048560 : UInt32)) }
+        mem := (st.mem.write32 (1048572 : UInt32) len).write32 (1048568 : UInt32) ptr }
+      [.i32 len, .i32 ptr] {} = .Success vs11 st11 :=
+    hlen_eq ▸ hrun11
+  -- N11 ≥ 1: run 0 on nonempty func11 gives OutOfFuel
+  have hN11_pos : 0 < N11 := by
+    by_contra hc
+    push_neg at hc
+    have h0 : N11 = 0 := Nat.le_zero.mp hc
+    subst h0
+    have hof : run 0 «module» 11
+        { st with
+          globals := { globals := st.globals.globals.set 0 (.i32 (1048560 : UInt32)) }
+          mem := (st.mem.write32 (1048572 : UInt32) len).write32 (1048568 : UInt32) ptr }
+        [.i32 len, .i32 ptr] {} = .OutOfFuel := by
+      simp only [run_eq (show «module».imports[11]? = none from rfl),
+                 show «module».funcs[11 - «module».imports.length]? = some func11Def from rfl,
+                 show func11Def.body = func11 from rfl, func11,
+                 exec, execOne.eq_def]
+    rw [hof] at hrun11'
+    exact absurd hrun11' (by simp)
+  -- run func8 concretely at fuel 1 (no nested calls in func8)
+  have hlp8 : (func8Def.toLocals ([.i32 (1048724 : UInt32), .i32 len, .i32 ptr,
+      .i32 (1048568 : UInt32)].take func8Def.numParams).reverse).params =
+      [.i32 (1048568 : UInt32), .i32 ptr, .i32 len, .i32 (1048724 : UInt32)] := rfl
+  have hll8 : (func8Def.toLocals ([.i32 (1048724 : UInt32), .i32 len, .i32 ptr,
+      .i32 (1048568 : UInt32)].take func8Def.numParams).reverse).locals =
+      ([] : List Value) := rfl
+  have hlv8 : (func8Def.toLocals ([.i32 (1048724 : UInt32), .i32 len, .i32 ptr,
+      .i32 (1048568 : UInt32)].take func8Def.numParams).reverse).values =
+      ([] : List Value) := rfl
+  have h_run8_1 : run 1 «module» 8
+      { st with globals := { globals := st.globals.globals.set 0 (.i32 (1048560 : UInt32)) } }
+      [.i32 (1048724 : UInt32), .i32 len, .i32 ptr, .i32 (1048568 : UInt32)] {} =
+      .Success []
+        { st with
+          globals := { globals := st.globals.globals.set 0 (.i32 (1048560 : UInt32)) }
+          mem := (st.mem.write32 (1048572 : UInt32) len).write32 (1048568 : UInt32) ptr } := by
+    rw [run_eq (show «module».imports[8]? = none from rfl)]
+    simp only [
+      show «module».funcs[8 - «module».imports.length]? = some func8Def from rfl,
+      show func8Def.body = func8 from rfl, func8, hlp8, hll8, hlv8,
+      exec, execOne.eq_def, Locals.get, Locals.set?,
+      List.getElem?_cons_zero, List.getElem?_cons_succ, List.getElem?_nil,
+      List.length_cons, List.length_nil,
+      if_pos (show (0 : Nat) < 4 from by omega),
+      if_pos (show (1 : Nat) < 4 from by omega),
+      if_pos (show (2 : Nat) < 4 from by omega),
+      show (1048568 : UInt32) + (4 : UInt32) = (1048572 : UInt32) from rfl,
+      UInt32.add_zero, if_neg hb4', if_neg hb0', Mem.write32_pages,
+      show List.take func8Def.results.length ([] : List Value) = [] from rfl,
+      show List.drop func8Def.numParams ([.i32 (1048724 : UInt32), .i32 len, .i32 ptr,
+          .i32 (1048568 : UInt32)] : List Value) = [] from rfl,
+      List.nil_append, ite_true, ite_false]
+  -- lift func8 from fuel 1 to fuel N11
+  have h_run8_N11 : run N11 «module» 8
+      { st with globals := { globals := st.globals.globals.set 0 (.i32 (1048560 : UInt32)) } }
+      [.i32 (1048724 : UInt32), .i32 len, .i32 ptr, .i32 (1048568 : UInt32)] {} =
+      .Success []
+        { st with
+          globals := { globals := st.globals.globals.set 0 (.i32 (1048560 : UInt32)) }
+          mem := (st.mem.write32 (1048572 : UInt32) len).write32 (1048568 : UInt32) ptr } :=
+    (run_fuel_mono (show 1 ≤ N11 from hN11_pos)
+        (by rw [h_run8_1]; simp)).trans h_run8_1
+  -- global 0 in st11 is still 1048560 (func11 preserves globals)
+  have hg0_st11 : st11.globals.globals[0]? = some (.i32 (1048560 : UInt32)) := by
+    rw [hglob11]; exact hg0_pre
+  -- ys.length = xs.length (wordsAt m b n has length n)
+  have hys_len : ys.length = xs.length := by
+    have h := congrArg List.length hys_mem
+    simp only [wordsAt, List.length_map, List.length_range] at h; omega
+  -- main wp_wasm_prop: fuel N11+1 suffices for both calls
+  unfold wp_wasm_prop
+  refine ⟨N11 + 1, ?_⟩
+  set_option maxHeartbeats 2000000 in
+  simp only [
+    show func12Def.body = func12 from rfl, hlp12, hll12, hlv12, func12,
+    exec, execOne.eq_def,
+    Locals.get, Locals.set?,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, List.getElem?_nil,
+    List.set_cons_zero, List.set_cons_succ,
+    List.length_cons, List.length_nil, List.length_set,
+    h_plen, h_llen, List.nil_append, List.take_zero,
+    hg0, hg0_st11,
+    show (1048576 : UInt32) - (16 : UInt32) = (1048560 : UInt32) from rfl,
+    show (1048560 : UInt32) + (8 : UInt32) = (1048568 : UInt32) from rfl,
+    show (8 : UInt32) + (1048560 : UInt32) = (1048568 : UInt32) from rfl,
+    show (1048560 : UInt32) + (12 : UInt32) = (1048572 : UInt32) from rfl,
+    show (12 : UInt32) + (1048560 : UInt32) = (1048572 : UInt32) from rfl,
+    show (1048560 : UInt32) + (16 : UInt32) = (1048576 : UInt32) from rfl,
+    show (16 : UInt32) + (1048560 : UInt32) = (1048576 : UInt32) from rfl,
+    if_pos (show (0 : Nat) < 2 from by omega),
+    if_pos (show (1 : Nat) < 2 from by omega),
+    if_neg (show ¬(2 : Nat) < 2 from by omega),
+    if_neg (show ¬(3 : Nat) < 2 from by omega),
+    if_neg (show ¬(4 : Nat) < 2 from by omega),
+    if_pos (show (2 : Nat) < 2 + 3 from by omega),
+    if_pos (show (3 : Nat) < 2 + 3 from by omega),
+    if_pos (show (4 : Nat) < 2 + 3 from by omega),
+    show (2 - 2 : Nat) = 0 from by omega,
+    show (3 - 2 : Nat) = 1 from by omega,
+    show (4 - 2 : Nat) = 2 from by omega,
+    if_neg hload12_ok, if_neg hload8_ok,
+    hread_ptr8, hread_len8, h_run8_N11, hrun11',
+    Mem.write32_pages, ite_true, ite_false]
+  exact ⟨ys, hys_len ▸ hys_mem, hys_sorted, hys_perm⟩
 
 -- ======================================================================
 -- §7  QuicksortSpec
