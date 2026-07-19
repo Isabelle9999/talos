@@ -868,6 +868,55 @@ theorem func10_spec (st : Store Unit)
   --   Frame accounting: frame [g0−48, g0); func4 scratch at frame−4 = g0−52 < ptr
 
 -- ======================================================================
+-- §4.5  Helpers for func11_spec inductive case
+-- ======================================================================
+
+private theorem sorted_of_sorted_split
+    {ys_left ys_right : List UInt32} {pivot : UInt32}
+    (hl : ys_left.Pairwise (· ≤ ·))
+    (hr : ys_right.Pairwise (· ≤ ·))
+    (h_lp : ∀ x ∈ ys_left, x ≤ pivot)
+    (h_pr : ∀ x ∈ ys_right, pivot < x) :
+    (ys_left ++ [pivot] ++ ys_right).Pairwise (· ≤ ·) := by
+  apply List.pairwise_append.mpr
+  refine ⟨?_, hr, ?_⟩
+  · apply List.pairwise_append.mpr
+    exact ⟨hl, List.pairwise_singleton _ _,
+      fun a ha b hb => by
+        simp only [List.mem_singleton] at hb; subst hb; exact h_lp a ha⟩
+  · intro a ha b hb
+    simp only [List.mem_append, List.mem_singleton] at ha
+    rcases ha with ha | rfl
+    · have h1 := UInt32.le_iff_toNat_le.mp (h_lp a ha)
+      have h2 : pivot.toNat < b.toNat := h_pr b hb
+      apply UInt32.le_iff_toNat_le.mpr; omega
+    · -- after rcases rfl, `pivot` is subst'd by `a`; variable in scope is `a`
+      have h : a.toNat < b.toNat := h_pr b hb
+      apply UInt32.le_iff_toNat_le.mpr; omega
+
+private theorem func1_terminates
+    (st : Store Unit) (frame pivot_idx ptr n_val data : UInt32) :
+    TerminatesWith {} «module» 1 st
+      [.i32 data, .i32 n_val, .i32 ptr, .i32 pivot_idx, .i32 frame]
+      (fun st' _ =>
+        st'.mem.read32 frame = ptr ∧
+        st'.mem.read32 (frame + 4) = pivot_idx ∧
+        st'.globals = st.globals ∧
+        st'.mem.pages = st.mem.pages) := by
+  sorry
+
+private theorem func2_terminates
+    (st : Store Unit) (frame pivot_idx ptr n_val data : UInt32) :
+    TerminatesWith {} «module» 2 st
+      [.i32 data, .i32 n_val, .i32 ptr, .i32 (pivot_idx + 1), .i32 (frame + 8)]
+      (fun st' _ =>
+        st'.mem.read32 (frame + 8) = ptr + 4 * (pivot_idx + 1) ∧
+        st'.mem.read32 (frame + 12) = n_val - (pivot_idx + 1) ∧
+        st'.globals = st.globals ∧
+        st'.mem.pages = st.mem.pages) := by
+  sorry
+
+-- ======================================================================
 -- §5  func11 spec — recursive quicksort (strong induction on len)
 -- ======================================================================
 
@@ -1059,8 +1108,293 @@ theorem func11_spec (n : Nat) : ∀
       rw [h_exec]
       dsimp only
       exact ⟨xs, hmem, hxs_sorted, List.Perm.refl xs, by rw [hglob_restore, hglob_eta], rfl⟩
-    · -- Inductive case: n ≥ 2 (requires func10_spec, IH, helper lemmas)
-      sorry
+    · -- Inductive case: n ≥ 2
+      apply wp_wasm_prop_to_TerminatesWith (f := func11Def)
+        (by rfl) (by rfl) (by rfl) (by simp [func11Def, Function.numParams])
+        (by intro _ _ h; exact h)
+      -- Initial locals (same as base case)
+      have hlp11 : (func11Def.toLocals ([.i32 (UInt32.ofNat n), .i32 ptr].take
+            func11Def.numParams).reverse).params =
+          [.i32 ptr, .i32 (UInt32.ofNat n)] := rfl
+      have hll11 : (func11Def.toLocals ([.i32 (UInt32.ofNat n), .i32 ptr].take
+            func11Def.numParams).reverse).locals =
+          [.i32 0, .i32 0, .i32 0, .i32 0, .i32 0, .i32 0] := rfl
+      have hlv11 : (func11Def.toLocals ([.i32 (UInt32.ofNat n), .i32 ptr].take
+            func11Def.numParams).reverse).values =
+          ([] : List Value) := rfl
+      have hge16 : (16 : UInt32) ≤ g0 := UInt32.le_iff_toNat_le.mpr
+          (show (16 : UInt32).toNat ≤ g0.toNat from by
+            simp only [show (16 : UInt32).toNat = 16 from rfl]; exact hg0_ok)
+      have h_g016 : (g0 - 16 : UInt32).toNat = g0.toNat - 16 :=
+        UInt32.toNat_sub_of_le g0 16 hge16
+      have hframe_add : (16 : UInt32) + (g0 - 16 : UInt32) = g0 := by
+        apply UInt32.toNat_inj.mp
+        simp only [UInt32.toNat_add, h_g016,
+                   show (16 : UInt32).toNat = 16 from by decide,
+                   show (2 : Nat) ^ 32 = 4294967296 from by norm_num]
+        have hlt : g0.toNat < 4294967296 := UInt32.toNat_lt_size g0
+        omega
+      have hg0_pre : ({ st with globals :=
+              { globals := st.globals.globals.set 0 (.i32 (g0 - 16)) } } : Store Unit).globals.globals[0]? =
+          some (.i32 (g0 - 16)) := by
+        cases h : st.globals.globals with
+        | nil => simp [h] at hg0
+        | cons _ _ => simp [h, List.set_cons_zero]
+      have hglob_restore : (st.globals.globals.set 0 (.i32 (g0 - 16))).set 0 (.i32 g0) =
+          st.globals.globals := by
+        cases h : st.globals.globals with
+        | nil => simp [h] at hg0
+        | cons v rest =>
+          have hv : v = .i32 g0 := by
+            simp only [h, List.getElem?_cons_zero] at hg0; exact Option.some.inj hg0
+          subst hv; simp [List.set_cons_zero]
+      have hglob_eta : { globals := st.globals.globals } = st.globals := by
+        cases st.globals; rfl
+      have h_plen : (0 + 1 + 1 : Nat) = 2 := rfl
+      have h_llen : (0 + 1 + 1 + 1 + 1 + 1 + 1 : Nat) = 6 := rfl
+      -- n ≥ 2 consequences
+      have hbase' : 2 ≤ n := by omega
+      have hn_lt_u32 : n < 4294967296 := by
+        have hbound := UInt32.toNat_lt_size ptr; linarith [hptr]
+      have hnotleU : ¬ UInt32.ofNat n ≤ (1 : UInt32) := by
+        intro hle
+        have h2 := UInt32.le_iff_toNat_le.mp hle
+        have h3 : (UInt32.ofNat n).toNat = n := by
+          show n % UInt32.size = n
+          exact Nat.mod_eq_of_lt hn_lt_u32
+        rw [h3, show (1 : UInt32).toNat = 1 from rfl] at h2
+        omega
+      -- Frame and pre-state (preamble sets global0 := g0 - 16)
+      let frame : UInt32 := g0 - 16
+      let st_pre : Store Unit :=
+        { st with globals := { globals := st.globals.globals.set 0 (.i32 frame) } }
+      -- g0 ≤ pages * 65536 (for bounds checks)
+      have hg0_lt_pages : g0.toNat ≤ st.mem.pages * 65536 :=
+        le_trans hg0_le (by linarith [hpg])
+      -- Apply func10_spec to partition the array
+      have hf10 : TerminatesWith {} «module» 10 st_pre
+          [.i32 (UInt32.ofNat n), .i32 ptr]
+          (fun st' vs =>
+            ∃ pivot_idx : UInt32,
+              vs = [.i32 pivot_idx] ∧ pivot_idx.toNat < n ∧
+              ∃ arr : List UInt32,
+                arr.length = n ∧ wordsAt st'.mem ptr n = arr ∧ arr.Perm xs ∧
+                (∀ k < pivot_idx.toNat, arr[k]! ≤ arr[pivot_idx.toNat]!) ∧
+                (∀ k, pivot_idx.toNat < k → k < n → arr[k]! > arr[pivot_idx.toNat]!) ∧
+                st'.globals = st_pre.globals ∧ st'.mem.pages = st.mem.pages) := by
+        have h := func10_spec st_pre ptr xs frame
+          (by rw [hlen]; omega)
+          (by rw [hlen]; exact hpg)
+          (by linarith [hptr, hbase'])
+          hg0_pre
+          (by simp only [frame, h_g016]; sorry)  -- 52 ≤ g0.toNat - 16 (needs g0 ≥ 68)
+          (by simp only [frame, h_g016]; omega)
+          (by rw [hlen]; exact hmem)
+        rwa [hlen] at h
+      obtain ⟨N10, hN10⟩ := hf10
+      obtain ⟨vs10, st10, hrun10, pivot_idx, hvs10_eq, hpivot_lt, arr,
+          harr_len, harr_mem, harr_perm, harr_left, harr_right, hglob10, hpages10⟩ :=
+        hN10 N10 le_rfl
+      subst hvs10_eq
+      -- Apply func1_terminates to write left-slice header [frame, frame+8)
+      have hf1 : TerminatesWith {} «module» 1 st10
+          [.i32 (1048664 : UInt32), .i32 (UInt32.ofNat n), .i32 ptr, .i32 pivot_idx, .i32 frame]
+          (fun st' _ =>
+            st'.mem.read32 frame = ptr ∧ st'.mem.read32 (frame + 4) = pivot_idx ∧
+            st'.globals = st10.globals ∧ st'.mem.pages = st10.mem.pages) :=
+        func1_terminates st10 frame pivot_idx ptr (UInt32.ofNat n) 1048664
+      obtain ⟨N1, hN1⟩ := hf1
+      obtain ⟨vs1, st1, hrun1, h_frame_ptr, h_frame_piv, hglob1, hpages1⟩ := hN1 N1 le_rfl
+      have hvs1_nil : vs1 = [] := by sorry  -- func1 has 0 results
+      rw [hvs1_nil] at hrun1
+      -- Pages and global chain through func10 + func1
+      have hpages_st1 : st1.mem.pages = st.mem.pages := by rw [hpages1, hpages10]
+      have hg0_st1 : st1.globals.globals[0]? = some (.i32 frame) := by
+        rw [hglob1, hglob10]; exact hg0_pre
+      -- Left-half memory after func1 (framing: func1 writes [frame, frame+16), disjoint from array)
+      have hmem_left : wordsAt st1.mem ptr pivot_idx.toNat = arr.take pivot_idx.toNat := by
+        sorry
+      -- Apply IH to sort the left half
+      have hf11L : TerminatesWith {} «module» 11 st1
+          [.i32 pivot_idx, .i32 ptr]
+          (fun stL _ =>
+            ∃ ys_left : List UInt32,
+              wordsAt stL.mem ptr pivot_idx.toNat = ys_left ∧
+              ys_left.Pairwise (· ≤ ·) ∧ ys_left.Perm (arr.take pivot_idx.toNat) ∧
+              stL.globals = st1.globals ∧ stL.mem.pages = st1.mem.pages) := by
+        have hIH := IH pivot_idx.toNat hpivot_lt
+            st1 ptr (arr.take pivot_idx.toNat) frame
+            (by rw [List.length_take, harr_len, Nat.min_eq_left (Nat.le_of_lt hpivot_lt)])
+            (by rw [hpages_st1]; linarith [hpg, hpivot_lt])
+            (by rw [hpages_st1]; exact hpg_min)
+            (by linarith [hptr, hpivot_lt])
+            hg0_st1
+            (by simp only [frame, h_g016]; omega)
+            (by simp only [frame, h_g016]; sorry)  -- 16 ≤ g0.toNat - 16 (needs g0 ≥ 32)
+            hmem_left
+        simp only [UInt32.ofNat_toNat] at hIH
+        exact hIH
+      obtain ⟨NL, hNL⟩ := hf11L
+      obtain ⟨vsL, stL, hrunL, ys_left, hysL_mem, hysL_sorted, hysL_perm, hglobL, hpagesL⟩ :=
+        hNL NL le_rfl
+      have hvsL_nil : vsL = [] := by sorry  -- func11 has 0 results
+      rw [hvsL_nil] at hrunL
+      have hpages_stL : stL.mem.pages = st.mem.pages := by rw [hpagesL, hpages_st1]
+      have hg0_stL : stL.globals.globals[0]? = some (.i32 frame) := by
+        rw [hglobL]; exact hg0_st1
+      -- Apply func2_terminates to write right-slice header [frame+8, frame+16)
+      have hf2 : TerminatesWith {} «module» 2 stL
+          [.i32 (1048680 : UInt32), .i32 (UInt32.ofNat n), .i32 ptr,
+           .i32 (pivot_idx + 1), .i32 (frame + 8)]
+          (fun st' _ =>
+            st'.mem.read32 (frame + 8) = ptr + 4 * (pivot_idx + 1) ∧
+            st'.mem.read32 (frame + 12) = UInt32.ofNat n - (pivot_idx + 1) ∧
+            st'.globals = stL.globals ∧ st'.mem.pages = stL.mem.pages) :=
+        func2_terminates stL frame pivot_idx ptr (UInt32.ofNat n) 1048680
+      obtain ⟨N2, hN2⟩ := hf2
+      obtain ⟨vs2, st2, hrun2, h_frame2_ptr, h_frame2_len, hglob2, hpages2⟩ := hN2 N2 le_rfl
+      have hvs2_nil : vs2 = [] := by sorry  -- func2 has 0 results
+      rw [hvs2_nil] at hrun2
+      have hpages_st2 : st2.mem.pages = st.mem.pages := by rw [hpages2, hpages_stL]
+      -- Right-half address/length
+      let n_right : UInt32 := UInt32.ofNat n - (pivot_idx + 1)
+      let ptr_right : UInt32 := ptr + 4 * (pivot_idx + 1)
+      have hn_right_lt : n_right.toNat < n := by sorry  -- n - pivot_idx.toNat - 1 < n
+      have hg0_st2 : st2.globals.globals[0]? = some (.i32 frame) := by
+        rw [hglob2, hglobL]; exact hg0_st1
+      -- Right-half memory after func2 (framing)
+      have hmem_right : wordsAt st2.mem ptr_right n_right.toNat =
+          arr.drop (pivot_idx.toNat + 1) := by
+        sorry
+      -- Apply IH to sort the right half
+      have hf11R : TerminatesWith {} «module» 11 st2
+          [.i32 n_right, .i32 ptr_right]
+          (fun stR _ =>
+            ∃ ys_right : List UInt32,
+              wordsAt stR.mem ptr_right n_right.toNat = ys_right ∧
+              ys_right.Pairwise (· ≤ ·) ∧ ys_right.Perm (arr.drop (pivot_idx.toNat + 1)) ∧
+              stR.globals = st2.globals ∧ stR.mem.pages = st2.mem.pages) := by
+        have hIH := IH n_right.toNat hn_right_lt
+            st2 ptr_right (arr.drop (pivot_idx.toNat + 1)) frame
+            (by sorry)  -- arr.drop.length = n_right.toNat
+            (by sorry)  -- ptr_right.toNat + 4 * n_right.toNat ≤ pages * 65536
+            (by rw [hpages_st2]; exact hpg_min)
+            (by sorry)  -- 64 * (n_right.toNat + 1) ≤ ptr_right.toNat
+            hg0_st2
+            (by sorry)  -- frame.toNat ≤ ptr_right.toNat
+            (by simp only [frame, h_g016]; sorry)  -- 16 ≤ g0.toNat - 16
+            hmem_right
+        simp only [UInt32.ofNat_toNat] at hIH
+        exact hIH
+      obtain ⟨NR, hNR⟩ := hf11R
+      obtain ⟨vsR, stR, hrunR, ys_right, hysR_mem, hysR_sorted, hysR_perm, hglobR, hpagesR⟩ :=
+        hNR NR le_rfl
+      have hvsR_nil : vsR = [] := by sorry  -- func11 has 0 results
+      rw [hvsR_nil] at hrunR
+      have hpages_stR : stR.mem.pages = st.mem.pages := by rw [hpagesR, hpages_st2]
+      -- Lift all runs to common fuel Nmax (block body executes at fuel Nmax-1,
+      -- so define Nmax with +1 on each Ni to ensure Nmax-1 ≥ each Ni)
+      let Nmax := max (N10 + 1) (max (N1 + 1) (max (NL + 1) (max (N2 + 1) (NR + 1))))
+      have hNmax_pos : 0 < Nmax := by
+        have : N10 + 1 ≤ Nmax := Nat.le_max_left _ _; omega
+      have hN10_le : N10 ≤ Nmax - 1 := by
+        have h : N10 + 1 ≤ Nmax := Nat.le_max_left _ _; omega
+      have hN1_le : N1 ≤ Nmax - 1 := by
+        have h : N1 + 1 ≤ Nmax :=
+          (Nat.le_max_left _ _).trans (Nat.le_max_right _ _); omega
+      have hNL_le : NL ≤ Nmax - 1 := by
+        have h : NL + 1 ≤ Nmax :=
+          ((Nat.le_max_left _ _).trans (Nat.le_max_right _ _)).trans
+            (Nat.le_max_right _ _); omega
+      have hN2_le : N2 ≤ Nmax - 1 := by
+        have h : N2 + 1 ≤ Nmax :=
+          (((Nat.le_max_left _ _).trans (Nat.le_max_right _ _)).trans
+            (Nat.le_max_right _ _)).trans (Nat.le_max_right _ _); omega
+      have hNR_le : NR ≤ Nmax - 1 := by
+        have h : NR + 1 ≤ Nmax :=
+          ((((Nat.le_max_right _ _).trans (Nat.le_max_right _ _)).trans
+            (Nat.le_max_right _ _)).trans (Nat.le_max_right _ _)); omega
+      -- Run results at fuel Nmax-1 (the fuel available to calls inside the block body)
+      have h_run10_Nm1 : run (Nmax - 1) «module» 10 st_pre
+          [.i32 (UInt32.ofNat n), .i32 ptr] {} = .Success [.i32 pivot_idx] st10 :=
+        (run_fuel_mono hN10_le (by rw [hrun10]; simp)).trans hrun10
+      have h_run1_Nm1 : run (Nmax - 1) «module» 1 st10
+          [.i32 (1048664 : UInt32), .i32 (UInt32.ofNat n), .i32 ptr,
+           .i32 pivot_idx, .i32 frame] {} = .Success [] st1 :=
+        (run_fuel_mono hN1_le (by rw [hrun1]; simp)).trans hrun1
+      have h_runL_Nm1 : run (Nmax - 1) «module» 11 st1
+          [.i32 pivot_idx, .i32 ptr] {} = .Success [] stL :=
+        (run_fuel_mono hNL_le (by rw [hrunL]; simp)).trans hrunL
+      have h_run2_Nm1 : run (Nmax - 1) «module» 2 stL
+          [.i32 (1048680 : UInt32), .i32 (UInt32.ofNat n), .i32 ptr,
+           .i32 (pivot_idx + 1), .i32 (frame + 8)] {} = .Success [] st2 :=
+        (run_fuel_mono hN2_le (by rw [hrun2]; simp)).trans hrun2
+      have h_runR_Nm1 : run (Nmax - 1) «module» 11 st2
+          [.i32 n_right, .i32 ptr_right] {} = .Success [] stR :=
+        (run_fuel_mono hNR_le (by rw [hrunR]; simp)).trans hrunR
+      -- Globals chain: stR.globals = { globals := st.globals.globals.set 0 (.i32 frame) }
+      have hstR_g : stR.globals = { globals := st.globals.globals.set 0 (.i32 frame) } := by
+        rw [hglobR, hglob2, hglobL, hglob1, hglob10]
+      have hstR_gg : stR.globals.globals = st.globals.globals.set 0 (.i32 frame) :=
+        congr_arg Globals.globals hstR_g
+      -- g0 in stR = frame (needed for epilogue's globalSet 0 g0)
+      have hg0_stR : stR.globals.globals[0]? = some (.i32 frame) := by
+        rw [hstR_gg]
+        cases h : st.globals.globals with
+        | nil => simp [h] at hg0
+        | cons _ _ => simp [h, List.set_cons_zero]
+      -- Out-of-bounds checks for load32 at frame+{0,4,8,12}
+      have hft : frame.toNat = g0.toNat - 16 := h_g016
+      -- Convert hge16 (UInt32) to Nat form so linarith can use it
+      have hg0_nat_ok : 16 ≤ g0.toNat := by
+        have h := UInt32.le_iff_toNat_le.mp hge16
+        simpa only [show (16 : UInt32).toNat = 16 from rfl] using h
+      -- Sum form of hft (avoids Nat subtraction in linarith)
+      have hft2 : frame.toNat + 16 = g0.toNat := by
+        clear_value frame; rw [hft]; exact Nat.sub_add_cancel hg0_nat_ok
+      -- Out-of-bounds checks for load32 at frame+{0,4,8,12}
+      -- All four follow from frame + 16 = g0 ≤ ptr ≤ pages*65536 - 4*n and n ≥ 2
+      have hload4_ok : ¬ (st1.mem.pages * 65536 < frame.toNat + 4 + 4) := by
+        intro h; rw [hpages_st1] at h; linarith [hft2, hg0_le, hpg, hbase']
+      have hload0_ok : ¬ (st1.mem.pages * 65536 < frame.toNat + 0 + 4) := by
+        intro h; rw [hpages_st1] at h; linarith [hft2, hg0_le, hpg, hbase']
+      have hload12_ok : ¬ (st2.mem.pages * 65536 < frame.toNat + 12 + 4) := by
+        intro h; rw [hpages_st2] at h; linarith [hft2, hg0_le, hpg, hbase']
+      have hload8_ok : ¬ (st2.mem.pages * 65536 < frame.toNat + 8 + 4) := by
+        intro h; rw [hpages_st2] at h; linarith [hft2, hg0_le, hpg, hbase']
+      -- Arithmetic helper: frame + 0 = frame
+      have hframe0 : frame + (0 : UInt32) = frame := by simp
+      -- Postcondition: ys = ys_left ++ [pivot] ++ ys_right
+      let ys := ys_left ++ [arr[pivot_idx.toNat]!] ++ ys_right
+      -- Final globals after epilogue (globalSet 0 g0 restores original)
+      have hstR_final_globals :
+          ({ stR with globals :=
+               { globals := stR.globals.globals.set 0 (.i32 g0) } } : Store Unit).globals =
+          st.globals := by
+        show { globals := stR.globals.globals.set 0 (.i32 g0) } = st.globals
+        rw [hstR_gg, show frame = g0 - 16 from rfl, hglob_restore]
+      have hys_sorted : ys.Pairwise (· ≤ ·) := by
+        sorry  -- sorted_of_sorted_split + perm from hysL_perm/hysR_perm + harr_left/harr_right
+      have hys_perm : ys.Perm xs := by
+        sorry  -- harr_perm + hysL_perm + hysR_perm + list-split perm
+      have hmem_ys : wordsAt stR.mem ptr n = ys := by
+        sorry  -- combined memory: ys_left ++ [pivot] ++ ys_right occupies [ptr, ptr+4*n)
+      -- Big exec: func11 body at fuel Nmax terminates
+      -- (sorry: br_if NOT-taken match + 5 calls at fuel Nmax-1 via h_run*_Nm1)
+      have h_exec : exec Nmax «module» st
+          (func11Def.toLocals ([.i32 (UInt32.ofNat n), .i32 ptr].take func11Def.numParams).reverse)
+          func11Def.body {} =
+          .Return
+            { stR with globals := { globals := stR.globals.globals.set 0 (.i32 g0) } }
+            [] := by
+        sorry
+      -- Close wp_wasm_prop
+      unfold wp_wasm_prop
+      refine ⟨Nmax, ?_⟩
+      rw [h_exec]
+      exact ⟨ys,
+             show wordsAt ({ stR with globals := _ } : Store Unit).mem ptr n = ys from hmem_ys,
+             hys_sorted, hys_perm, hstR_final_globals, hpages_stR⟩
     -- Strategy:
     --
     -- CASE n ≤ 1 (BASE):
