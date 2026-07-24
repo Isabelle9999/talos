@@ -252,8 +252,9 @@ theorem wp_wasm_prop_block
     simp only [exec_block_cons, hbody', hbody_result, hfuel']
     exact hfuel }
 
--- loop rule: invariant I and measure μ; body either falls through (exit) or
--- breaks to label 0 (re-enter) with I re-established and μ decreased.
+-- loop rule: invariant I and measure μ; body either falls through (exit),
+-- breaks to label 0 (re-enter) with I re-established and μ decreased, or
+-- returns (function-level exit, satisfying Q directly).
 -- As with the block rule, a single body fuel per iteration suffices.
 omit inst in
 theorem wp_wasm_prop_loop
@@ -271,7 +272,8 @@ theorem wp_wasm_prop_loop
             rest env Q) ∨
         (∃ stB sB, exec N m stA locA body env = .Break 0 stB sB ∧
           I stB { sB with values := sB.values.take ps ++ locA.values.drop ps } ∧
-          μ stB { sB with values := sB.values.take ps ++ locA.values.drop ps } < μ stA locA)) :
+          μ stB { sB with values := sB.values.take ps ++ locA.values.drop ps } < μ stA locA) ∨
+        (∃ stB vs, exec N m stA locA body env = .Return stB vs ∧ Q stB vs)) :
     wp_wasm_prop m st locals (.loop ps rs body :: rest) env Q := by
   -- restate exec_loop_cons_unfold (private in Loop.lean) using execOne_loop_succ
   have exec_loop_unfold : ∀ (f : Nat) (stA : Store Unit) (sA : Locals),
@@ -307,7 +309,7 @@ theorem wp_wasm_prop_loop
   | _ n IH =>
     intro stA sA hI hμ
     obtain ⟨N, hN⟩ := hstep stA sA hI
-    rcases hN with ⟨stB, sB, hbody, hwp⟩ | ⟨stB, sB, hbody, hI', hμ'⟩
+    rcases hN with ⟨stB, sB, hbody, hwp⟩ | ⟨stB, sB, hbody, hI', hμ'⟩ | ⟨stB, vs, hbody, hq⟩
     · -- Fallthrough: body exits, compose fuels for body and rest
       obtain ⟨fuel_rest, hfuel⟩ := hwp
       have hbody_ne : exec N m stA sA body env ≠ .OutOfFuel := by
@@ -363,6 +365,37 @@ theorem wp_wasm_prop_loop
       rw [heq,
         exec_fuel_mono (Nat.le_trans (Nat.le_max_right N fuel_loop) (Nat.le_succ _)) hfuel_ne]
       exact hfuel_loop
+    · -- Return: the loop body hits a `ret`, terminating the function directly.
+      refine ⟨N + 1, ?_⟩
+      have heq : exec (N + 1) m stA sA (.loop ps rs body :: rest) env = .Return stB vs := by
+        simp only [exec_loop_unfold N stA sA, hbody]
+      rw [heq]
+      exact hq
+
+-- iProp-invariant loop rule.
+-- Wraps `wp_wasm_prop_loop` so the invariant can be an iris predicate carried
+-- as a Lean-level validity proof `⊢ inv st loc`.  The `hstep` can enter iris
+-- mode (via `wasm_heap_adequacy`) for body reasoning using `arrayAt` / `pointsTo_u32`.
+omit inst in
+theorem wp_wasm_iProp_loop
+    {m : Module} {st : Store Unit} {locals : Locals}
+    {ps rs : Nat} {body : Program} {rest : Program}
+    {env : HostEnv Unit}
+    {Q : Store Unit → List Value → Prop}
+    (inv : Store Unit → Locals → IProp WasmHeapGF)
+    (μ : Store Unit → Locals → Nat)
+    (hinit : ⊢ inv st locals)
+    (hstep : ∀ stA locA, (⊢ inv stA locA) →
+      ∃ N,
+        (∃ stB sB, exec N m stA locA body env = .Fallthrough stB sB ∧
+          wp_wasm_prop m stB { sB with values := sB.values.take rs ++ locA.values.drop ps }
+            rest env Q) ∨
+        (∃ stB sB, exec N m stA locA body env = .Break 0 stB sB ∧
+          (⊢ inv stB { sB with values := sB.values.take ps ++ locA.values.drop ps }) ∧
+          μ stB { sB with values := sB.values.take ps ++ locA.values.drop ps } < μ stA locA) ∨
+        (∃ stB vs, exec N m stA locA body env = .Return stB vs ∧ Q stB vs)) :
+    wp_wasm_prop m st locals (.loop ps rs body :: rest) env Q :=
+  wp_wasm_prop_loop (I := fun s l => ⊢ inv s l) μ hinit hstep
 
 -- toy: empty-body loop always exits immediately, validating wp_wasm_prop_loop
 private example (m : Module) (st : Store Unit) (locals : Locals) :
