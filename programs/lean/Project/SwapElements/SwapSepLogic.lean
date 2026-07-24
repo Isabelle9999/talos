@@ -325,7 +325,7 @@ private theorem func1_terminates_sw (env : HostEnv Unit) (st : Store Unit)
       refine (func2_terminates env st (elemAddr ptr i) (elemAddr ptr j)
           hg0 (by omega) hpg_a hpg_b hge_a hge_b hdisj).mono ?_
       rintro st' vs ⟨rfl, hglob2, hpages2, hrA2, hrB2, hother2⟩
-      refine ⟨1, ?_⟩
+      refine ⟨hglob2, hpages2, 1, ?_⟩
       simp only [exec, execOne]
       exact ⟨trivial, hglob2, hpages2, hrA2, hrB2, hother2⟩
   exact wp_wasm_prop_to_TerminatesWith hf₁ himp₁ rfl (Nat.le_refl _)
@@ -382,7 +382,7 @@ private theorem func0_terminates_sw (env : HostEnv Unit) (st : Store Unit)
       refine (func1_terminates_sw env st ptr len i j hi hj hpg hpages_bound
           hptr hg0).mono ?_
       rintro st' vs ⟨rfl, hglob1, hpages1, hrA1, hrB1, hother1⟩
-      refine ⟨1, ?_⟩
+      refine ⟨hglob1, hpages1, 1, ?_⟩
       simp only [exec, execOne]
       exact ⟨trivial, hglob1, hpages1, hrA1, hrB1, hother1⟩
   exact wp_wasm_prop_to_TerminatesWith hf himp rfl (Nat.le_refl _)
@@ -441,6 +441,7 @@ theorem swap_spec_sep : SwapElementsSpec := by
     · apply wp_wasm_prop_call
       refine (func3_terminates env stg ptr len hpg3).mono ?_
       rintro st3 vs ⟨rfl, hglob3, hpages3, hread3_1568, hread3_1572, hread3_ne⟩
+      refine ⟨hglob3, hpages3, ?_⟩
       -- Derive global0 = 1048560 in st3 (func3 preserved globals; globals is a List)
       have hg0_3 : st3.globals.globals[0]? = some (.i32 (1048560 : UInt32)) := by
         rw [hglob3]
@@ -470,6 +471,7 @@ theorem swap_spec_sep : SwapElementsSpec := by
             (by rw [hst3_pages]; exact hpages_bound)
             hptr hg0_3).mono ?_
         rintro st0 vs ⟨rfl, hglob0, hpages0, hrA0, hrB0, hother0⟩
+        refine ⟨hglob0, hpages0, ?_⟩
         have hg0_st0 : st0.globals.globals[0]? = some (.i32 (1048560 : UInt32)) :=
           hglob0 ▸ hg0_3
         -- frame teardown: restore global0 = 1048576, then return.
