@@ -1204,9 +1204,9 @@ private theorem func3_terminates
     (fun _ _ ⟨hv, hs, hp, hg, _⟩ => ⟨hv, hs, hp, hg⟩)
 
 -- func2: Vec::with_capacity (deferred allocator proof; axiomatized)
-private axiom func2_vec_init
-    (st : Store Unit) (out_ptr len : UInt32)
-    (hmargin : 1050240 + 4 * len.toNat ≤ st.mem.pages * 65536) :
+def Func2VecInitSpec : Prop :=
+  ∀ (st : Store Unit) (out_ptr len : UInt32)
+    (hmargin : 1050240 + 4 * len.toNat ≤ st.mem.pages * 65536),
     TerminatesWith {} «module» 2 st
       [.i32 len, .i32 0, .i32 out_ptr]
       (fun st' rs =>
@@ -1222,8 +1222,8 @@ private axiom func2_vec_init
           ∀ i, i ≥ 1050240 + 4 * len.toNat → st'.mem.bytes i = st.mem.bytes i)
 
 -- func4: Vec dealloc (deferred allocator proof; axiomatized)
-private axiom func4_dealloc
-    (st : Store Unit) (vec_ptr heap_ptr : UInt32) (cap_bytes : Nat) :
+def Func4DeallocSpec : Prop :=
+  ∀ (st : Store Unit) (vec_ptr heap_ptr : UInt32) (cap_bytes : Nat),
     TerminatesWith {} «module» 4 st [.i32 vec_ptr]
       (fun st' rs =>
         rs = [] ∧
@@ -1275,6 +1275,8 @@ private theorem func0_tw
 set_option maxRecDepth 100000 in
 set_option maxHeartbeats 8000000 in
 private theorem func1_terminates
+    (hvec_init : Func2VecInitSpec)
+    (hdealloc : Func4DeallocSpec)
     (st : Store Unit) (data_ptr len : UInt32)
     (sp : UInt32)
     (hsp : st.globals.globals[0]? = some (.i32 sp))
@@ -1322,7 +1324,7 @@ private theorem func1_terminates
       hsp, show sp - (32 : UInt32) = frame from hframe_def.symm]
   simp only [show (20 : UInt32) + frame = frame + 20 from UInt32.add_comm 20 frame]
   -- call 2: func2_vec_init  (out_ptr = frame+20, args = [len, 0, frame+20])
-  refine wp_call_tw (func2_vec_init { st with globals := { globals := st.globals.globals.set 0 (.i32 frame) } } (frame + 20) len hmargin) ?_
+  refine wp_call_tw (hvec_init { st with globals := { globals := st.globals.globals.set 0 (.i32 frame) } } (frame + 20) len hmargin) ?_
   intro st2 _ hpost2
   obtain ⟨rfl, heap_ptr, hheap_nat, hheap_cap, hpages2, hpages_mono, hglob2, hmem2_r4, hmem2_r8, hmem2_bytes⟩ := hpost2
   have hpages2_frame : sp.toNat ≤ st2.mem.pages * 65536 := by
@@ -1421,7 +1423,7 @@ private theorem func1_terminates
   mstep
   simp only [show (20 : UInt32) + frame = frame + 20 from UInt32.add_comm 20 frame]
   -- call 4: func4_dealloc  (vec_ptr = frame+20)
-  refine wp_call_tw (func4_dealloc st3 (frame + 20) (1050240 : UInt32) (4 * len.toNat)) ?_
+  refine wp_call_tw (hdealloc st3 (frame + 20) (1050240 : UInt32) (4 * len.toNat)) ?_
   intro st4 _ hpost4
   obtain ⟨rfl, hglob4, hpages4_eq, hbytes4⟩ := hpost4
   -- globals chain: st4.globals.globals = st.globals.globals.set 0 (.i32 frame)
@@ -1504,7 +1506,10 @@ private theorem func1_terminates
 --   call 1 with [len, dataPtr]: func1_terminates → sorts dataPtr in place
 --   postamble (4): localGet 2 / const 16 / add / globalSet 0 / ret
 set_option maxRecDepth 100000 in
-theorem merge_sort_correct : MergeSortSpec := by
+theorem merge_sort_correct
+    (hvec_init : Func2VecInitSpec)
+    (hdealloc : Func4DeallocSpec) : MergeSortSpec := by
+  unfold MergeSortSpec
   intro env st dataPtr len n dLo dHi hdHi hpristine hmargin hsp hpages
   apply TerminatesWith.env_lift
   apply TerminatesWith.of_wp_entry_for (f := func33Def) rfl
@@ -1607,7 +1612,7 @@ theorem merge_sort_correct : MergeSortSpec := by
     rw [hpages15]; exact hdHi
   have hdata_lo1 : 1050240 + 4 * len.toNat ≤ dataPtr.toNat := by
     have : heapBase = 1050240 := rfl; linarith [hmargin]
-  refine wp_call_tw (func1_terminates st15 dataPtr len 1048560 hsp1 hsp_lo1 hsp_hi1 hpages1
+  refine wp_call_tw (func1_terminates hvec_init hdealloc st15 dataPtr len 1048560 hsp1 hsp_lo1 hsp_hi1 hpages1
       hmargin1 hdHi1 hdata_lo1) ?_
   intro st1 vs1 hpost1
   obtain ⟨rfl, hsorted, hperm1, hglobals1⟩ := hpost1
