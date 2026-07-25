@@ -2,7 +2,7 @@ import Lean
 import Iris.ProofMode
 open Lean Elab Tactic
 
--- wpure rule
+-- wpure tactic rule
 -- apply a pure wasm instruction rule and discharge hstep with σ' = σ.
 -- rule must leave only hstep unresolved after apply; pass any side conditions
 -- in the rule term:
@@ -13,9 +13,12 @@ open Lean Elab Tactic
 elab "wpure" rule:term : tactic => do
   evalTactic (← `(tactic| apply $rule))
   evalTactic (← `(tactic| intro σ))
+  evalTactic (← `(tactic| intro hagree))
   evalTactic (← `(tactic| iintro Hσ))
   evalTactic (← `(tactic| imodintro))
   evalTactic (← `(tactic| iexists σ))
+  evalTactic (← `(tactic| isplitl []))
+  evalTactic (← `(tactic| next => exact BI.pure_intro hagree))
   evalTactic (← `(tactic| isplitl [Hσ]))
   evalTactic (← `(tactic| next => iexact Hσ))
 
@@ -28,9 +31,12 @@ elab "wpures" : tactic => do
     try
       act
       evalTactic (← `(tactic| intro σ))
+      evalTactic (← `(tactic| intro hagree))
       evalTactic (← `(tactic| iintro Hσ))
       evalTactic (← `(tactic| imodintro))
       evalTactic (← `(tactic| iexists σ))
+      evalTactic (← `(tactic| isplitl []))
+      evalTactic (← `(tactic| next => exact BI.pure_intro hagree))
       evalTactic (← `(tactic| isplitl [Hσ]))
       evalTactic (← `(tactic| next => iexact Hσ))
       return true
@@ -73,9 +79,12 @@ private def tryStep (act : TacticM Unit) : TacticM Bool := do
   try
     act
     evalTactic (← `(tactic| intro σ))
+    evalTactic (← `(tactic| intro hagree))
     evalTactic (← `(tactic| iintro Hσ))
     evalTactic (← `(tactic| imodintro))
     evalTactic (← `(tactic| iexists σ))
+    evalTactic (← `(tactic| isplitl []))
+    evalTactic (← `(tactic| next => exact BI.pure_intro hagree))
     evalTactic (← `(tactic| isplitl [Hσ]))
     evalTactic (← `(tactic| next => iexact Hσ))
     return true
@@ -122,6 +131,39 @@ private def tryOneMem : TacticM Bool := do
 elab "wmem" : tactic => do
   if ← tryOneMem then return
   throwError "wmem: no memory instruction matched"
+
+-- iwpureStep: one pure WP step via INLINE WP unfolding, for use INSIDE the iris proof mode.
+-- Unlike tryStep/tryOnePure, works when goal is  CONTEXT ⊢ wp_wasm ...
+-- (e.g. after iintro has put HA_a, HA_b into the iris context).
+-- All steps are in ONE evalTactic call to preserve goal-focus for (next => ...) closures.
+private def iwpureStep : TacticM Bool := do
+  let s ← saveState
+  try
+    evalTactic (← `(tactic|
+      (try unfold wp_wasm);
+      (try iapply least_fixpoint_unfold_mpr);
+      simp only [wp_wasm_F];
+      iintro %σ_iw %hagree_iw Hσ_iw;
+      imodintro;
+      iexists σ_iw, st, _;
+      isplitl [];
+      (next => exact BI.pure_intro (by simp only [execOne.eq_def]; rfl));
+      isplitl [];
+      (next => exact BI.pure_intro hagree_iw);
+      isplitl [Hσ_iw];
+      (next => iexact Hσ_iw)))
+    return true
+  catch _ =>
+    restoreState s
+    return false
+
+-- iwpures: apply consecutive pure WP steps INSIDE the iris proof mode.
+-- Preserves all iris context resources (e.g. HA_a, HA_b) through each step.
+elab "iwpures" : tactic => do
+  let rec loop : Nat → TacticM Unit := fun
+    | 0 => return
+    | n + 1 => do if ← iwpureStep then loop n
+  loop 1000
 
 -- wrun: handle all consecutive pure and memory instructions
 -- stops at call/block/loop/ret/empty
