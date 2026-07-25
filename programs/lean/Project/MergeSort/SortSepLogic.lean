@@ -2388,7 +2388,45 @@ theorem func6_iProp
     · -- hstep: for each iteration, derive exec-level evidence from the invariant.
       -- Full proof requires func6_terminates_frame + ghost state witnesses; sorry'd.
       intro n stA locA hI
-      sorry
+      obtain ⟨σ, hI⟩ := hI
+      -- Extract i, j, k and their pure constraints from the ghost IProp invariant
+      have hI_pure : ∃ (i j k : UInt32),
+          i.toNat + j.toNat = n_left.toNat + n_right.toNat - n ∧
+          i.toNat ≤ n_left.toNat ∧ j.toNat ≤ n_right.toNat ∧ k = i + j :=
+        pure_soundness (PROP := IProp WasmHeapGF) (hI.trans (by
+          iintro ⟨-, Hi⟩
+          icases Hi with ⟨%i, %j, %k, Hsum, Hle_i, Hle_j, Hk, -, -, -, -, -, -⟩
+          ipure Hsum; ipure Hle_i; ipure Hle_j; ipure Hk
+          exact BI.pure_intro ⟨i, j, k, ‹_›, ‹_›, ‹_›, ‹_›⟩))
+      obtain ⟨i, j, k, hsum, hle_i, hle_j, hk⟩ := hI_pure
+      -- Ghost pointsTo_u32 ownership consistent with the concrete memory reads
+      have hmem8  : stA.mem.read32 (frame + 8)  = i := by sorry
+      have hmem12 : stA.mem.read32 (frame + 12) = j := by sorry
+      -- Frame pointer local (wasm index 6 = locals[0]) invariant across iterations
+      have hframe : locA.get 6 = .i32 frame := by sorry
+      -- Case-split on whether i has exhausted the left subarray
+      by_cases hi : i.toNat < n_left.toNat
+      · by_cases hj : j.toNat < n_right.toNat
+        · -- Both in range → body executes fully, ends with br 0 → Break 0
+          refine ⟨1, fun fuel hfuel => ?_⟩
+          right; left
+          sorry -- Break 0: full mergeBody execution trace + updated ghost invariant
+        · -- j exhausted → br_if 1 fires at instruction 15 → Break 1
+          push_neg at hj
+          refine ⟨1, fun fuel hfuel => ?_⟩
+          left
+          refine ⟨stA, locA, ?_, ?_⟩
+          · simp only [exec, execOne.eq_def, hframe, hmem8, hmem12]
+            sorry -- bounds check + eqz(and(ltU(j,n_right),1))=1 since j≥n_right
+          · sorry -- wp_wasm_prop for rest after Break 1 (drain loop)
+      · -- i exhausted → br_if 1 fires at instruction 7 → Break 1
+        push_neg at hi
+        refine ⟨1, fun fuel hfuel => ?_⟩
+        left
+        refine ⟨stA, locA, ?_, ?_⟩
+        · simp only [exec, execOne.eq_def, hframe, hmem8]
+          sorry -- bounds check + eqz(and(ltU(i,n_left),1))=1 since i≥n_left
+        · sorry -- wp_wasm_prop for rest after Break 1 (drain loop)
   -- ── Combine preamble exec chain with block proof ──────────────────────────
   -- exec_fuel_mono: exec (fuel+27) (drop 27) = exec fuel (drop 27) when fuel suffices
   obtain ⟨fuel, hfuel⟩ := h_block
