@@ -396,8 +396,8 @@ prefix and a permutation of `xs`.  The inner loop shift steps use
 `wasm_heap_adequacy` + `shift_element_via_arrayAt` (proved in §5).
 The full loop invariant maintenance (sorted + permutation) is admitted here. -/
 
-omit inst in
 private theorem func0_sort_terminates
+    [WasmHeapGS]
     (st : Store Unit) (ptr len : UInt32) (xs : List UInt32)
     (hlen  : xs.length = len.toNat)
     (hbounds  : ptr.toNat + 4 * xs.length ≤ st.mem.pages * 65536)
@@ -471,110 +471,103 @@ private theorem func0_sort_terminates
     --                  .call 54, .unreachable]
     -- Unfold to get the loop constructor in head position, then apply loop rule.
     simp only [func0, List.drop]
-    -- Outer-loop invariant I: ∃ i ys such that ys[0..i) is sorted, ys ∈ Perm xs,
-    --   mem[sp+8] = i, global[0] = sp, mem.pages = st.mem.pages, wordsAt holds.
-    apply wp_wasm_prop_loop
-        (I := fun stA locA =>
+    -- iProp outer-loop invariant: arrayAt owns the array + pure bookkeeping in ⌜...⌝.
+    -- wordsAt is kept as a pure conjunct alongside arrayAt until heapAgreesWithMem is wired.
+    apply wp_wasm_iProp_loop
+        (inv := fun stA locA => iprop%
           ∃ i : UInt32, ∃ ys : List UInt32,
-            ys.length = len.toNat ∧
-            wordsAt stA.mem ptr ys.length = ys ∧
-            (ys.take i.toNat).Pairwise (· ≤ ·) ∧
-            xs.Perm ys ∧
-            stA.mem.read32 (sp + 8) = i ∧
-            stA.globals.globals[0]? = some (.i32 sp) ∧
-            stA.mem.pages = st.mem.pages ∧
-            locA.get 1 = some (.i32 len) ∧
-            locA.get 2 = some (.i32 sp) ∧
-            locA.values = [])
+            arrayAt ptr ys ∗
+            ⌜ys.length = len.toNat ∧
+             wordsAt stA.mem ptr ys.length = ys ∧
+             (ys.take i.toNat).Pairwise (· ≤ ·) ∧
+             xs.Perm ys ∧
+             stA.mem.read32 (sp + 8) = i ∧
+             stA.globals.globals[0]? = some (.i32 sp) ∧
+             stA.mem.pages = st.mem.pages ∧
+             locA.get 1 = some (.i32 len) ∧
+             locA.get 2 = some (.i32 sp) ∧
+             locA.values = []⌝)
         (μ := fun stA _ => (len - stA.mem.read32 (sp + 8)).toNat)
-    · -- hinit: invariant holds at st_loop with i=1, ys=xs
-      -- * mem[sp+8] = mem.write32(sp+8)(1).read32(sp+8) = 1 (read32_write32_same)
-      -- * global[0] = sp (set 0 to sp)
-      -- * mem.pages unchanged (write32 doesn't change pages)
-      -- * wordsAt st_loop.mem ptr xs.length = xs because sp+8=1048552 > ptr+4*xs.length
-      --   (all array reads below sp+8 are unaffected by the write at sp+8)
-      refine ⟨1, xs, hlen, ?_, ?_, List.Perm.refl xs, ?_, ?_, ?_, rfl, rfl, rfl⟩
-      · -- wordsAt st_loop.mem ptr xs.length = xs
-        have heq : ∀ i ∈ List.range xs.length,
-            st_loop.mem.read32 (ptr + 4 * UInt32.ofNat i) =
-            st.mem.read32 (ptr + 4 * UInt32.ofNat i) := by
-          intro i hi
-          have hi_lt : i < xs.length := List.mem_range.mp hi
-          apply Mem.read32_write32_disjoint
-          left
-          have hkn : (UInt32.ofNat i).toNat = i :=
-            UInt32.toNat_ofNat_of_lt' (show i < UInt32.size from by show i < 4294967296; omega)
-          have h4ki : (4 * UInt32.ofNat i).toNat = 4 * i := by
-            rw [UInt32.toNat_mul, show (4 : UInt32).toNat = 4 from rfl, hkn,
-                show (2 : Nat) ^ 32 = 4294967296 from rfl]
-            exact Nat.mod_eq_of_lt (by omega)
-          have hno_ov : (ptr + 4 * UInt32.ofNat i).toNat = ptr.toNat + 4 * i := by
-            rw [UInt32.toNat_add, h4ki, show (2 : Nat) ^ 32 = 4294967296 from rfl]
-            exact Nat.mod_eq_of_lt (by linarith)
-          rw [hno_ov, show (sp + 8 : UInt32).toNat = 1048552 from rfl]
-          omega
-        simp only [wordsAt]
-        have : (List.range xs.length).map (fun i => st_loop.mem.read32 (ptr + 4 * UInt32.ofNat i))
-             = (List.range xs.length).map (fun i => st.mem.read32 (ptr + 4 * UInt32.ofNat i)) :=
-          List.map_congr_left heq
-        rw [this]; exact hwords
-      · -- (xs.take 1).Pairwise (· ≤ ·)
-        simp only [show UInt32.toNat 1 = 1 from rfl]
-        match xs with
-        | []     => exact .nil
-        | x :: _ => exact List.pairwise_singleton (· ≤ ·) x
-      · -- st_loop.mem.read32 (sp + 8) = 1
-        exact Mem.read32_write32_same st.mem (sp + 8) 1
-      · -- st_loop.globals.globals[0]? = some (.i32 sp)
-        show (st.globals.globals.set 0 (.i32 sp))[0]? = some (.i32 sp)
-        match hnn : st.globals.globals with
-        | []     => simp [hnn] at hglobal1
-        | _ :: _ => simp [List.set]
-      · -- st_loop.mem.pages = st.mem.pages
-        exact Mem.write32_pages st.mem (sp + 8) 1
-    · -- hstep: each outer loop body terminates via Return or Break 0
-      -- The outer loop body checks i < len at the top:
-      --   ∗ If i ≥ len: restores global[0] ← sp+16 = 1048560, then .ret → Return
-      --   ∗ If i < len: reads arr[i] as key, runs inner shift loop, stores key,
-      --     increments i, then .br 1 inside a block → Break 0 at the outer loop
-      intro stA locA ⟨i, ys, hlen_ys, hwords_ys, hsorted, hperm, hread_i, hglob, hpages, hget1, hget2, hvalues⟩
+    · -- hinit: ⊢ inv st_loop loc_loop  (i=1, ys=xs)
+      iexists (1 : UInt32)
+      iexists xs
+      isplitl []
+      · sorry  -- ⊢ arrayAt ptr xs: requires ghost heap allocation
+      · ipureintro
+        refine ⟨hlen, ?_, ?_, List.Perm.refl xs, ?_, ?_, ?_, rfl, rfl, rfl⟩
+        · -- wordsAt st_loop.mem ptr xs.length = xs
+          have heq : ∀ i ∈ List.range xs.length,
+              st_loop.mem.read32 (ptr + 4 * UInt32.ofNat i) =
+              st.mem.read32 (ptr + 4 * UInt32.ofNat i) := by
+            intro i hi
+            have hi_lt : i < xs.length := List.mem_range.mp hi
+            apply Mem.read32_write32_disjoint
+            left
+            have hkn : (UInt32.ofNat i).toNat = i :=
+              UInt32.toNat_ofNat_of_lt' (show i < UInt32.size from by show i < 4294967296; omega)
+            have h4ki : (4 * UInt32.ofNat i).toNat = 4 * i := by
+              rw [UInt32.toNat_mul, show (4 : UInt32).toNat = 4 from rfl, hkn,
+                  show (2 : Nat) ^ 32 = 4294967296 from rfl]
+              exact Nat.mod_eq_of_lt (by omega)
+            have hno_ov : (ptr + 4 * UInt32.ofNat i).toNat = ptr.toNat + 4 * i := by
+              rw [UInt32.toNat_add, h4ki, show (2 : Nat) ^ 32 = 4294967296 from rfl]
+              exact Nat.mod_eq_of_lt (by linarith)
+            rw [hno_ov, show (sp + 8 : UInt32).toNat = 1048552 from rfl]
+            omega
+          simp only [wordsAt]
+          have : (List.range xs.length).map (fun i => st_loop.mem.read32 (ptr + 4 * UInt32.ofNat i))
+               = (List.range xs.length).map (fun i => st.mem.read32 (ptr + 4 * UInt32.ofNat i)) :=
+            List.map_congr_left heq
+          rw [this]; exact hwords
+        · -- (xs.take 1).Pairwise (· ≤ ·)
+          simp only [show UInt32.toNat 1 = 1 from rfl]
+          match xs with
+          | []     => exact .nil
+          | x :: _ => exact List.pairwise_singleton (· ≤ ·) x
+        · exact Mem.read32_write32_same st.mem (sp + 8) 1
+        · show (st.globals.globals.set 0 (.i32 sp))[0]? = some (.i32 sp)
+          match hnn : st.globals.globals with
+          | []     => simp [hnn] at hglobal1
+          | _ :: _ => simp [List.set]
+        · exact Mem.write32_pages st.mem (sp + 8) 1
+    · -- hstep: each loop-body iteration terminates via Return (i ≥ len) or sorry (i < len)
+      intro stA locA hinv
+      -- Extract pure facts from hinv : ⊢ ∃ i ys, arrayAt ptr ys ∗ ⌜φ⌝
+      -- sep_elim_right : P ∗ ⌜φ⌝ ⊢ ⌜φ⌝  (Absorbing ⌜φ⌝ from pure_absorbing)
+      have h_pure : ∃ i : UInt32, ∃ ys : List UInt32,
+          ys.length = len.toNat ∧
+          wordsAt stA.mem ptr ys.length = ys ∧
+          (ys.take i.toNat).Pairwise (· ≤ ·) ∧
+          xs.Perm ys ∧
+          stA.mem.read32 (sp + 8) = i ∧
+          stA.globals.globals[0]? = some (.i32 sp) ∧
+          stA.mem.pages = st.mem.pages ∧
+          locA.get 1 = some (.i32 len) ∧
+          locA.get 2 = some (.i32 sp) ∧
+          locA.values = [] :=
+        pure_soundness (hinv.trans (
+          BI.exists_elim (fun i =>
+          BI.exists_elim (fun ys =>
+            BI.sep_elim_right.trans
+            (BI.pure_elim' (fun h => BI.pure_intro ⟨i, ys, h⟩))))))
+      obtain ⟨i, ys, hlen_ys, hwords_ys, hsorted, hperm, hread_i, hglob, hpages, hget1, hget2, hvalues⟩ := h_pure
       by_cases hi : i.toNat < len.toNat
-      · -- i < len: inner shift loop needed (sorry: inner loop proof not yet complete)
-        -- The body reads arr[i] as key, runs the inner shift loop which shifts arr[j..i-1]
-        -- right while arr[j-1] > key, stores key at arr[j], increments i in mem[sp+8],
-        -- then exits via .br 1 (inside the final block) → Break 0 at the outer loop,
-        -- re-establishing the sorted-prefix invariant with i+1 and a shifted permutation.
+      · -- i < len: inner shift loop (sorry: not yet proved)
         sorry
-      · -- i ≥ len: the sorted prefix covers ys; restore global[0] and return
+      · -- i ≥ len: sorted prefix covers ys; restore global[0] and return
         push_neg at hi
-        -- ys is fully sorted since i ≥ len = ys.length
         have hys_sorted : ys.Pairwise (· ≤ ·) := by
-          have htake : ys.take i.toNat = ys :=
-            List.take_of_length_le (by omega)
+          have htake : ys.take i.toNat = ys := List.take_of_length_le (by omega)
           rwa [htake] at hsorted
-        -- Memory bounds for load32 at sp+8 (sp.toNat=1048544, +8+4=1048556 ≤ pages*65536)
         have hbounds_load : ¬ (sp.toNat + (8 : UInt32).toNat + 4 > stA.mem.pages * 65536) := by
           have hmem_stA : 1048576 ≤ stA.mem.pages * 65536 := by rw [hpages]; exact hmem_size
           simp only [show sp.toNat = 1048544 from rfl, show (8 : UInt32).toNat = 8 from rfl]
           omega
-        -- i ≥ len as a UInt32 proposition (definitionally: UInt32.lt = Fin.lt = Nat.lt on .val)
-        have hlt : ¬ (i < len) := by
-          intro h
-          have h' : i.toNat < len.toNat := h
-          omega
-        -- get does not depend on the values field; these helpers let simp rewrite through
-        -- intermediate { locA with values := v } states after each pushed instruction
-        have hget_eq1 : ∀ v, { locA with values := v }.get 1 = some (.i32 len) :=
-          fun _ => hget1
-        have hget_eq2 : ∀ v, { locA with values := v }.get 2 = some (.i32 sp) :=
-          fun _ => hget2
-        -- Define the post-globalSet store
+        have hlt : ¬ (i < len) := by intro h; have h' : i.toNat < len.toNat := h; omega
+        have hget_eq1 : ∀ v, { locA with values := v }.get 1 = some (.i32 len) := fun _ => hget1
+        have hget_eq2 : ∀ v, { locA with values := v }.get 2 = some (.i32 sp) := fun _ => hget2
         let stB : Store Unit :=
           { stA with globals := { globals := stA.globals.globals.set 0 (.i32 1048560) } }
-        -- Exec 0 on the exit-check instruction sequence = Return stB []
-        -- Trace: lG2→sp, l32_8→i, lG1→len, ltU→0 (i≥len), c1→1, and→0, br_if_0 falls through,
-        --        lG2→sp, c16→16, add→1048560, gS0 updates global[0], ret → Return stB []
-        -- execOne requires fuel ≥ 1 for all instructions (| 0, _ => .OutOfFuel is first pattern)
         have hexec_exit : exec 1 «module» stA locA
             [.localGet 2, .load32 (8 : UInt32), .localGet 1, .ltU,
              .const (1 : UInt32), .and, .br_if 0, .localGet 2,
@@ -585,29 +578,22 @@ private theorem func0_sort_terminates
                      if_neg hbounds_load, hread_i, hglob, if_neg hlt,
                      show (1 : UInt32) &&& (0 : UInt32) = 0 from by decide,
                      show (16 : UInt32) + sp = 1048560 from rfl]
-        -- execOne 2 for the wrapping block = Return stB []
-        -- (block fuel f+1=2, inner exec f=1 = hexec_exit, Return propagates as "other")
         have hexec_block : execOne 2 «module» stA locA
             (.block 0 0 [.localGet 2, .load32 (8 : UInt32), .localGet 1, .ltU,
                          .const (1 : UInt32), .and, .br_if 0, .localGet 2,
                          .const (16 : UInt32), .add, .globalSet 0, .ret]) {} =
             .Return stB [] := by
           simp only [execOne.eq_def, hvalues, hexec_exit]
-        -- exec 2 of the full loop body: block is the head and returns immediately
         refine ⟨2, Or.inr (Or.inr ⟨stB, [], ?_, ?_⟩)⟩
         · simp only [exec, hexec_block]
-        · -- Q_final stB []
-          refine ⟨rfl, ys, ?_, hys_sorted, hperm.symm, ?_, ?_⟩
-          · -- wordsAt: stB.mem = stA.mem (only globals changed)
-            simp only [stB]; exact hwords_ys
-          · -- stB.globals.globals[0]? = some (.i32 1048560)
-            simp only [stB]
+        · refine ⟨rfl, ys, ?_, hys_sorted, hperm.symm, ?_, ?_⟩
+          · simp only [stB]; exact hwords_ys
+          · simp only [stB]
             show (stA.globals.globals.set 0 (.i32 1048560))[0]? = some (.i32 1048560)
             match hnn : stA.globals.globals with
             | []     => simp [hnn] at hglob
             | _ :: _ => simp [List.set]
-          · -- stB.mem.pages = st.mem.pages
-            simp only [stB]; exact hpages
+          · simp only [stB]; exact hpages
   exact wp_wasm_prop_to_TerminatesWith hf himp rfl (Nat.le_refl _)
       (fun _ _ h => ⟨rfl, h.2⟩) hwp
 
