@@ -2024,16 +2024,21 @@ theorem func6_iProp
         (wordsAt st.mem left_ptr n_left.toNat) :=
     arrayAt_split left_ptr _ _
   -- ── Merge loop invariant ──────────────────────────────────────────────────
-  -- I n stA _ = ∃ i j k, (pure bounds) ∗ pointsTo_u32 (frame+8) i
-  --             ∗ pointsTo_u32 (frame+12) j ∗ pointsTo_u32 (frame+16) k
-  --             ∗ arrayAt left_ptr [...] ∗ arrayAt right_ptr [...] ∗ arrayAt out_ptr [k]
+  -- I n stA locA = ∃ i j k, (pure bounds) ∗ (pure mem reads) ∗ (pure frame local)
+  --               ∗ pointsTo_u32 (frame+8) i ∗ pointsTo_u32 (frame+12) j
+  --               ∗ pointsTo_u32 (frame+16) k
+  --               ∗ arrayAt left_ptr [...] ∗ arrayAt right_ptr [...] ∗ arrayAt out_ptr [k]
+  -- The three pure ⌜…⌝ fields give hmem8/hmem12/hframe without sorry via pure_soundness.
   let mergeI : Nat → Store Unit → Locals → IProp WasmHeapGF :=
-    fun n stA _ =>
+    fun n stA locA =>
       iprop% ∃ (i j k : UInt32),
         ⌜i.toNat + j.toNat = n_left.toNat + n_right.toNat - n⌝ ∗
         ⌜i.toNat ≤ n_left.toNat⌝ ∗
         ⌜j.toNat ≤ n_right.toNat⌝ ∗
         ⌜k = i + j⌝ ∗
+        ⌜stA.mem.read32 (frame + 8)  = i⌝ ∗
+        ⌜stA.mem.read32 (frame + 12) = j⌝ ∗
+        ⌜locA.get 6 = some (.i32 frame)⌝ ∗
         pointsTo_u32 (frame + 8)  i ∗
         pointsTo_u32 (frame + 12) j ∗
         pointsTo_u32 (frame + 16) k ∗
@@ -2386,24 +2391,26 @@ theorem func6_iProp
     · -- h_drop_eq: trivial for bt = bl = 0 (take 0 = [], drop 0 = id)
       intro vs ws; simp [List.take_zero, List.drop_zero]
     · -- hstep: for each iteration, derive exec-level evidence from the invariant.
-      -- Full proof requires func6_terminates_frame + ghost state witnesses; sorry'd.
+      -- hmem8, hmem12, hframe are extracted from mergeI via pure_soundness (no sorry).
       intro n stA locA hI
       obtain ⟨σ, hI⟩ := hI
-      -- Extract i, j, k and their pure constraints from the ghost IProp invariant
+      -- Extract all pure facts from the ghost IProp invariant.
+      -- mergeI embeds ⌜mem.read32 (frame+8) = i⌝, ⌜mem.read32 (frame+12) = j⌝,
+      -- and ⌜locA.get 6 = some (.i32 frame)⌝ so these are no longer sorry'd.
       have hI_pure : ∃ (i j k : UInt32),
           i.toNat + j.toNat = n_left.toNat + n_right.toNat - n ∧
-          i.toNat ≤ n_left.toNat ∧ j.toNat ≤ n_right.toNat ∧ k = i + j :=
+          i.toNat ≤ n_left.toNat ∧ j.toNat ≤ n_right.toNat ∧ k = i + j ∧
+          stA.mem.read32 (frame + 8)  = i ∧
+          stA.mem.read32 (frame + 12) = j ∧
+          locA.get 6 = some (.i32 frame) :=
         pure_soundness (PROP := IProp WasmHeapGF) (hI.trans (by
           iintro ⟨-, Hi⟩
-          icases Hi with ⟨%i, %j, %k, Hsum, Hle_i, Hle_j, Hk, -, -, -, -, -, -⟩
+          icases Hi with ⟨%i, %j, %k, Hsum, Hle_i, Hle_j, Hk, Hmem8, Hmem12, Hframe,
+                          -, -, -, -, -, -⟩
           ipure Hsum; ipure Hle_i; ipure Hle_j; ipure Hk
-          exact BI.pure_intro ⟨i, j, k, ‹_›, ‹_›, ‹_›, ‹_›⟩))
-      obtain ⟨i, j, k, hsum, hle_i, hle_j, hk⟩ := hI_pure
-      -- Ghost pointsTo_u32 ownership consistent with the concrete memory reads
-      have hmem8  : stA.mem.read32 (frame + 8)  = i := by sorry
-      have hmem12 : stA.mem.read32 (frame + 12) = j := by sorry
-      -- Frame pointer local (wasm index 6 = locals[0]) invariant across iterations
-      have hframe : locA.get 6 = .i32 frame := by sorry
+          ipure Hmem8; ipure Hmem12; ipure Hframe
+          exact BI.pure_intro ⟨i, j, k, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›⟩))
+      obtain ⟨i, j, k, hsum, hle_i, hle_j, hk, hmem8, hmem12, hframe⟩ := hI_pure
       -- Case-split on whether i has exhausted the left subarray
       by_cases hi : i.toNat < n_left.toNat
       · by_cases hj : j.toNat < n_right.toNat
@@ -2416,16 +2423,14 @@ theorem func6_iProp
           refine ⟨1, fun fuel hfuel => ?_⟩
           left
           refine ⟨stA, locA, ?_, ?_⟩
-          · simp only [exec, execOne.eq_def, hframe, hmem8, hmem12]
-            sorry -- bounds check + eqz(and(ltU(j,n_right),1))=1 since j≥n_right
+          · sorry -- exec trace: first br_if falls through (i < n_left), second fires (j ≥ n_right)
           · sorry -- wp_wasm_prop for rest after Break 1 (drain loop)
       · -- i exhausted → br_if 1 fires at instruction 7 → Break 1
         push_neg at hi
         refine ⟨1, fun fuel hfuel => ?_⟩
         left
         refine ⟨stA, locA, ?_, ?_⟩
-        · simp only [exec, execOne.eq_def, hframe, hmem8]
-          sorry -- bounds check + eqz(and(ltU(i,n_left),1))=1 since i≥n_left
+        · sorry -- exec trace: first br_if fires immediately (i ≥ n_left)
         · sorry -- wp_wasm_prop for rest after Break 1 (drain loop)
   -- ── Combine preamble exec chain with block proof ──────────────────────────
   -- exec_fuel_mono: exec (fuel+27) (drop 27) = exec fuel (drop 27) when fuel suffices
