@@ -230,7 +230,36 @@ private theorem func4_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
     rw [hnp]; simp [Function.toLocals, func4Def, ValueType.zero]
   simp [hloc4]
   -- ── const 16; sub; localSet 2; localGet 2; localGet 0 (all pure) ────────
-  iwpures
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σp1 %hagree_p1 Hσp1
+  imodintro; iexists σp1, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_p1
+  isplitl [Hσp1]; · iexact Hσp1
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σp2 %hagree_p2 Hσp2
+  imodintro; iexists σp2, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_p2
+  isplitl [Hσp2]; · iexact Hσp2
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σp3 %hagree_p3 Hσp3
+  imodintro; iexists σp3, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_p3
+  isplitl [Hσp3]; · iexact Hσp3
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σp4 %hagree_p4 Hσp4
+  imodintro; iexists σp4, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_p4
+  isplitl [Hσp4]; · iexact Hσp4
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σp5 %hagree_p5 Hσp5
+  imodintro; iexists σp5, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_p5
+  isplitl [Hσp5]; · iexact Hσp5
   -- ── STEP 7: load32 0 at ptr_a → read va ────────────────────────────────
   (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
   iintro %σ₁ %hagree₁ Hσ₁
@@ -261,7 +290,18 @@ private theorem func4_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   isplitl [Hagree₃_raw]; · iexact Hagree₃_raw
   isplitl [Hσ₃]; · iexact Hσ₃
   -- ── localGet 0; localGet 1 (pure) ───────────────────────────────────────
-  iwpures
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σp6 %hagree_p6 Hσp6
+  imodintro; iexists σp6, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_p6
+  isplitl [Hσp6]; · iexact Hσp6
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σp7 %hagree_p7 Hσp7
+  imodintro; iexists σp7, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_p7
+  isplitl [Hσp7]; · iexact Hσp7
   -- ── STEP 11: load32 0 at ptr_b → read vb ───────────────────────────────
   (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
   iintro %σ₄ %hagree₄ Hσ₄
@@ -294,7 +334,18 @@ private theorem func4_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   isplitl [Hagree₆_raw]; · iexact Hagree₆_raw
   isplitl [Hσ₆]; · iexact Hσ₆
   -- ── localGet 1; localGet 2 (pure) ───────────────────────────────────────
-  iwpures
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σp8 %hagree_p8 Hσp8
+  imodintro; iexists σp8, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_p8
+  isplitl [Hσp8]; · iexact Hσp8
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σp9 %hagree_p9 Hσp9
+  imodintro; iexists σp9, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_p9
+  isplitl [Hσp9]; · iexact Hσp9
   -- ── STEP 15: load32 12 at g0−16 → read va from scratch ─────────────────
   (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
   iintro %σ₇ %hagree₇ Hσ₇
@@ -367,6 +418,7 @@ Swaps arr[i] ↔ arr[j] in array at ptr. iProp spec: consumes arrayAt ownership.
 set_option maxHeartbeats 800000000 in
 theorem func7_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
     (ptr : UInt32) (xs : List UInt32) (i j : Nat) (err_ptr : UInt32) (g0 : UInt32)
+    (old_scr : UInt32)
     (hi      : i < xs.length)
     (hj      : j < xs.length)
     (hpg     : ptr.toNat + 4 * xs.length ≤ st.mem.pages * 65536)
@@ -377,7 +429,7 @@ theorem func7_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
     (hscr    : (g0 - 4).toNat + 4 ≤ ptr.toNat
              ∨ ptr.toNat + 4 * xs.length ≤ (g0 - 4).toNat)
     (hagree  : heapAgreesWithMem σ st.mem) :
-    ⊢ genHeapInterp σ ∗ arrayAt ptr xs -∗
+    ⊢ genHeapInterp σ ∗ arrayAt ptr xs ∗ pointsTo_u32 (g0 - 4) old_scr -∗
       wp_wasm «module» st
         (func7Def.toLocals ([.i32 err_ptr, .i32 (UInt32.ofNat j), .i32 (UInt32.ofNat i),
          .i32 (UInt32.ofNat xs.length), .i32 ptr].take func7Def.numParams).reverse)
@@ -386,7 +438,117 @@ theorem func7_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
           st'.globals = st.globals ∧
           st'.mem.pages = st.mem.pages ∧
           wordsAt st'.mem ptr xs.length = swapElems xs i j) := by
-  iintro ⟨Hσ, HA⟩
+  -- Bridge: iProp block rule for Return-terminating bodies.
+  -- wp_wasm_F uses execOne 1; execOne 1 (.block _ _ body) = exec 0 body = OutOfFuel
+  -- for any non-empty body, so the least fixpoint cannot step past .block.
+  have wp_block_ret :
+      ∀ {m' : Module} {stB : Store Unit} {locB : Locals}
+        {bt bl : Nat} {bodyB restB : Program} {envB : HostEnv Unit}
+        {QB : Store Unit → List Value → Prop},
+      (∃ N, ∀ fuel ≥ N, ∃ st_r vals_r,
+          exec fuel m' stB locB bodyB envB = .Return st_r vals_r ∧ QB st_r vals_r) →
+      ⊢ wp_wasm m' stB locB (.block bt bl bodyB :: restB) envB QB := by
+    sorry  -- pending: iProp block rule for the Return case (see note in func7_spec header)
+  -- Lift pointsTo_u32 (g0-4) to arrayAt (g0-4) [old_scr] for wp_iProp_* API.
+  have to_arr_scr : pointsTo_u32 (g0 - 4) old_scr ⊢ arrayAt (g0 - 4) [old_scr] := by
+    simp only [arrayAt]; exact BI.sep_emp.mpr
+  -- Introduction: split genHeapInterp ∗ arrayAt ptr xs ∗ pointsTo_u32 (g0-4).
+  iintro ⟨Hσ, HA, HA_scr_pt⟩
+  icases to_arr_scr $$ [$HA_scr_pt] with HA_scr
+  -- Bound for wp_iProp_load32 at ptr+4*i (from hpg and hi).
+  have hbnd_i : (ptr + 4 * UInt32.ofNat i).toNat + 4 ≤ st.mem.pages * 65536 := by
+    sorry  -- ptr.toNat + 4*(i+1) ≤ pages*65536 from hpg/hi; UInt32 no-overflow from hpg_u32
+  -- ── func4 terminates and swaps arr[i] ↔ arr[j] ──────────────────────────────
+  -- At .call 4, stack = [ptr+4*j (TOS = ptr_b), ptr+4*i (ptr_a)].
+  -- func4 swaps *ptr_a ↔ *ptr_b using the scratch word at g0-4.
+  have func4_tw : TerminatesWith {} «module» 4 st
+      [.i32 (ptr + 4 * UInt32.ofNat j), .i32 (ptr + 4 * UInt32.ofNat i)]
+      (fun st' _ =>
+          st'.mem.read32 (ptr + 4 * UInt32.ofNat i) = xs[j]! ∧
+          st'.mem.read32 (ptr + 4 * UInt32.ofNat j) = xs[i]! ∧
+          st'.globals = st.globals ∧ st'.mem.pages = st.mem.pages ∧
+          ∀ k, k < xs.length → k ≠ i → k ≠ j →
+              st'.mem.read32 (ptr + 4 * UInt32.ofNat k) = xs[k]!) := by
+    apply wasm_heap_adequacy_with_mem (ptr := ptr + 4 * UInt32.ofNat i) (xs := [xs[i]!])
+        (hf := by rfl) (himp := by rfl) (hlen := by decide)
+    intro σ₄ hagree₄
+    -- Reduce func4's locals to concrete: params = [ptr+4*i, ptr+4*j], local = [0].
+    have hloc_f4 : func4Def.toLocals
+        ([.i32 (ptr + 4 * UInt32.ofNat j), .i32 (ptr + 4 * UInt32.ofNat i)].take
+          func4Def.numParams).reverse =
+        { params := [.i32 (ptr + 4 * UInt32.ofNat i),
+                     .i32 (ptr + 4 * UInt32.ofNat j)],
+          locals := [.i32 0], values := [] } := by
+      have hnp : func4Def.numParams = 2 := by decide
+      rw [hnp]; simp [Function.toLocals, func4Def, ValueType.zero]
+    iintro ⟨Hσ₄, HA₄⟩
+    simp only [hloc_f4]
+    -- ── Step 1: globalGet 0 (reads g0; inline since hg0 ≠ rfl) ──────────
+    unfold wp_wasm; iapply least_fixpoint_unfold_mpr
+    simp only [wp_wasm_F,
+      show func4Def.body = .globalGet 0 ::
+        [.const (16:UInt32), .sub, .localSet 2, .localGet 2, .localGet 0,
+         .load32 (0:UInt32), .store32 (12:UInt32), .localGet 0, .localGet 1,
+         .load32 (0:UInt32), .store32 (0:UInt32), .localGet 1, .localGet 2,
+         .load32 (12:UInt32), .store32 (0:UInt32), .ret] from rfl]
+    iintro %σ₅ %hagree₅ Hσ₅
+    imodintro; iexists σ₅, _, _
+    isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def, hg0]; rfl)
+    isplitl []; · exact BI.pure_intro hagree₅
+    isplitl [Hσ₅]; · iexact Hσ₅
+    -- ── Steps 2-6: const 16; sub; localSet 2; localGet 2; localGet 0 ────
+    (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+    iintro %σf4p1 %hagree_f4p1 Hσf4p1
+    imodintro; iexists σf4p1, _, _
+    isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+    isplitl []; · exact BI.pure_intro hagree_f4p1
+    isplitl [Hσf4p1]; · iexact Hσf4p1
+    (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+    iintro %σf4p2 %hagree_f4p2 Hσf4p2
+    imodintro; iexists σf4p2, _, _
+    isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+    isplitl []; · exact BI.pure_intro hagree_f4p2
+    isplitl [Hσf4p2]; · iexact Hσf4p2
+    (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+    iintro %σf4p3 %hagree_f4p3 Hσf4p3
+    imodintro; iexists σf4p3, _, _
+    isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+    isplitl []; · exact BI.pure_intro hagree_f4p3
+    isplitl [Hσf4p3]; · iexact Hσf4p3
+    (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+    iintro %σf4p4 %hagree_f4p4 Hσf4p4
+    imodintro; iexists σf4p4, _, _
+    isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+    isplitl []; · exact BI.pure_intro hagree_f4p4
+    isplitl [Hσf4p4]; · iexact Hσf4p4
+    (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+    iintro %σf4p5 %hagree_f4p5 Hσf4p5
+    imodintro; iexists σf4p5, _, _
+    isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+    isplitl []; · exact BI.pure_intro hagree_f4p5
+    isplitl [Hσf4p5]; · iexact Hσf4p5
+    -- ── Step 7: load32 0 at ptr+4*i → reads xs[i]! into ownership ───────
+    (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+    iintro %σ₆ %hagree₆ Hσ₆
+    have h40 : (4 : UInt32) * UInt32.ofNat 0 = 0 := by decide
+    imod (wp_iProp_load32 hagree₆
+          (ptr := ptr + 4 * UInt32.ofNat i) (xs := [xs[i]!]) (k := 0)
+          (hk := by simp)
+          (hbounds := by rw [h40, UInt32.add_zero]; exact hbnd_i)
+          hpg_u32) $$ [$Hσ₆ $HA₄] with ⟨Hσ₇, _HA₄', _hread_a⟩
+    imodintro; iexists σ₆, _, _
+    isplitl []; · exact BI.pure_intro (by
+      simp only [execOne.eq_def, show (0 : UInt32).toNat = 0 from rfl]
+      have hok : ¬((ptr + 4 * UInt32.ofNat i).toNat + 0 + 4 > st.mem.pages * 65536) := by
+        omega
+      simp only [if_neg hok]; rfl)
+    isplitl []; · exact BI.pure_intro hagree₆
+    isplitl [Hσ₇]; · iexact Hσ₇
+    -- Steps 8-16 (scratch store, ptr_b load/store, scratch load, ptr_b store) need
+    -- ownership of ptr+4*j and g0-4 which are not in this callback's HA₄.
+    -- Deferred until wasm_heap_adequacy_with_mem supports multi-region ownership.
+    sorry
+  -- func7_spec main goal: infrastructure gap (wp_wasm cannot step past .block)
   sorry
 
 -- ======================================================================
@@ -445,7 +607,12 @@ private theorem func8_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   isplitl []; · exact BI.pure_intro hagree₀
   isplitl [Hσ₀]; · iexact Hσ₀
   -- localGet 2: pure step, prog is now a concrete list tail
-  iwpures
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σfs1 %hagree_fs1 Hσfs1
+  imodintro; iexists σfs1, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_fs1
+  isplitl [Hσfs1]; · iexact Hσfs1
   -- store32 4: write len_val at dst_ptr + 4 (consumes HA_arr, k=1)
   (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
   iintro %σ₂ %hagree₂ Hσ₂
@@ -466,7 +633,18 @@ private theorem func8_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   isplitl [Hagree₃]; · iexact Hagree₃
   isplitl [Hσ₃]; · iexact Hσ₃
   -- localGet 0 + localGet 1 (pure; inside iris mode)
-  iwpures
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σfs2 %hagree_fs2 Hσfs2
+  imodintro; iexists σfs2, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_fs2
+  isplitl [Hσfs2]; · iexact Hσfs2
+  (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
+  iintro %σfs3 %hagree_fs3 Hσfs3
+  imodintro; iexists σfs3, _, _
+  isplitl []; · exact BI.pure_intro (by simp only [execOne.eq_def]; rfl)
+  isplitl []; · exact BI.pure_intro hagree_fs3
+  isplitl [Hσfs3]; · iexact Hσfs3
   -- store32 0: write ptr_val at dst_ptr + 0 (consumes HA_arr', k=0)
   (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
   iintro %σ₆ %hagree₆ Hσ₆
