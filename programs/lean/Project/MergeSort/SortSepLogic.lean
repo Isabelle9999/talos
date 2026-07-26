@@ -2039,6 +2039,9 @@ theorem func6_iProp
         ⌜stA.mem.read32 (frame + 8)  = i⌝ ∗
         ⌜stA.mem.read32 (frame + 12) = j⌝ ∗
         ⌜locA.get 6 = some (.i32 frame)⌝ ∗
+        ⌜locA.get 1 = some (.i32 n_left)⌝ ∗
+        ⌜locA.get 3 = some (.i32 n_right)⌝ ∗
+        ⌜stA.mem.pages = st.mem.pages⌝ ∗
         pointsTo_u32 (frame + 8)  i ∗
         pointsTo_u32 (frame + 12) j ∗
         pointsTo_u32 (frame + 16) k ∗
@@ -2225,7 +2228,15 @@ theorem func6_iProp
             locals := (func6Def.toLocals [.i32 left_ptr, .i32 n_left,
                                  .i32 right_ptr, .i32 n_right,
                                  .i32 out_ptr,   .i32 n_out]).locals.set 0 (.i32 frame) } := by
-    sorry
+    -- σ₁ is σ₀ after 6 × pointsTo_u32_update invocations (for frame+{8,12,16,20,24,28}).
+    -- Each write32 in the preamble (e.g. write32 (frame+8) 0) changes one ghost cell:
+    --   pointsTo_u32_update addr old new : ⊢ genHeapInterp σ ∗ pointsTo_u32 addr old ==∗
+    --     ∃ σ', genHeapInterp σ' ∗ pointsTo_u32 addr new
+    -- (private in Adequacy.lean). Chaining 6 such updates + bupd elimination gives σ₁.
+    -- The 3 new mergeI pure fields (locA.get 1, locA.get 3, stA.mem.pages) hold by
+    -- rfl on the concrete stA₁/locA₁ constructed above (params unchanged, pages unchanged).
+    -- Using σ₀ as placeholder; the sorry absorbs the ghost-token reconstruction.
+    exact ⟨σ₀, by sorry⟩
   -- ── Outer drain loop proof via wp_wasm_iProp_loop ────────────────────────
   -- When the merge loop exits (i ≥ n_left or j ≥ n_right) the outer drain
   -- copies the remaining elements. This stub gets wp_wasm_iProp_loop to appear.
@@ -2402,15 +2413,80 @@ theorem func6_iProp
           i.toNat ≤ n_left.toNat ∧ j.toNat ≤ n_right.toNat ∧ k = i + j ∧
           stA.mem.read32 (frame + 8)  = i ∧
           stA.mem.read32 (frame + 12) = j ∧
-          locA.get 6 = some (.i32 frame) :=
+          locA.get 6 = some (.i32 frame) ∧
+          locA.get 1 = some (.i32 n_left) ∧
+          locA.get 3 = some (.i32 n_right) ∧
+          stA.mem.pages = st.mem.pages :=
         pure_soundness (PROP := IProp WasmHeapGF) (hI.trans (by
           iintro ⟨-, Hi⟩
           icases Hi with ⟨%i, %j, %k, Hsum, Hle_i, Hle_j, Hk, Hmem8, Hmem12, Hframe,
-                          -, -, -, -, -, -⟩
+                          Hloc1, Hloc3, Hpages, -, -, -, -, -, -⟩
           ipure Hsum; ipure Hle_i; ipure Hle_j; ipure Hk
           ipure Hmem8; ipure Hmem12; ipure Hframe
-          exact BI.pure_intro ⟨i, j, k, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›⟩))
-      obtain ⟨i, j, k, hsum, hle_i, hle_j, hk, hmem8, hmem12, hframe⟩ := hI_pure
+          ipure Hloc1; ipure Hloc3; ipure Hpages
+          exact BI.pure_intro ⟨i, j, k, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›, ‹_›⟩))
+      obtain ⟨i, j, k, hsum, hle_i, hle_j, hk, hmem8, hmem12, hframe, hloc1, hloc3, hpages_eq⟩ := hI_pure
+      -- ── Break 1 exec-trace infrastructure ───────────────────────────────────
+      -- mergeBody is the abstract Program bound by `obtain ⟨mergeBody, h_form⟩`.
+      -- Establish its concrete 8/16-instruction prefix via kernel evaluation.
+      -- hmerge_eq: mergeBody equals the match-extracted body of func6.drop 27.
+      --   Proof: after rw [h_form], the scrutinee becomes `.block 0 0 [.loop 0 0 mergeBody] :: ...`
+      --   so the first match arm fires and the match reduces to mergeBody. rfl closes it.
+      have hmerge_eq : mergeBody =
+          (match (func6.drop 27 : Program) with
+           | (.block _ _ [.loop _ _ b]) :: _ => b | _ => []) := by
+        -- rw [h_form] makes the scrutinee concrete; the match arm fires giving mergeBody = mergeBody.
+        rw [h_form]
+      -- h_take8/h_take16: kernel evaluates func6.drop 27 concretely (no private defs inline)
+      --   and takes the first 8/16 instructions of the loop body.
+      have h_take8 : (match (func6.drop 27 : Program) with
+           | (.block _ _ [.loop _ _ b]) :: _ => b | _ => []).take 8 =
+          [.localGet 6, .load32 (8 : UInt32), .localGet 1, .ltU,
+           .const (1 : UInt32), .and, .eqz, .br_if 1] := rfl
+      have hmerge_split8 : mergeBody =
+          [.localGet 6, .load32 (8 : UInt32), .localGet 1, .ltU,
+           .const (1 : UInt32), .and, .eqz, .br_if 1] ++ mergeBody.drop 8 := by
+        -- rw [hmerge_eq] exposes (match ...).take 8 = [...] which is rfl, so closes htake8.
+        -- conv_lhs restricts take_append_drop to the LHS only (avoids rewriting inside drop 8).
+        have htake8 : mergeBody.take 8 =
+            [.localGet 6, .load32 (8 : UInt32), .localGet 1, .ltU,
+             .const (1 : UInt32), .and, .eqz, .br_if 1] := by
+          rw [hmerge_eq]; exact h_take8
+        conv_lhs => rw [← List.take_append_drop 8 mergeBody]
+        rw [htake8]
+      have h_take16 : (match (func6.drop 27 : Program) with
+           | (.block _ _ [.loop _ _ b]) :: _ => b | _ => []).take 16 =
+          [.localGet 6, .load32 (8 : UInt32), .localGet 1, .ltU,
+           .const (1 : UInt32), .and, .eqz, .br_if 1,
+           .localGet 6, .load32 (12 : UInt32), .localGet 3, .ltU,
+           .const (1 : UInt32), .and, .eqz, .br_if 1] := rfl
+      have hmerge_split16 : mergeBody =
+          [.localGet 6, .load32 (8 : UInt32), .localGet 1, .ltU,
+           .const (1 : UInt32), .and, .eqz, .br_if 1,
+           .localGet 6, .load32 (12 : UInt32), .localGet 3, .ltU,
+           .const (1 : UInt32), .and, .eqz, .br_if 1] ++ mergeBody.drop 16 := by
+        have htake16 : mergeBody.take 16 =
+            [.localGet 6, .load32 (8 : UInt32), .localGet 1, .ltU,
+             .const (1 : UInt32), .and, .eqz, .br_if 1,
+             .localGet 6, .load32 (12 : UInt32), .localGet 3, .ltU,
+             .const (1 : UInt32), .and, .eqz, .br_if 1] := by
+          rw [hmerge_eq]; exact h_take16
+        conv_lhs => rw [← List.take_append_drop 16 mergeBody]
+        rw [htake16]
+      -- Bounds for load32 instructions (trap condition negated):
+      --   .load32 offset checks a.toNat + offset.toNat + 4 > stA.mem.pages * 65536
+      --   frame.toNat = sp.toNat - 32 (hfr_eq), sp.toNat ≤ st.mem.pages * 65536 (hsp_hi),
+      --   stA.mem.pages = st.mem.pages (hpages_eq).
+      have hnotrap8 : ¬(frame.toNat + (8 : UInt32).toNat + 4 > stA.mem.pages * 65536) := by
+        have h8 : (8 : UInt32).toNat = 8 := rfl
+        have h1 : frame.toNat = sp.toNat - 32 := hfr_eq
+        have h2 := hpages_eq ▸ hsp_hi
+        omega
+      have hnotrap12 : ¬(frame.toNat + (12 : UInt32).toNat + 4 > stA.mem.pages * 65536) := by
+        have h12 : (12 : UInt32).toNat = 12 := rfl
+        have h1 : frame.toNat = sp.toNat - 32 := hfr_eq
+        have h2 := hpages_eq ▸ hsp_hi
+        omega
       -- Case-split on whether i has exhausted the left subarray
       by_cases hi : i.toNat < n_left.toNat
       · by_cases hj : j.toNat < n_right.toNat
@@ -2423,15 +2499,54 @@ theorem func6_iProp
           refine ⟨1, fun fuel hfuel => ?_⟩
           left
           refine ⟨stA, locA, ?_, ?_⟩
-          · sorry -- exec trace: first br_if falls through (i < n_left), second fires (j ≥ n_right)
-          · sorry -- wp_wasm_prop for rest after Break 1 (drain loop)
+          · -- Goal: exec fuel «module» stA locA mergeBody env = .Break 1 stA locA
+            -- Use hmerge_split16 to expose the concrete 16-instruction prefix.
+            -- Instructions 0-7 (i-check): localGet 6 → hframe, load32 8 → hmem8 (hnotrap8),
+            --   localGet 1 → hloc1, ltU: i < n_left (hi) → 1, const 1, and = 1, eqz = 0,
+            --   br_if 1: pops 0 → Fallthrough.
+            -- Instructions 8-15 (j-check): localGet 6 → hframe, load32 12 → hmem12 (hnotrap12),
+            --   localGet 3 → hloc3, ltU: j ≥ n_right (hj) → 0, const 1, and = 0, eqz = 1,
+            --   br_if 1: pops 1 ≠ 0 → Break 1 stA {locA with values := locA.values}.
+            -- {locA with values := locA.values} = locA by record eta.
+            -- To fill: rw [hmerge_split16]; simp [exec, execOne.eq_def, if_neg hnotrap8,
+            --   if_neg hnotrap12, hframe, hmem8, hmem12, hloc1, hloc3, UInt32.ltU, ...]
+            -- with omega/decide for the arithmetic branches (ltU results, eqz).
+            sorry
+          · -- Goal: wp_wasm_prop «module» stA locA (func6.drop 28) env Q
+            --   (take 0 / drop 0 simplify away the trivial list prefix from wp_wasm_iProp_block).
+            -- func6.drop 28 is the post-loop tail: drain-left block, drain-right block, epilogue.
+            -- When j ≥ n_right and i < n_left, the left-drain block copies the remaining
+            --   n_left - i elements from left_ptr[i..] into out_ptr[k..].
+            -- To fill: apply the drain-left + drain-right + epilogue WP theorem proved in
+            --   MergeSepLogic.lean, threaded through the loop-exit state (stA, locA, i, j, k).
+            -- Requires a public theorem in scope that takes the MergeLoopInv / mergeI exit state
+            -- and produces wp for func6.drop 28.
+            sorry
       · -- i exhausted → br_if 1 fires at instruction 7 → Break 1
         push_neg at hi
         refine ⟨1, fun fuel hfuel => ?_⟩
         left
         refine ⟨stA, locA, ?_, ?_⟩
-        · sorry -- exec trace: first br_if fires immediately (i ≥ n_left)
-        · sorry -- wp_wasm_prop for rest after Break 1 (drain loop)
+        · -- Goal: exec fuel «module» stA locA mergeBody env = .Break 1 stA locA
+          -- Use hmerge_split8 to expose the concrete 8-instruction prefix.
+          -- Instructions 0-7 (i-check): localGet 6 → hframe, load32 8 → hmem8 (hnotrap8),
+          --   localGet 1 → hloc1, ltU: i ≥ n_left (hi) → 0, const 1, and = 0, eqz = 1,
+          --   br_if 1: pops 1 ≠ 0 → Break 1 stA {locA with values := locA.values} = Break 1 stA locA.
+          -- To fill: rw [hmerge_split8]; simp [exec, execOne.eq_def, if_neg hnotrap8,
+          --   hframe, hmem8, hloc1, UInt32.ltU, ...]
+          -- with omega/decide for ltU = 0 when i.toNat ≥ n_left.toNat,
+          -- and Locals.ext (or rfl) for {locA with values := locA.values} = locA.
+          sorry
+        · -- Goal: wp_wasm_prop «module» stA locA (func6.drop 28) env Q
+            --   (take 0 / drop 0 simplify away the trivial list prefix from wp_wasm_iProp_block).
+            -- func6.drop 28 is the post-loop tail: drain-left block, drain-right block, epilogue.
+            -- When i ≥ n_left, all left elements are exhausted; the right-drain block copies
+            --   n_right - j remaining elements from right_ptr[j..] into out_ptr[k..].
+            -- To fill: apply the drain-right + drain-left (no-op) + epilogue WP theorem proved in
+            --   MergeSepLogic.lean, threaded through the loop-exit state (stA, locA, i, j, k).
+            -- Requires a public theorem in scope that takes the MergeLoopInv / mergeI exit state
+            -- and produces wp for func6.drop 28.
+            sorry
   -- ── Combine preamble exec chain with block proof ──────────────────────────
   -- exec_fuel_mono: exec (fuel+27) (drop 27) = exec fuel (drop 27) when fuel suffices
   obtain ⟨fuel, hfuel⟩ := h_block
