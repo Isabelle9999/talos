@@ -1,309 +1,1252 @@
 import Iris.Std.HeapInstances
 
-/-! # PosTrie: positional binary trie for UInt32 keys
+/-! # PosTrie: canonical positional binary trie for UInt32 keys
 
-Bit-path trie keyed on UInt32. Key 0 reads the current node; even key→left,
-odd key→right, both with key/2. Replacing ExtTreeMap for simp-heavy sep-logic
-proofs. -/
+Key encoding: key 0 = root; even k ≠ 0 → left at k/2; odd k → right at k/2.
+This is the ORIGINAL encoding from the old 3-constructor version.
+
+Canonical form: a `Raw V` trie `.node v l r` satisfies
+  • v ≠ none  ∨  l ≠ .empty  ∨  r ≠ .empty   (no spurious empty nodes)
+  • l.nodeVal = none                              (position 0 of left subtrie is inaccessible
+                                                   under even→left encoding; fixing it there
+                                                   removes the one remaining non-uniqueness)
+  • l.canonical  ∧  r.canonical                  (subtrees are canonical)
+
+The public `PosTrie V` is the subtype `{t : Raw V // t.canonical}`.  Because every pair of
+canonical tries with the same `get?` function must be structurally equal, we get
+`equiv_iff_eq` for free by structural induction. -/
 
 namespace Wasm.SepLogic
 
--- do NOT open Iris.Std here; opening it pollutes 'get?' resolution below.
--- Each instance is opened locally.
+-- ─── Raw (unconstrained) trie ─────────────────────────────────────────────────
 
-inductive PosTrie (V : Type) where
-  | empty : PosTrie V
-  | leaf  : V → PosTrie V
-  | node  : Option V → PosTrie V → PosTrie V → PosTrie V
+private inductive Raw (V : Type) where
+  | empty : Raw V
+  | node  : Option V → Raw V → Raw V → Raw V
 
-namespace PosTrie
+namespace Raw
 
 variable {V V' : Type}
 
--- ─── Smart constructor ────────────────────────────────────────────────────────
+-- ─── Accessors ────────────────────────────────────────────────────────────────
 
-def mkNode (v : Option V) (l r : PosTrie V) : PosTrie V :=
-  match v, l, r with
-  | none,   .empty, .empty => .empty
-  | some w, .empty, .empty => .leaf w
-  | _,      _,      _      => .node v l r
+def nodeVal : Raw V → Option V
+  | .node v _ _ => v | .empty => none
 
--- ─── Accessors ───────────────────────────────────────────────────────────────
-
-private def nodeVal : PosTrie V → Option V
-  | .node v _ _ => v | .leaf v => some v | .empty => none
-
-private def lc : PosTrie V → PosTrie V
+def lc : Raw V → Raw V
   | .node _ l _ => l | _ => .empty
 
-private def rc : PosTrie V → PosTrie V
+def rc : Raw V → Raw V
   | .node _ _ r => r | _ => .empty
 
--- ─── Lookup ──────────────────────────────────────────────────────────────────
-
-def get? : PosTrie V → UInt32 → Option V
-  | .empty,      _ => none
-  | .leaf v,     k => if k = 0 then some v else none
-  | .node v l r, k =>
-    if k = 0 then v
-    else if k % 2 = 0 then get? l (k / 2)
-    else get? r (k / 2)
-
--- named simp lemmas so 'simp [get?]' ambiguity never bites
-@[simp] private theorem get?_empty_eq (k : UInt32) : (PosTrie.empty : PosTrie V).get? k = none := rfl
-@[simp] private theorem get?_leaf_zero (v : V) : (PosTrie.leaf v).get? 0 = some v := rfl
-private theorem get?_leaf_nz (v : V) (k : UInt32) (h : k ≠ 0) : (PosTrie.leaf v).get? k = none :=
-  if_neg h
-@[simp] private theorem get?_node_zero (v : Option V) (l r : PosTrie V) :
-    (PosTrie.node v l r).get? 0 = v := rfl
-
--- ─── mkNode lemmas ───────────────────────────────────────────────────────────
-
-@[simp] private theorem mkNode_get?_zero (v : Option V) (l r : PosTrie V) :
-    (mkNode v l r).get? 0 = v := by
-  simp only [mkNode]; split <;> simp_all [get?]
-
-private theorem mkNode_get?_nz (v : Option V) (l r : PosTrie V)
-    (k : UInt32) (hk : k ≠ 0) :
-    (mkNode v l r).get? k = if k % 2 = 0 then l.get? (k / 2) else r.get? (k / 2) := by
-  simp only [mkNode]
-  split <;> rename_i h1 h2 h3 <;> simp_all [get?, hk]
-
-@[simp] private theorem mkNode_nodeVal (v : Option V) (l r : PosTrie V) :
-    (mkNode v l r).nodeVal = v := by
-  simp only [mkNode]; split <;> simp_all [nodeVal]
-
-private theorem get?_node_nz (v : Option V) (l r : PosTrie V)
-    (k : UInt32) (hk : k ≠ 0) :
-    get? (.node v l r) k = if k % 2 = 0 then l.get? (k / 2) else r.get? (k / 2) := by
-  simp [get?, hk]
-
--- ─── UInt32 arithmetic ───────────────────────────────────────────────────────
+-- ─── UInt32 helpers ───────────────────────────────────────────────────────────
 
 private theorem two_toNat : (2 : UInt32).toNat = 2 := by decide
+
+private theorem toNat_div2 (k : UInt32) : (k / 2).toNat = k.toNat / 2 := by
+  simp [UInt32.toNat_div, two_toNat]
+
+private theorem toNat_mod2 (k : UInt32) : (k % 2).toNat = k.toNat % 2 := by
+  simp [UInt32.toNat_mod, two_toNat]
 
 private theorem toNat_ne_zero {k : UInt32} (h : k ≠ 0) : k.toNat ≠ 0 :=
   fun e => h (UInt32.toNat.inj (by simpa using e))
 
-private theorem toNat_div2 (k : UInt32) : (k / 2).toNat = k.toNat / 2 := by
-  simp only [UInt32.toNat_div, two_toNat]
-
-private theorem toNat_mod2 (k : UInt32) : (k % 2).toNat = k.toNat % 2 := by
-  simp only [UInt32.toNat_mod, two_toNat]
-
 private theorem toNat_div_lt {k : UInt32} (h : k ≠ 0) : (k / 2).toNat < k.toNat := by
-  have := toNat_ne_zero h; rw [toNat_div2]; omega
+  rw [toNat_div2]; have := toNat_ne_zero h; omega
 
-private theorem uint32_div2_even {j : UInt32} (h : j % 2 = 0) : j / 2 * 2 = j := by
+private theorem mod2_eq_one {k : UInt32} (h : k % 2 ≠ 0) : k % 2 = 1 := by
   apply UInt32.toNat.inj
-  have hmod : j.toNat % 2 = 0 := by
-    have h2 := toNat_mod2 j
-    have h3 : (j % 2 : UInt32).toNat = 0 := by rw [h]; rfl
-    omega
-  have hlt := j.toNat_lt
-  simp only [UInt32.toNat_mul, toNat_div2, two_toNat, UInt32.size]; omega
-
-private theorem uint32_div2_odd {j : UInt32} (h : j % 2 ≠ 0) : j / 2 * 2 + 1 = j := by
-  apply UInt32.toNat.inj
-  have hmod : j.toNat % 2 = 1 := by
-    have h2 := toNat_mod2 j
-    have hne : (j % 2 : UInt32).toNat ≠ 0 := by
-      intro e; exact h (UInt32.toNat.inj (by simp [e]))
-    omega
-  have hlt := j.toNat_lt
-  simp only [UInt32.toNat_add, UInt32.toNat_mul, toNat_div2, two_toNat,
-             show (1 : UInt32).toNat = 1 from rfl, UInt32.size]; omega
+  have hm := toNat_mod2 k
+  have hn : (k % 2).toNat ≠ 0 := fun e => h (UInt32.toNat.inj (by simp [show (0:UInt32).toNat=0 from rfl, e]))
+  have hl : k.toNat % 2 < 2 := Nat.mod_lt _ (by omega)
+  simp [show (1:UInt32).toNat=1 from rfl]; omega
 
 private theorem uint32_eq_of_div_mod {k k' : UInt32}
     (hdiv : k / 2 = k' / 2) (hmod : k % 2 = k' % 2) : k = k' := by
   apply UInt32.toNat.inj
   have hd : k.toNat / 2 = k'.toNat / 2 := by
-    have := congrArg UInt32.toNat hdiv; simp only [toNat_div2] at this; exact this
+    have := congrArg UInt32.toNat hdiv; rwa [toNat_div2, toNat_div2] at this
   have hm : k.toNat % 2 = k'.toNat % 2 := by
-    have := congrArg UInt32.toNat hmod; simp only [toNat_mod2] at this; exact this
+    have := congrArg UInt32.toNat hmod; rwa [toNat_mod2, toNat_mod2] at this
   omega
 
-private theorem mod2_eq_one {k : UInt32} (h : k % 2 ≠ 0) : k % 2 = 1 := by
-  apply UInt32.toNat.inj
-  rw [toNat_mod2, show (1 : UInt32).toNat = 1 from rfl]
-  have hne : k.toNat % 2 ≠ 0 := by
-    intro e
-    exact h (UInt32.toNat.inj (by
-      rw [toNat_mod2, show (0 : UInt32).toNat = 0 from rfl]; exact e))
-  omega
+-- ─── get? ─────────────────────────────────────────────────────────────────────
 
--- mod 2^32 product helpers
-private theorem mp_l (x y : Nat) : x % 2^32 * y % 2^32 = x * y % 2^32 := by
-  rw [Nat.mul_mod (x % 2^32) y, Nat.mod_mod_of_dvd x (Nat.dvd_refl (2^32))]
-  exact (Nat.mul_mod x y (2^32)).symm
+def get? : Raw V → UInt32 → Option V
+  | .empty,       _ => none
+  | .node v l r,  k =>
+    if k = 0 then v
+    else if k % 2 = 0 then l.get? (k / 2)
+    else r.get? (k / 2)
 
-private theorem mp_r (x y : Nat) : x * (y % 2^32) % 2^32 = x * y % 2^32 := by
-  rw [Nat.mul_mod x (y % 2^32), Nat.mod_mod_of_dvd y (Nat.dvd_refl (2^32))]
-  exact (Nat.mul_mod x y (2^32)).symm
+@[simp] theorem get?_empty (k : UInt32) : (Raw.empty : Raw V).get? k = none := rfl
 
--- a * (b * 2) = a * 2 * b
-private theorem mul_step_comm (a b : UInt32) : a * (b * 2) = a * 2 * b := by
-  apply UInt32.toNat.inj
-  simp only [UInt32.toNat_mul, two_toNat]
-  rw [mp_r, mp_l]
-  congr 1
-  rw [show b.toNat * 2 = 2 * b.toNat from Nat.mul_comm b.toNat 2, ← Nat.mul_assoc]
+@[simp] theorem get?_zero (t : Raw V) : t.get? 0 = t.nodeVal := by cases t <;> rfl
 
--- (a + b) * c = a * c + b * c
-private theorem uint32_add_mul (a b c : UInt32) : (a + b) * c = a * c + b * c := by
-  apply UInt32.toNat.inj
-  simp only [UInt32.toNat_add, UInt32.toNat_mul]
-  rw [mp_l, Nat.add_mul]; omega
+theorem get?_node_zero (v : Option V) (l r : Raw V) : (Raw.node v l r).get? 0 = v := rfl
 
--- 1 * a = a
-private theorem uint32_one_mul (a : UInt32) : 1 * a = a := by
-  apply UInt32.toNat.inj
-  simp only [UInt32.toNat_mul, show (1 : UInt32).toNat = 1 from rfl]
-  have := a.toNat_lt; omega
+theorem get?_node_nz (v : Option V) (l r : Raw V) (k : UInt32) (hk : k ≠ 0) :
+    (Raw.node v l r).get? k = if k % 2 = 0 then l.get? (k / 2) else r.get? (k / 2) := by
+  simp [get?, hk]
 
--- a + b + c = a + (b + c)
-private theorem uint32_add_assoc (a b c : UInt32) : a + b + c = a + (b + c) := by
-  apply UInt32.toNat.inj
-  simp only [UInt32.toNat_add]; omega
-
--- a + b + c = a + c + b
-private theorem uint32_add_right_comm (a b c : UInt32) : a + b + c = a + c + b := by
-  apply UInt32.toNat.inj
-  simp only [UInt32.toNat_add]; omega
-
--- k * 1 + 0 = k
-private theorem uint32_mul1_add0 (k : UInt32) : k * 1 + 0 = k := by
-  apply UInt32.toNat.inj
-  simp only [UInt32.toNat_add, UInt32.toNat_mul, show (1 : UInt32).toNat = 1 from rfl,
-             show (0 : UInt32).toNat = 0 from rfl]
-  have := k.toNat_lt; omega
-
--- ─── Insert / Delete ─────────────────────────────────────────────────────────
-
-def insert (t : PosTrie V) (k : UInt32) (v : V) : PosTrie V :=
-  if h : k = 0 then
-    match t with
-    | .empty | .leaf _ => .leaf v
-    | .node _ l r      => mkNode (some v) l r
-  else
-    if k % 2 = 0 then mkNode t.nodeVal (t.lc.insert (k / 2) v) t.rc
-    else              mkNode t.nodeVal t.lc (t.rc.insert (k / 2) v)
-termination_by k.toNat
-decreasing_by all_goals exact toNat_div_lt ‹_›
-
-def delete (t : PosTrie V) (k : UInt32) : PosTrie V :=
-  if h : k = 0 then
-    match t with
-    | .empty | .leaf _ => .empty
-    | .node _ l r      => mkNode none l r
-  else
-    if k % 2 = 0 then mkNode t.nodeVal (t.lc.delete (k / 2)) t.rc
-    else              mkNode t.nodeVal t.lc (t.rc.delete (k / 2))
-termination_by k.toNat
-decreasing_by all_goals exact toNat_div_lt ‹_›
-
--- ─── get? helpers ────────────────────────────────────────────────────────────
-
-private theorem get?_zero (t : PosTrie V) : t.get? 0 = t.nodeVal := by
-  cases t <;> rfl
-
-private theorem get?_nz (t : PosTrie V) (k : UInt32) (hk : k ≠ 0) :
+theorem get?_nz (t : Raw V) (k : UInt32) (hk : k ≠ 0) :
     t.get? k = if k % 2 = 0 then t.lc.get? (k / 2) else t.rc.get? (k / 2) := by
   cases t with
-  | empty   => simp [lc, rc]
-  | leaf w  =>
-    simp only [get?_leaf_nz w k hk, lc, rc]
-    cases Decidable.em (k % 2 = 0) with
-    | inl h => simp [h, get?_empty_eq]
-    | inr h => simp [h, get?_empty_eq]
-  | node w l r => exact get?_node_nz w l r k hk
+  | empty => simp [lc, rc]
+  | node v l r => exact get?_node_nz v l r k hk
 
--- ─── Correctness ─────────────────────────────────────────────────────────────
+-- ─── Smart constructor ────────────────────────────────────────────────────────
 
-@[simp] theorem get?_empty (k : UInt32) : (PosTrie.empty : PosTrie V).get? k = none := rfl
+def mkNode (v : Option V) (l r : Raw V) : Raw V :=
+  match v, l, r with
+  | none, .empty, .empty => .empty
+  | _,    _,      _      => .node v l r
 
-theorem get?_insert (t : PosTrie V) (k k' : UInt32) (v : V) :
+@[simp] theorem mkNode_nodeVal (v : Option V) (l r : Raw V) :
+    (mkNode v l r).nodeVal = v := by
+  unfold mkNode; split <;> simp [nodeVal]
+
+theorem mkNode_get?_zero (v : Option V) (l r : Raw V) : (mkNode v l r).get? 0 = v := by
+  unfold mkNode; split <;> simp [nodeVal]
+
+theorem mkNode_get?_nz (v : Option V) (l r : Raw V) (k : UInt32) (hk : k ≠ 0) :
+    (mkNode v l r).get? k = if k % 2 = 0 then l.get? (k / 2) else r.get? (k / 2) := by
+  cases v with
+  | none =>
+    cases l with
+    | empty =>
+      cases r with
+      | empty => simp [mkNode, get?_empty]
+      | node u rl rr => simp only [mkNode]; exact get?_node_nz _ _ _ _ hk
+    | node w ll lr => simp only [mkNode]; exact get?_node_nz _ _ _ _ hk
+  | some a => simp only [mkNode]; exact get?_node_nz _ _ _ _ hk
+
+-- ─── insert / delete ──────────────────────────────────────────────────────────
+
+def insert (t : Raw V) (k : UInt32) (v : V) : Raw V :=
+  if k = 0 then mkNode (some v) t.lc t.rc
+  else if k % 2 = 0 then mkNode t.nodeVal (t.lc.insert (k / 2) v) t.rc
+  else mkNode t.nodeVal t.lc (t.rc.insert (k / 2) v)
+termination_by k.toNat
+decreasing_by all_goals exact toNat_div_lt (by simp_all)
+
+def delete (t : Raw V) (k : UInt32) : Raw V :=
+  if k = 0 then mkNode none t.lc t.rc
+  else if k % 2 = 0 then mkNode t.nodeVal (t.lc.delete (k / 2)) t.rc
+  else mkNode t.nodeVal t.lc (t.rc.delete (k / 2))
+termination_by k.toNat
+decreasing_by all_goals exact toNat_div_lt (by simp_all)
+
+-- ─── get?_insert ──────────────────────────────────────────────────────────────
+
+theorem get?_insert (t : Raw V) (k k' : UInt32) (v : V) :
     (t.insert k v).get? k' = if k = k' then some v else t.get? k' := by
-  suffices h : ∀ n, ∀ k : UInt32, k.toNat ≤ n →
-      ∀ k' (t : PosTrie V),
-      (t.insert k v).get? k' = if k = k' then some v else t.get? k' by
-    exact h k.toNat k (Nat.le_refl _) k' t
-  intro n
-  induction n with
+  suffices h : ∀ n, ∀ k : UInt32, k.toNat ≤ n → ∀ k' (t : Raw V),
+      (t.insert k v).get? k' = if k = k' then some v else t.get? k' from
+    h k.toNat k (Nat.le_refl _) k' t
+  intro n; induction n with
   | zero =>
     intro k hle k' t
-    have hk0 : k = 0 := by
-      have hn : k.toNat = 0 := Nat.le_zero.mp hle
-      exact UInt32.toNat.inj (by simpa using hn)
-    subst hk0
-    rw (config := { occs := .pos [1] }) [PosTrie.insert.eq_def]
-    simp only [dif_pos rfl]
-    cases t with
-    | empty =>
-      by_cases hk' : k' = 0
-      · subst hk'; rfl
-      · simp [get?_leaf_nz _ _ hk', if_neg (Ne.symm hk'), if_neg hk']
-    | leaf w =>
-      by_cases hk' : k' = 0
-      · subst hk'; rfl
-      · simp [get?_leaf_nz _ _ hk', if_neg (Ne.symm hk'), get?_leaf_nz w k' hk']
-    | node w l r =>
-      by_cases hk' : k' = 0
-      · subst hk'; simp [mkNode_get?_zero]
-      · simp [mkNode_get?_nz _ _ _ _ hk', get?_node_nz _ _ _ _ hk', Ne.symm hk']
+    have hk0 : k = 0 := UInt32.toNat.inj (Nat.le_zero.mp hle ▸ rfl)
+    subst hk0; simp only [insert, ↓reduceIte]
+    by_cases hk' : k' = 0
+    · subst hk'; simp
+    · simp [mkNode_get?_nz _ _ _ _ hk', get?_nz t k' hk', Ne.symm hk']
   | succ n ih =>
     intro k hle k' t
     by_cases hk0 : k = 0
-    · subst hk0
-      rw (config := { occs := .pos [1] }) [PosTrie.insert.eq_def]
-      simp only [dif_pos rfl]
-      cases t with
-      | empty =>
-        by_cases hk' : k' = 0
-        · subst hk'; rfl
-        · simp [get?_leaf_nz _ _ hk', if_neg (Ne.symm hk'), if_neg hk']
-      | leaf w =>
-        by_cases hk' : k' = 0
-        · subst hk'; rfl
-        · simp [get?_leaf_nz _ _ hk', if_neg (Ne.symm hk'), get?_leaf_nz w k' hk']
-      | node w l r =>
-        by_cases hk' : k' = 0
-        · subst hk'; simp [mkNode_get?_zero]
-        · simp [mkNode_get?_nz _ _ _ _ hk', get?_node_nz _ _ _ _ hk', Ne.symm hk']
+    · subst hk0; simp only [insert, ↓reduceIte]
+      by_cases hk' : k' = 0
+      · subst hk'; simp
+      · simp [mkNode_get?_nz _ _ _ _ hk', get?_nz t k' hk', Ne.symm hk']
     · have hdivle : (k / 2).toNat ≤ n := by
         rw [toNat_div2]; have := toNat_ne_zero hk0; omega
-      rw (config := { occs := .pos [1] }) [PosTrie.insert.eq_def]
-      simp only [dif_neg hk0]
+      unfold insert; rw [if_neg hk0]
       by_cases hmod : k % 2 = 0
-      · simp only [if_pos hmod]
+      · simp only [hmod, ↓reduceIte]
         by_cases hk'0 : k' = 0
-        · subst hk'0
-          simp only [if_neg hk0, mkNode_get?_zero]
-          exact (get?_zero t).symm
+        · subst hk'0; simp [if_neg hk0, get?_zero]
         · rw [mkNode_get?_nz _ _ _ _ hk'0, get?_nz t k' hk'0]
           by_cases hmod' : k' % 2 = 0
           · simp only [hmod', ↓reduceIte]
             rw [ih (k / 2) hdivle (k' / 2) t.lc]
             by_cases heq : k / 2 = k' / 2
-            · simp [heq, uint32_eq_of_div_mod heq (by rw [hmod, hmod'])]
+            · simp [uint32_eq_of_div_mod heq (by rw [hmod, hmod'])]
             · simp [if_neg heq, if_neg (fun e : k = k' => heq (congrArg (· / 2) e))]
-          · have hkk' : k ≠ k' := fun e => hmod' (e ▸ hmod)
-            simp [if_neg hmod', if_neg hkk']
-      · simp only [if_neg hmod]
+          · exact if_neg (fun e : k = k' => hmod' (e ▸ hmod)) ▸ by simp [hmod']
+      · simp only [show k % 2 ≠ 0 from hmod, ↓reduceIte]
         by_cases hk'0 : k' = 0
-        · subst hk'0
-          simp only [if_neg hk0, mkNode_get?_zero]
-          exact (get?_zero t).symm
+        · subst hk'0; simp [if_neg hk0, get?_zero]
         · rw [mkNode_get?_nz _ _ _ _ hk'0, get?_nz t k' hk'0]
           by_cases hmod' : k' % 2 = 0
-          · have hkk' : k ≠ k' := fun e => hmod (e ▸ hmod')
-            simp [hmod', if_neg hkk']
-          · simp only [if_neg hmod']
+          · exact if_neg (fun e : k = k' => hmod (e ▸ hmod')) ▸ by simp [hmod']
+          · simp only [show k' % 2 ≠ 0 from hmod', ↓reduceIte]
             rw [ih (k / 2) hdivle (k' / 2) t.rc]
             by_cases heq : k / 2 = k' / 2
-            · simp [heq, uint32_eq_of_div_mod heq
-                (by rw [mod2_eq_one hmod, mod2_eq_one hmod'])]
+            · simp [uint32_eq_of_div_mod heq (by rw [mod2_eq_one hmod, mod2_eq_one hmod'])]
             · simp [if_neg heq, if_neg (fun e : k = k' => heq (congrArg (· / 2) e))]
+
+-- ─── get?_delete ──────────────────────────────────────────────────────────────
+
+theorem get?_delete (t : Raw V) (k k' : UInt32) :
+    (t.delete k).get? k' = if k = k' then none else t.get? k' := by
+  suffices h : ∀ n, ∀ k : UInt32, k.toNat ≤ n → ∀ k' (t : Raw V),
+      (t.delete k).get? k' = if k = k' then none else t.get? k' from
+    h k.toNat k (Nat.le_refl _) k' t
+  intro n; induction n with
+  | zero =>
+    intro k hle k' t
+    have hk0 : k = 0 := UInt32.toNat.inj (Nat.le_zero.mp hle ▸ rfl)
+    subst hk0; simp only [delete, ↓reduceIte]
+    by_cases hk' : k' = 0
+    · subst hk'; simp
+    · simp [mkNode_get?_nz _ _ _ _ hk', get?_nz t k' hk', Ne.symm hk']
+  | succ n ih =>
+    intro k hle k' t
+    by_cases hk0 : k = 0
+    · subst hk0; simp only [delete, ↓reduceIte]
+      by_cases hk' : k' = 0
+      · subst hk'; simp
+      · simp [mkNode_get?_nz _ _ _ _ hk', get?_nz t k' hk', Ne.symm hk']
+    · have hdivle : (k / 2).toNat ≤ n := by
+        rw [toNat_div2]; have := toNat_ne_zero hk0; omega
+      unfold delete; rw [if_neg hk0]
+      by_cases hmod : k % 2 = 0
+      · simp only [hmod, ↓reduceIte]
+        by_cases hk'0 : k' = 0
+        · subst hk'0; simp [if_neg hk0, get?_zero]
+        · rw [mkNode_get?_nz _ _ _ _ hk'0, get?_nz t k' hk'0]
+          by_cases hmod' : k' % 2 = 0
+          · simp only [hmod', ↓reduceIte]
+            rw [ih (k / 2) hdivle (k' / 2) t.lc]
+            by_cases heq : k / 2 = k' / 2
+            · simp [uint32_eq_of_div_mod heq (by rw [hmod, hmod'])]
+            · simp [if_neg heq, if_neg (fun e : k = k' => heq (congrArg (· / 2) e))]
+          · exact if_neg (fun e : k = k' => hmod' (e ▸ hmod)) ▸ by simp [hmod']
+      · simp only [show k % 2 ≠ 0 from hmod, ↓reduceIte]
+        by_cases hk'0 : k' = 0
+        · subst hk'0; simp [if_neg hk0, get?_zero]
+        · rw [mkNode_get?_nz _ _ _ _ hk'0, get?_nz t k' hk'0]
+          by_cases hmod' : k' % 2 = 0
+          · exact if_neg (fun e : k = k' => hmod (e ▸ hmod')) ▸ by simp [hmod']
+          · simp only [show k' % 2 ≠ 0 from hmod', ↓reduceIte]
+            rw [ih (k / 2) hdivle (k' / 2) t.rc]
+            by_cases heq : k / 2 = k' / 2
+            · simp [uint32_eq_of_div_mod heq (by rw [mod2_eq_one hmod, mod2_eq_one hmod'])]
+            · simp [if_neg heq, if_neg (fun e : k = k' => heq (congrArg (· / 2) e))]
+
+-- ─── bindAlterAux / mergeAux ──────────────────────────────────────────────────
+
+def bindAlterAux (f : UInt32 → V → Option V')
+    (t : Raw V) (step pfx : UInt32) : Raw V' :=
+  match t with
+  | .empty      => .empty
+  | .node v l r =>
+    mkNode (v.bind (f pfx))
+           (bindAlterAux f l (step * 2) pfx)
+           (bindAlterAux f r (step * 2) (pfx + step))
+
+def bindAlter (f : UInt32 → V → Option V') (t : Raw V) : Raw V' :=
+  t.bindAlterAux f 1 0
+
+private theorem mul1_add0 (k : UInt32) : k * 1 + 0 = k := by
+  apply UInt32.toNat.inj
+  simp
+
+theorem get?_bindAlterAux (f : UInt32 → V → Option V')
+    (t : Raw V) (step pfx j : UInt32) :
+    (t.bindAlterAux f step pfx).get? j = (t.get? j).bind (f (j * step + pfx)) := by
+  induction t generalizing step pfx j with
+  | empty => simp [bindAlterAux]
+  | node v l r ihl ihr =>
+    simp only [bindAlterAux]
+    by_cases hj : j = 0
+    · subst hj; rw [mkNode_get?_zero, get?_node_zero]; simp
+    · rw [mkNode_get?_nz _ _ _ _ hj, get?_node_nz v l r j hj]
+      by_cases hmod : j % 2 = 0
+      · simp only [hmod, ↓reduceIte]
+        have hkey : j / 2 * (step * 2) + pfx = j * step + pfx := by
+          apply UInt32.toNat.inj
+          simp [UInt32.toNat_add, UInt32.toNat_mul, two_toNat]
+          have hm : j.toNat % 2 = 0 := by
+            have := toNat_mod2 j; have h3 : (j % 2).toNat = 0 := by rw [hmod]; rfl
+            omega
+          have hd : j.toNat / 2 * 2 = j.toNat := Nat.div_mul_cancel (Nat.dvd_of_mod_eq_zero hm)
+          have h1 : j.toNat / 2 * (step.toNat * 2) = j.toNat * step.toNat := by
+            rw [Nat.mul_comm step.toNat 2, ← Nat.mul_assoc, hd]
+          congr 1; omega
+        rw [ihl (step * 2) pfx (j / 2), hkey]
+      · simp only [show j % 2 ≠ 0 from hmod, ↓reduceIte]
+        have hkey : j / 2 * (step * 2) + (pfx + step) = j * step + pfx := by
+          apply UInt32.toNat.inj
+          simp [UInt32.toNat_add, UInt32.toNat_mul, two_toNat]
+          have hm : j.toNat % 2 = 1 := by
+            have := toNat_mod2 j
+            have hne : j.toNat % 2 ≠ 0 := by
+              intro e; exact hmod (UInt32.toNat.inj (by simp [show (0:UInt32).toNat=0 from rfl, e]))
+            have hl : j.toNat % 2 < 2 := Nat.mod_lt _ (by omega)
+            omega
+          have hd2 : j.toNat / 2 * 2 + 1 = j.toNat := by
+            have := Nat.div_add_mod j.toNat 2; omega
+          have h1 : j.toNat / 2 * (step.toNat * 2) = j.toNat / 2 * 2 * step.toNat := by
+            rw [Nat.mul_comm step.toNat 2, ← Nat.mul_assoc]
+          have h2 : j.toNat / 2 * 2 * step.toNat + step.toNat = j.toNat * step.toNat := by
+            rw [← hd2, Nat.add_mul, Nat.one_mul]
+          congr 1; omega
+        rw [ihr (step * 2) (pfx + step) (j / 2), hkey]
+
+theorem get?_bindAlter (f : UInt32 → V → Option V') (t : Raw V) (k : UInt32) :
+    (t.bindAlter f).get? k = (t.get? k).bind (f k) := by
+  simp [bindAlter, get?_bindAlterAux]
+
+def mergeAux (op : UInt32 → V → V → V)
+    (t1 t2 : Raw V) (step pfx : UInt32) : Raw V :=
+  match t1, t2 with
+  | .empty, t  => t
+  | t, .empty  => t
+  | .node v l1 r1, .node w l2 r2 =>
+    mkNode (Option.merge (op pfx) v w)
+           (mergeAux op l1 l2 (step * 2) pfx)
+           (mergeAux op r1 r2 (step * 2) (pfx + step))
+
+def merge (op : UInt32 → V → V → V) (t1 t2 : Raw V) : Raw V :=
+  t1.mergeAux op t2 1 0
+
+theorem get?_mergeAux (op : UInt32 → V → V → V)
+    (t1 t2 : Raw V) (step pfx j : UInt32) :
+    (t1.mergeAux op t2 step pfx).get? j =
+      Option.merge (op (j * step + pfx)) (t1.get? j) (t2.get? j) := by
+  induction t1 generalizing t2 step pfx j with
+  | empty => simp [mergeAux]
+  | node v l1 r1 ihl ihr =>
+    cases t2 with
+    | empty => simp [mergeAux]
+    | node w l2 r2 =>
+      simp only [mergeAux]
+      by_cases hj : j = 0
+      · subst hj; rw [mkNode_get?_zero, get?_node_zero, get?_node_zero]; simp
+      · rw [mkNode_get?_nz _ _ _ _ hj, get?_node_nz v l1 r1 j hj, get?_node_nz w l2 r2 j hj]
+        by_cases hmod : j % 2 = 0
+        · simp only [hmod, ↓reduceIte]
+          have hkey : j / 2 * (step * 2) + pfx = j * step + pfx := by
+            apply UInt32.toNat.inj
+            simp [UInt32.toNat_add, UInt32.toNat_mul, two_toNat]
+            have hm : j.toNat % 2 = 0 := by
+              have := toNat_mod2 j; have h3 : (j % 2).toNat = 0 := by rw [hmod]; rfl
+              omega
+            have hd : j.toNat / 2 * 2 = j.toNat := Nat.div_mul_cancel (Nat.dvd_of_mod_eq_zero hm)
+            have h1 : j.toNat / 2 * (step.toNat * 2) = j.toNat * step.toNat := by
+              rw [Nat.mul_comm step.toNat 2, ← Nat.mul_assoc, hd]
+            congr 1; omega
+          rw [ihl l2 (step * 2) pfx (j / 2), hkey]
+        · simp only [show j % 2 ≠ 0 from hmod, ↓reduceIte]
+          have hkey : j / 2 * (step * 2) + (pfx + step) = j * step + pfx := by
+            apply UInt32.toNat.inj
+            simp [UInt32.toNat_add, UInt32.toNat_mul, two_toNat]
+            have hm : j.toNat % 2 = 1 := by
+              have := toNat_mod2 j
+              have hne : j.toNat % 2 ≠ 0 := by
+                intro e; exact hmod (UInt32.toNat.inj (by simp [show (0:UInt32).toNat=0 from rfl, e]))
+              have hl : j.toNat % 2 < 2 := Nat.mod_lt _ (by omega)
+              omega
+            have hd2 : j.toNat / 2 * 2 + 1 = j.toNat := by
+              have := Nat.div_add_mod j.toNat 2; omega
+            have h1 : j.toNat / 2 * (step.toNat * 2) = j.toNat / 2 * 2 * step.toNat := by
+              rw [Nat.mul_comm step.toNat 2, ← Nat.mul_assoc]
+            have h2 : j.toNat / 2 * 2 * step.toNat + step.toNat = j.toNat * step.toNat := by
+              rw [← hd2, Nat.add_mul, Nat.one_mul]
+            congr 1; omega
+          rw [ihr r2 (step * 2) (pfx + step) (j / 2), hkey]
+
+theorem get?_merge (op : UInt32 → V → V → V) (t1 t2 : Raw V) (k : UInt32) :
+    (t1.merge op t2).get? k = Option.merge (op k) (t1.get? k) (t2.get? k) := by
+  simp [merge, get?_mergeAux]
+
+-- ─── toListAux ────────────────────────────────────────────────────────────────
+
+-- skipRoot: when true, skip position 0 in this trie (position 0 of the left subtrie
+-- is inaccessible under the even→left encoding; we skip it to avoid phantom elements).
+def toListAux (t : Raw V) (d : Nat) (pfx : UInt32) (skipRoot : Bool) :
+    List (UInt32 × V) :=
+  match t with
+  | .empty  => []
+  | .node v l r =>
+    (if skipRoot then [] else match v with | none => [] | some u => [(pfx, u)]) ++
+    if d ≥ 32 then [] else
+      toListAux l (d + 1) pfx true ++
+      toListAux r (d + 1) (pfx + UInt32.ofNat (2 ^ d)) false
+
+def toList (t : Raw V) : List (UInt32 × V) := t.toListAux 0 0 false
+
+-- ─── Depth-bounded canonical predicate ───────────────────────────────────────
+
+private def canonicalAux : Raw V → Nat → Prop
+  | .empty, _          => True
+  | .node v l r, 0     => v ≠ none ∧ l = .empty ∧ r = .empty
+  | .node v l r, d + 1 => (v ≠ none ∨ l ≠ .empty ∨ r ≠ .empty) ∧
+                           l.nodeVal = none ∧
+                           l.canonicalAux d ∧ r.canonicalAux d
+
+def canonical (t : Raw V) : Prop := t.canonicalAux 32
+
+@[simp] theorem canonical_empty : (Raw.empty : Raw V).canonical := trivial
+
+theorem canonical_node {v : Option V} {l r : Raw V} :
+    (Raw.node v l r).canonical ↔
+    (v ≠ none ∨ l ≠ .empty ∨ r ≠ .empty) ∧ l.nodeVal = none ∧
+    l.canonicalAux 31 ∧ r.canonicalAux 31 :=
+  Iff.rfl
+
+-- ─── mkNode preserves canonicity (depth-bounded) ─────────────────────────────
+
+private theorem canonicalAux_mono : ∀ (t : Raw V) (d : Nat), t.canonicalAux d → t.canonicalAux (d + 1) := by
+  intro t; induction t with
+  | empty => intros; trivial
+  | node v l r ihl ihr =>
+    intro d h
+    cases d with
+    | zero =>
+      obtain ⟨hv, hl, hr⟩ := h
+      subst hl; subst hr
+      exact ⟨Or.inl hv, rfl, trivial, trivial⟩
+    | succ d' =>
+      obtain ⟨hnonempty, hlv, hld, hrd⟩ := h
+      exact ⟨hnonempty, hlv, ihl d' hld, ihr d' hrd⟩
+
+private theorem mkNode_canonicalAux (d : Nat) (v : Option V) (l r : Raw V)
+    (hl : l.canonicalAux d) (hlv : l.nodeVal = none) (hr : r.canonicalAux d) :
+    (mkNode v l r).canonicalAux (d + 1) := by
+  unfold mkNode
+  rcases v with _ | a
+  · rcases l with _ | ⟨w, ll, lr⟩
+    · rcases r with _ | ⟨u, rl, rr⟩
+      · trivial
+      · show (Raw.node none .empty (Raw.node u rl rr)).canonicalAux (d + 1)
+        exact ⟨Or.inr (Or.inr (by simp)), rfl, trivial, hr⟩
+    · show (Raw.node none (Raw.node w ll lr) r).canonicalAux (d + 1)
+      exact ⟨Or.inr (Or.inl (by simp)), hlv, hl, hr⟩
+  · show (Raw.node (some a) l r).canonicalAux (d + 1)
+    exact ⟨Or.inl (by simp), hlv, hl, hr⟩
+
+-- ─── nodeVal preservation under insert/delete ────────────────────────────────
+
+theorem insert_nodeVal_of_ne (t : Raw V) (k : UInt32) (v : V) (hk : k ≠ 0) :
+    (t.insert k v).nodeVal = t.nodeVal := by
+  unfold insert; rw [if_neg hk]
+  by_cases hmod : k % 2 = 0 <;> simp only [hmod, ↓reduceIte, mkNode_nodeVal]
+
+theorem delete_nodeVal_of_ne (t : Raw V) (k : UInt32) (hk : k ≠ 0) :
+    (t.delete k).nodeVal = t.nodeVal := by
+  unfold delete; rw [if_neg hk]
+  by_cases hmod : k % 2 = 0 <;> simp only [hmod, ↓reduceIte, mkNode_nodeVal]
+
+private theorem div2_ne_zero_of_even_ne {k : UInt32} (hk : k ≠ 0) (hmod : k % 2 = 0) :
+    k / 2 ≠ 0 := by
+  intro h
+  have h' := congrArg UInt32.toNat h
+  rw [toNat_div2, show (0:UInt32).toNat = 0 from rfl] at h'
+  have hm0 : k.toNat % 2 = 0 := by
+    have hm := toNat_mod2 k; have h3 : (k % 2).toNat = 0 := by rw [hmod]; rfl
+    omega
+  have hkn := toNat_ne_zero hk
+  omega
+
+-- ─── insert preserves canonicity ─────────────────────────────────────────────
+
+private theorem insert_canonicalAux (v : V) :
+    ∀ (d : Nat) (k : UInt32), k.toNat < 2^d →
+    ∀ (t : Raw V), t.canonicalAux d → (t.insert k v).canonicalAux d := by
+  intro d; induction d with
+  | zero =>
+    intro k hk t ht
+    have hk0 : k = 0 := UInt32.toNat.inj (by
+      simp only [show (0:UInt32).toNat = 0 from rfl]
+      simp only [Nat.pow_zero] at hk; omega)
+    subst hk0; simp only [insert, ↓reduceIte]
+    cases t with
+    | empty => exact ⟨by simp, rfl, rfl⟩
+    | node v' l r =>
+      obtain ⟨_, hl, hr⟩ := ht; subst hl; subst hr
+      simp only [lc, rc]; exact ⟨by simp, rfl, rfl⟩
+  | succ d' ih =>
+    intro k hk t ht
+    by_cases hk0 : k = 0
+    · subst hk0; simp only [insert, ↓reduceIte]
+      apply mkNode_canonicalAux d'
+      · cases t with | empty => trivial | node v l r => exact ht.2.2.1
+      · cases t with | empty => rfl | node v l r => exact ht.2.1
+      · cases t with | empty => trivial | node v l r => exact ht.2.2.2
+    · have hdiv_lt : (k / 2).toNat < 2^d' := by
+        rw [toNat_div2]; have := toNat_ne_zero hk0; omega
+      unfold insert; rw [if_neg hk0]
+      by_cases hmod : k % 2 = 0
+      · simp only [hmod, ↓reduceIte]
+        apply mkNode_canonicalAux d'
+        · exact ih (k/2) hdiv_lt t.lc
+            (by cases t with | empty => trivial | node v l r => exact ht.2.2.1)
+        · rw [insert_nodeVal_of_ne _ _ _ (div2_ne_zero_of_even_ne hk0 hmod)]
+          cases t with | empty => rfl | node v l r => exact ht.2.1
+        · cases t with | empty => trivial | node v l r => exact ht.2.2.2
+      · simp only [show k % 2 ≠ 0 from hmod, ↓reduceIte]
+        apply mkNode_canonicalAux d'
+        · cases t with | empty => trivial | node v l r => exact ht.2.2.1
+        · cases t with | empty => rfl | node v l r => exact ht.2.1
+        · exact ih (k/2) hdiv_lt t.rc
+            (by cases t with | empty => trivial | node v l r => exact ht.2.2.2)
+
+theorem insert_canonical (t : Raw V) (ht : t.canonical) (k : UInt32) (v : V) :
+    (t.insert k v).canonical := by
+  apply insert_canonicalAux v 32 k _ t ht
+  have h := k.toNat_lt; simp only [UInt32.size] at h
+  have h32 : (2:Nat)^32 = 4294967296 := by native_decide
+  omega
+
+-- ─── delete preserves canonicity ─────────────────────────────────────────────
+
+private theorem delete_canonicalAux :
+    ∀ (d : Nat) (k : UInt32), k.toNat < 2^d →
+    ∀ (t : Raw V), t.canonicalAux d → (t.delete k).canonicalAux d := by
+  intro d; induction d with
+  | zero =>
+    intro k hk t ht
+    have hk0 : k = 0 := UInt32.toNat.inj (by
+      simp only [show (0:UInt32).toNat = 0 from rfl]
+      simp only [Nat.pow_zero] at hk; omega)
+    subst hk0; simp only [delete, ↓reduceIte]
+    cases t with
+    | empty => trivial
+    | node v' l r =>
+      obtain ⟨_, hl, hr⟩ := ht; subst hl; subst hr
+      simp [canonicalAux]
+  | succ d' ih =>
+    intro k hk t ht
+    by_cases hk0 : k = 0
+    · subst hk0; simp only [delete, ↓reduceIte]
+      apply mkNode_canonicalAux d'
+      · cases t with | empty => trivial | node v l r => exact ht.2.2.1
+      · cases t with | empty => rfl | node v l r => exact ht.2.1
+      · cases t with | empty => trivial | node v l r => exact ht.2.2.2
+    · have hdiv_lt : (k / 2).toNat < 2^d' := by
+        rw [toNat_div2]; have := toNat_ne_zero hk0; omega
+      unfold delete; rw [if_neg hk0]
+      by_cases hmod : k % 2 = 0
+      · simp only [hmod, ↓reduceIte]
+        apply mkNode_canonicalAux d'
+        · exact ih (k/2) hdiv_lt t.lc
+            (by cases t with | empty => trivial | node v l r => exact ht.2.2.1)
+        · rw [delete_nodeVal_of_ne _ _ (div2_ne_zero_of_even_ne hk0 hmod)]
+          cases t with | empty => rfl | node v l r => exact ht.2.1
+        · cases t with | empty => trivial | node v l r => exact ht.2.2.2
+      · simp only [show k % 2 ≠ 0 from hmod, ↓reduceIte]
+        apply mkNode_canonicalAux d'
+        · cases t with | empty => trivial | node v l r => exact ht.2.2.1
+        · cases t with | empty => rfl | node v l r => exact ht.2.1
+        · exact ih (k/2) hdiv_lt t.rc
+            (by cases t with | empty => trivial | node v l r => exact ht.2.2.2)
+
+theorem delete_canonical (t : Raw V) (ht : t.canonical) (k : UInt32) :
+    (t.delete k).canonical := by
+  apply delete_canonicalAux 32 k _ t ht
+  have h := k.toNat_lt; simp only [UInt32.size] at h
+  have h32 : (2:Nat)^32 = 4294967296 := by native_decide
+  omega
+
+-- ─── bindAlterAux / mergeAux preserve canonicity ─────────────────────────────
+
+theorem bindAlterAux_nodeVal (f : UInt32 → V → Option V')
+    (t : Raw V) (step pfx : UInt32) :
+    (t.bindAlterAux f step pfx).nodeVal = (t.nodeVal).bind (f pfx) := by
+  cases t with
+  | empty => rfl
+  | node v l r =>
+    simp only [bindAlterAux]
+    rw [mkNode_nodeVal]
+    simp only [nodeVal]
+
+private theorem bindAlterAux_canonicalAux (f : UInt32 → V → Option V') :
+    ∀ (d : Nat) (t : Raw V), t.canonicalAux d → ∀ (step pfx : UInt32),
+    (t.bindAlterAux f step pfx).canonicalAux d := by
+  intro d; induction d with
+  | zero =>
+    intro t ht step pfx
+    cases t with
+    | empty => simp [bindAlterAux, canonicalAux]
+    | node v l r =>
+      obtain ⟨hv, hl, hr⟩ := ht; subst hl; subst hr
+      have step1 : bindAlterAux f (.node v .empty .empty) step pfx =
+          mkNode (v.bind (f pfx)) .empty .empty := by unfold bindAlterAux; rfl
+      rw [step1]
+      rcases v.bind (f pfx) with _ | w
+      · simp [mkNode, canonicalAux]
+      · exact ⟨by simp, rfl, rfl⟩
+  | succ d' ih =>
+    intro t ht step pfx
+    cases t with
+    | empty => simp [bindAlterAux, canonicalAux]
+    | node v l r =>
+      obtain ⟨_, hlv, hcanl, hcanr⟩ := ht
+      simp only [bindAlterAux]
+      apply mkNode_canonicalAux d'
+      · exact ih l hcanl (step * 2) pfx
+      · rw [bindAlterAux_nodeVal, hlv]; rfl
+      · exact ih r hcanr (step * 2) (pfx + step)
+
+theorem bindAlterAux_canonical (f : UInt32 → V → Option V')
+    (t : Raw V) (ht : t.canonical) (step pfx : UInt32) :
+    (t.bindAlterAux f step pfx).canonical :=
+  bindAlterAux_canonicalAux f 32 t ht step pfx
+
+theorem mergeAux_nodeVal (op : UInt32 → V → V → V)
+    (t1 t2 : Raw V) (step pfx : UInt32) :
+    (t1.mergeAux op t2 step pfx).nodeVal =
+      Option.merge (op pfx) t1.nodeVal t2.nodeVal := by
+  cases t1 with
+  | empty => simp [mergeAux, nodeVal]
+  | node v l1 r1 =>
+    cases t2 with
+    | empty => simp [mergeAux, nodeVal]
+    | node w l2 r2 => simp only [mergeAux, nodeVal]
+
+private theorem mergeAux_canonicalAux (op : UInt32 → V → V → V) :
+    ∀ (d : Nat) (t1 t2 : Raw V),
+    t1.canonicalAux d → t2.canonicalAux d → ∀ (step pfx : UInt32),
+    (t1.mergeAux op t2 step pfx).canonicalAux d := by
+  intro d; induction d with
+  | zero =>
+    intro t1 t2 ht1 ht2 step pfx
+    cases t1 with
+    | empty => simp [mergeAux]; exact ht2
+    | node v l1 r1 =>
+      obtain ⟨hv1, hl1, hr1⟩ := ht1; subst hl1; subst hr1
+      cases t2 with
+      | empty => simp [mergeAux]; exact ⟨hv1, rfl, rfl⟩
+      | node w l2 r2 =>
+        obtain ⟨_, hl2, hr2⟩ := ht2; subst hl2; subst hr2
+        have step1 : mergeAux op (.node v .empty .empty) (.node w .empty .empty) step pfx =
+            mkNode (Option.merge (op pfx) v w) .empty .empty := by rfl
+        rw [step1]
+        rcases Option.merge (op pfx) v w with _ | u
+        · simp [mkNode, canonicalAux]
+        · exact ⟨by simp, rfl, rfl⟩
+  | succ d' ih =>
+    intro t1 t2 ht1 ht2 step pfx
+    cases t1 with
+    | empty => simp [mergeAux]; exact ht2
+    | node v l1 r1 =>
+      cases t2 with
+      | empty => simp [mergeAux]; exact ht1
+      | node w l2 r2 =>
+        obtain ⟨_, hlv₁, hcanl₁, hcanr₁⟩ := ht1
+        obtain ⟨_, hlv₂, hcanl₂, hcanr₂⟩ := ht2
+        simp only [mergeAux]
+        apply mkNode_canonicalAux d'
+        · exact ih l1 l2 hcanl₁ hcanl₂ (step * 2) pfx
+        · rw [mergeAux_nodeVal, hlv₁, hlv₂]; rfl
+        · exact ih r1 r2 hcanr₁ hcanr₂ (step * 2) (pfx + step)
+
+theorem mergeAux_canonical (op : UInt32 → V → V → V)
+    (t1 t2 : Raw V) (ht1 : t1.canonical) (ht2 : t2.canonical) (step pfx : UInt32) :
+    (t1.mergeAux op t2 step pfx).canonical :=
+  mergeAux_canonicalAux op 32 t1 t2 ht1 ht2 step pfx
+
+-- ─── canonical_nonempty: every non-empty canonical trie has a populated key ──
+
+private theorem canonical_nonempty_aux :
+    ∀ (d : Nat), d ≤ 32 → ∀ (t : Raw V), t.canonicalAux d → t ≠ .empty →
+    ∃ j : Nat, j < 2^d ∧ t.get? (UInt32.ofNat j) ≠ none := by
+  intro d
+  induction d with
+  | zero =>
+    intro _ t ht hne
+    cases t with
+    | empty => exact absurd rfl hne
+    | node v l r =>
+      obtain ⟨hv, hl, hr⟩ := ht; subst hl; subst hr
+      exact ⟨0, by omega, by
+        have : (UInt32.ofNat 0 : UInt32) = 0 := rfl
+        rw [this, get?_node_zero]; exact hv⟩
+  | succ d' ih =>
+    intro hd t ht hne
+    cases t with
+    | empty => exact absurd rfl hne
+    | node v l r =>
+      obtain ⟨hcond, hlv, hcanl, hcanr⟩ := ht
+      rcases hcond with hv | hl_ne | hr_ne
+      · exact ⟨0, by omega, by
+          have : (UInt32.ofNat 0 : UInt32) = 0 := rfl
+          rw [this, get?_node_zero]; exact hv⟩
+      · obtain ⟨jl, hjl_lt, hjl_ne⟩ := ih (by omega) l hcanl hl_ne
+        have h2pow : (2:Nat)^(d'+1) = 2 * 2^d' := by rw [Nat.pow_succ]; exact Nat.mul_comm _ _
+        have hjl_sz : jl < UInt32.size := by
+          simp only [UInt32.size]
+          have hle : 2^d' ≤ 2^32 := Nat.pow_le_pow_right (by omega) (by omega : d' ≤ 32)
+          have h32 : (2:Nat)^32 = 4294967296 := by native_decide
+          linarith
+        have h2jl_lt : 2 * jl < 2^(d'+1) := by omega
+        have h2jl_sz : 2 * jl < UInt32.size := by
+          simp only [UInt32.size]
+          have hle : 2^(d'+1) ≤ 2^32 := Nat.pow_le_pow_right (by omega) hd
+          have h32 : (2:Nat)^32 = 4294967296 := by native_decide
+          linarith
+        refine ⟨2 * jl, h2jl_lt, ?_⟩
+        have hk0 : UInt32.ofNat (2 * jl) ≠ 0 := by
+          intro h; have h' := congrArg UInt32.toNat h
+          rw [ofNat_toNat' h2jl_sz, show (0:UInt32).toNat=0 from rfl] at h'; omega
+        rw [get?_node_nz _ _ _ _ hk0]
+        have hkmod : UInt32.ofNat (2 * jl) % 2 = 0 := by
+          apply UInt32.toNat.inj; rw [toNat_mod2, show (0:UInt32).toNat=0 from rfl,
+            ofNat_toNat' h2jl_sz]; omega
+        rw [if_pos hkmod]
+        have hkdiv : UInt32.ofNat (2 * jl) / 2 = UInt32.ofNat jl := by
+          apply UInt32.toNat.inj; rw [toNat_div2, ofNat_toNat' h2jl_sz,
+            ofNat_toNat' hjl_sz]; omega
+        rw [hkdiv]; exact hjl_ne
+      · obtain ⟨jr, hjr_lt, hjr_ne⟩ := ih (by omega) r hcanr hr_ne
+        have h2pow : (2:Nat)^(d'+1) = 2 * 2^d' := by rw [Nat.pow_succ]; exact Nat.mul_comm _ _
+        have hjr_sz : jr < UInt32.size := by
+          simp only [UInt32.size]
+          have hle : 2^d' ≤ 2^32 := Nat.pow_le_pow_right (by omega) (by omega : d' ≤ 32)
+          have h32 : (2:Nat)^32 = 4294967296 := by native_decide
+          linarith
+        have h2jr1_lt : 2 * jr + 1 < 2^(d'+1) := by omega
+        have h2jr1_sz : 2 * jr + 1 < UInt32.size := by
+          simp only [UInt32.size]
+          have hle : 2^(d'+1) ≤ 2^32 := Nat.pow_le_pow_right (by omega) hd
+          have h32 : (2:Nat)^32 = 4294967296 := by native_decide
+          linarith
+        refine ⟨2 * jr + 1, h2jr1_lt, ?_⟩
+        have hk0 : UInt32.ofNat (2 * jr + 1) ≠ 0 := by
+          intro h; have h' := congrArg UInt32.toNat h
+          rw [ofNat_toNat' h2jr1_sz, show (0:UInt32).toNat=0 from rfl] at h'; omega
+        rw [get?_node_nz _ _ _ _ hk0]
+        have hkmod : UInt32.ofNat (2 * jr + 1) % 2 ≠ 0 := by
+          intro h; have h' := congrArg UInt32.toNat h
+          rw [toNat_mod2, show (0:UInt32).toNat=0 from rfl, ofNat_toNat' h2jr1_sz] at h'; omega
+        rw [if_neg hkmod]
+        have hkdiv : UInt32.ofNat (2 * jr + 1) / 2 = UInt32.ofNat jr := by
+          apply UInt32.toNat.inj; rw [toNat_div2, ofNat_toNat' h2jr1_sz,
+            ofNat_toNat' hjr_sz]; omega
+        rw [hkdiv]; exact hjr_ne
+
+theorem canonical_nonempty (t : Raw V) (ht : t.canonical) (hne : t ≠ .empty) :
+    ∃ k, t.get? k ≠ none :=
+  let ⟨j, _, hjne⟩ := canonical_nonempty_aux 32 (by omega) t ht hne
+  ⟨UInt32.ofNat j, hjne⟩
+
+-- ─── Extensionality for canonical tries ───────────────────────────────────────
+
+private theorem canonical_equiv_implies_eq_aux :
+    ∀ (d : Nat), d ≤ 32 → ∀ (t₁ t₂ : Raw V),
+    t₁.canonicalAux d → t₂.canonicalAux d →
+    (∀ j : Nat, j < 2^d → t₁.get? (UInt32.ofNat j) = t₂.get? (UInt32.ofNat j)) →
+    t₁ = t₂ := by
+  intro d
+  induction d with
+  | zero =>
+    intro _ t₁ t₂ ht₁ ht₂ heq
+    cases t₁ with
+    | empty =>
+      cases t₂ with
+      | empty => rfl
+      | node v₂ l₂ r₂ =>
+        obtain ⟨hv₂, _, _⟩ := ht₂
+        have h := heq 0 (by omega)
+        have hzero : (UInt32.ofNat 0 : UInt32) = 0 := rfl
+        rw [hzero, get?_empty, get?_node_zero] at h
+        exact absurd h.symm hv₂
+    | node v₁ l₁ r₁ =>
+      obtain ⟨hv₁, hl₁, hr₁⟩ := ht₁; subst hl₁; subst hr₁
+      cases t₂ with
+      | empty =>
+        have h := heq 0 (by omega)
+        have hzero : (UInt32.ofNat 0 : UInt32) = 0 := rfl
+        rw [hzero, get?_empty, get?_node_zero] at h
+        exact absurd h hv₁
+      | node v₂ l₂ r₂ =>
+        obtain ⟨_, hl₂, hr₂⟩ := ht₂; subst hl₂; subst hr₂
+        have hv : v₁ = v₂ := by
+          have h := heq 0 (by omega)
+          have hzero : (UInt32.ofNat 0 : UInt32) = 0 := rfl
+          rw [hzero, get?_node_zero, get?_node_zero] at h; exact h
+        subst hv; rfl
+  | succ d' ih =>
+    intro hd t₁ t₂ ht₁ ht₂ heq
+    cases t₁ with
+    | empty =>
+      cases t₂ with
+      | empty => rfl
+      | node v₂ l₂ r₂ =>
+        exfalso
+        obtain ⟨j, hj_lt, hj_ne⟩ := canonical_nonempty_aux (d'+1) hd (.node v₂ l₂ r₂) ht₂ (by simp)
+        have h := heq j hj_lt
+        simp only [get?_empty] at h
+        exact hj_ne h.symm
+    | node v₁ l₁ r₁ =>
+      obtain ⟨hcond₁, hlv₁, hcanl₁, hcanr₁⟩ := ht₁
+      cases t₂ with
+      | empty =>
+        exfalso
+        obtain ⟨j, hj_lt, hj_ne⟩ := canonical_nonempty_aux (d'+1) hd (.node v₁ l₁ r₁) ⟨hcond₁, hlv₁, hcanl₁, hcanr₁⟩ (by simp)
+        have h := heq j hj_lt
+        simp only [get?_empty] at h
+        exact hj_ne h
+      | node v₂ l₂ r₂ =>
+        obtain ⟨_, hlv₂, hcanl₂, hcanr₂⟩ := ht₂
+        have hd' : d' ≤ 32 := by omega
+        have hv : v₁ = v₂ := by
+          have h := heq 0 (by omega)
+          have hzero : (UInt32.ofNat 0 : UInt32) = 0 := rfl
+          rw [hzero, get?_node_zero, get?_node_zero] at h; exact h
+        have hl : l₁ = l₂ := ih hd' l₁ l₂ hcanl₁ hcanl₂ (fun j hj => by
+          by_cases hj0 : j = 0
+          · subst hj0
+            have hzero : (UInt32.ofNat 0 : UInt32) = 0 := rfl
+            simp only [hzero, get?_zero, hlv₁, hlv₂]
+          · have h2pow : (2:Nat)^(d'+1) = 2 * 2^d' := by rw [Nat.pow_succ]; exact Nat.mul_comm _ _
+            have h2j_lt : 2 * j < 2^(d'+1) := by omega
+            have hj_sz : j < UInt32.size := by
+              simp only [UInt32.size]
+              have hle : 2^d' ≤ 2^32 := Nat.pow_le_pow_right (by omega) hd'
+              have h32 : (2:Nat)^32 = 4294967296 := by native_decide
+              linarith
+            have h2j_sz : 2 * j < UInt32.size := by
+              simp only [UInt32.size]
+              have hle : 2^(d'+1) ≤ 2^32 := Nat.pow_le_pow_right (by omega) hd
+              have h32 : (2:Nat)^32 = 4294967296 := by native_decide
+              linarith
+            have hne0 : UInt32.ofNat (2 * j) ≠ 0 := by
+              intro h; have h' := congrArg UInt32.toNat h
+              rw [ofNat_toNat' h2j_sz, show (0:UInt32).toNat=0 from rfl] at h'; omega
+            have hmod : UInt32.ofNat (2 * j) % 2 = 0 := by
+              apply UInt32.toNat.inj; rw [toNat_mod2, show (0:UInt32).toNat=0 from rfl,
+                ofNat_toNat' h2j_sz]; omega
+            have hdiv : UInt32.ofNat (2 * j) / 2 = UInt32.ofNat j := by
+              apply UInt32.toNat.inj; rw [toNat_div2, ofNat_toNat' h2j_sz, ofNat_toNat' hj_sz]
+              omega
+            have h2j := heq (2 * j) h2j_lt
+            rw [get?_node_nz v₁ l₁ r₁ _ hne0, get?_node_nz v₂ l₂ r₂ _ hne0,
+                if_pos hmod, if_pos hmod, hdiv, hdiv] at h2j
+            exact h2j)
+        have hr : r₁ = r₂ := ih hd' r₁ r₂ hcanr₁ hcanr₂ (fun j hj => by
+          have h2pow : (2:Nat)^(d'+1) = 2 * 2^d' := by rw [Nat.pow_succ]; exact Nat.mul_comm _ _
+          have h2j1_lt : 2 * j + 1 < 2^(d'+1) := by omega
+          have hj_sz : j < UInt32.size := by
+            simp only [UInt32.size]
+            have hle : 2^d' ≤ 2^32 := Nat.pow_le_pow_right (by omega) hd'
+            have h32 : (2:Nat)^32 = 4294967296 := by native_decide
+            linarith
+          have h2j1_sz : 2 * j + 1 < UInt32.size := by
+            simp only [UInt32.size]
+            have hle : 2^(d'+1) ≤ 2^32 := Nat.pow_le_pow_right (by omega) hd
+            have h32 : (2:Nat)^32 = 4294967296 := by native_decide
+            linarith
+          have hne0 : UInt32.ofNat (2 * j + 1) ≠ 0 := by
+            intro h; have h' := congrArg UInt32.toNat h
+            rw [ofNat_toNat' h2j1_sz, show (0:UInt32).toNat=0 from rfl] at h'; omega
+          have hmod : UInt32.ofNat (2 * j + 1) % 2 ≠ 0 := by
+            intro h; have h' := congrArg UInt32.toNat h
+            rw [toNat_mod2, show (0:UInt32).toNat=0 from rfl, ofNat_toNat' h2j1_sz] at h'; omega
+          have hdiv : UInt32.ofNat (2 * j + 1) / 2 = UInt32.ofNat j := by
+            apply UInt32.toNat.inj; rw [toNat_div2, ofNat_toNat' h2j1_sz, ofNat_toNat' hj_sz]
+            omega
+          have h2j1 := heq (2 * j + 1) h2j1_lt
+          rw [get?_node_nz v₁ l₁ r₁ _ hne0, get?_node_nz v₂ l₂ r₂ _ hne0,
+              if_neg hmod, if_neg hmod, hdiv, hdiv] at h2j1
+          exact h2j1)
+        subst hv; subst hl; subst hr; rfl
+
+theorem canonical_equiv_implies_eq (t₁ : Raw V) :
+    ∀ t₂ : Raw V, t₁.canonical → t₂.canonical →
+      (∀ k, t₁.get? k = t₂.get? k) → t₁ = t₂ :=
+  fun t₂ h₁ h₂ heq =>
+    canonical_equiv_implies_eq_aux 32 (by omega) t₁ t₂ h₁ h₂ (fun j _ => heq (UInt32.ofNat j))
+
+-- ─── toListAux correctness ────────────────────────────────────────────────────
+
+-- Key bounds lemmas
+private theorem ofNat_lt_size {d j : Nat} (_ : d ≤ 32) (hj : j < 2^(32-d)) :
+    j < UInt32.size := by
+  simp only [UInt32.size]
+  calc j < 2^(32-d) := hj
+    _ ≤ 2^32 := Nat.pow_le_pow_right (by omega) (Nat.sub_le 32 d)
+
+private theorem j_pow_lt_size {d j : Nat} (hd : d ≤ 32) (hj : j < 2^(32-d)) :
+    j * 2^d < UInt32.size := by
+  simp only [UInt32.size]
+  have := @Nat.pow_le_pow_right 2 (by omega) (32-d) d (Nat.le_refl _)
+  have h : 2^(32-d) * 2^d = 2^32 := by
+    rw [← Nat.pow_add]; congr 1; omega
+  linarith [Nat.mul_lt_mul_right (Nat.two_pow_pos d) hj, show (2:Nat)^32 = 4294967296 from by native_decide]
+
+private theorem pfx_j_pow_lt_size {d j : Nat} (hd : d ≤ 32) (hj : j < 2^(32-d))
+    (pfx : UInt32) (hpfx : pfx.toNat < 2^d) :
+    pfx.toNat + j * 2^d < UInt32.size := by
+  simp only [UInt32.size]
+  have hj2 : j * 2^d ≤ 2^32 - 2^d := by
+    have h2eq : 2^(32-d) * 2^d = 2^32 := by rw [← Nat.pow_add]; congr 1; omega
+    have := Nat.mul_le_mul_right (2^d) (Nat.lt_iff_add_one_le.mp hj)
+    simp only [Nat.pow_add] at *; omega
+  have := Nat.two_pow_pos d
+  omega
+
+private theorem ofNat_toNat' {n : Nat} (h : n < UInt32.size) :
+    (UInt32.ofNat n).toNat = n := by
+  simp [Nat.mod_eq_of_lt h]
+
+private theorem ofNat_add_no_overflow {a b : Nat} (h : a + b < UInt32.size) :
+    (UInt32.ofNat a + UInt32.ofNat b).toNat = a + b := by
+  rw [UInt32.toNat_add, ofNat_toNat' (Nat.lt_of_le_of_lt (Nat.le_add_right _ _) h),
+      ofNat_toNat' (Nat.lt_of_le_of_lt (Nat.le_add_left _ _) h), Nat.mod_eq_of_lt h]
+
+private theorem ofNat_pow_d_lt_size {d : Nat} (hd : d < 32) : 2^d < UInt32.size := by
+  simp only [UInt32.size]; exact Nat.pow_lt_pow_right (by omega) (by omega)
+
+-- Key: (k, v) ∈ toListAux t d pfx skip ↔ ∃ j < 2^(32-d), (skip → j≠0)
+--      ∧ k.toNat = pfx.toNat + j * 2^d ∧ t.get? (UInt32.ofNat j) = some v
+-- (Under conditions: d ≤ 32, pfx.toNat < 2^d)
+private theorem mem_toListAux_iff (t : Raw V) :
+    ∀ d, d ≤ 32 → ∀ (pfx : UInt32), pfx.toNat < 2^d → ∀ (skip : Bool) (k : UInt32) (v : V),
+    (k, v) ∈ t.toListAux d pfx skip ↔
+    ∃ j : Nat, j < 2^(32-d) ∧ (skip → j ≠ 0) ∧
+      k.toNat = pfx.toNat + j * 2^d ∧ t.get? (UInt32.ofNat j) = some v := by
+  induction t with
+  | empty =>
+    intro d _ pfx _ skip k v
+    simp [toListAux, get?_empty]
+  | node o l r ih_l ih_r =>
+    intro d hd pfx hpfx skip k v
+    simp only [toListAux, List.mem_append]
+    -- Root part: (k,v) in root ↔ ¬skip ∧ o = some v ∧ k = pfx (j=0 case)
+    -- Child parts (when d < 32): left at d+1 pfx true, right at d+1 (pfx+2^d) false
+    constructor
+    · rintro (hroot | hchild)
+      · -- Root
+        cases hskip : skip with
+        | true => simp [hskip] at hroot
+        | false =>
+          simp only [hskip] at hroot
+          cases ho : o with
+          | none => simp [ho] at hroot
+          | some u =>
+            simp only [ho] at hroot
+            obtain ⟨rfl, rfl⟩ := hroot
+            refine ⟨0, Nat.two_pow_pos _, by simp, by simp, ?_⟩
+            simp [get?_node_zero, ho]
+      · -- Children
+        by_cases hge : d ≥ 32
+        · simp [if_pos hge] at hchild
+        · simp only [if_neg hge] at hchild
+          simp only [List.mem_append] at hchild
+          have hd32 : d < 32 := by omega
+          rcases hchild with hmem | hmem
+          · -- Left subtrie: d+1, pfx, skip=true
+            rw [ih_l (d+1) (by omega) pfx (by omega) true k v] at hmem
+            obtain ⟨jl, hjl, hskipl, hkl, hgetl⟩ := hmem
+            have hjl_ne0 : jl ≠ 0 := hskipl (by rfl)
+            -- parent j = 2*jl (even nonzero)
+            have h2jl_lt : 2 * jl < 2^(32-d) := by
+              have h2pow : 2^(32-d) = 2 * 2^(32-d-1) := by
+                rw [show 32-d = 32-d-1+1 from by omega, Nat.pow_add, Nat.pow_one]
+              omega
+            refine ⟨2 * jl, h2jl_lt, by simp, ?_, ?_⟩
+            · -- k.toNat = pfx.toNat + (2*jl) * 2^d
+              have h2jl_pow : 2 * jl * 2^d = jl * 2^(d+1) := by
+                rw [Nat.pow_succ, Nat.mul_comm (2^d) 2, ← Nat.mul_assoc jl 2 (2^d), Nat.mul_comm jl 2]
+              have hno_ov : pfx.toNat + jl * 2^(d+1) < UInt32.size := by
+                apply pfx_j_pow_lt_size (by omega) hjl pfx (by omega)
+              rw [h2jl_pow]
+              have hkl_eq : k.toNat = pfx.toNat + jl * 2^(d+1) := hkl
+              exact hkl_eq
+            · -- get?
+              rw [get?_node_nz]
+              · have hmod : UInt32.ofNat (2 * jl) % 2 = 0 := by
+                  apply UInt32.toNat.inj; rw [toNat_mod2, show (0:UInt32).toNat=0 from rfl]
+                  have h2jl_sz : 2 * jl < UInt32.size := ofNat_lt_size hd h2jl_lt
+                  rw [ofNat_toNat' h2jl_sz]; omega
+                have hdiv : UInt32.ofNat (2 * jl) / 2 = UInt32.ofNat jl := by
+                  apply UInt32.toNat.inj; rw [toNat_div2]
+                  have h2jl_sz : 2 * jl < UInt32.size := ofNat_lt_size hd h2jl_lt
+                  have hjl_sz : jl < UInt32.size := ofNat_lt_size (by omega) hjl
+                  rw [ofNat_toNat' h2jl_sz, ofNat_toNat' hjl_sz]; omega
+                rw [if_pos hmod, hdiv]; exact hgetl
+              · intro h; apply UInt32.toNat.inj at h
+                have h2jl_sz : 2 * jl < UInt32.size := ofNat_lt_size hd h2jl_lt
+                rw [ofNat_toNat' h2jl_sz, show (0:UInt32).toNat=0 from rfl] at h
+                omega
+          · -- Right subtrie: d+1, pfx+2^d, skip=false
+            have h2d_sz : 2^d < UInt32.size := ofNat_pow_d_lt_size hd32
+            have hpfx_new : (pfx + UInt32.ofNat (2^d)).toNat = pfx.toNat + 2^d := by
+              rw [UInt32.toNat_add, ofNat_toNat' h2d_sz]
+              have := pfx.toNat_lt; simp only [UInt32.size] at *; omega
+            rw [ih_r (d+1) (by omega) (pfx + UInt32.ofNat (2^d)) (by rw [hpfx_new]; omega)
+                false k v] at hmem
+            obtain ⟨jr, hjr, _, hkr, hgetr⟩ := hmem
+            -- parent j = 2*jr+1 (odd)
+            have h2jr1_lt : 2 * jr + 1 < 2^(32-d) := by
+              have h2pow : 2^(32-d) = 2 * 2^(32-d-1) := by
+                rw [show 32-d = 32-d-1+1 from by omega, Nat.pow_add, Nat.pow_one]
+              omega
+            refine ⟨2 * jr + 1, h2jr1_lt, by simp, ?_, ?_⟩
+            · -- k.toNat = pfx.toNat + (2*jr+1) * 2^d
+              rw [hpfx_new] at hkr
+              rw [hkr]
+              have h2pow : (2:Nat)^(d+1) = 2 * 2^d := by rw [Nat.pow_succ]; exact Nat.mul_comm _ _
+              have h_jr : jr * 2^(d+1) = 2 * jr * 2^d := by
+                rw [h2pow, ← Nat.mul_assoc jr 2 (2^d), Nat.mul_comm jr 2]
+              have h_factor : (2 * jr + 1) * 2^d = 2 * jr * 2^d + 2^d := by
+                rw [Nat.add_mul, Nat.one_mul]
+              linarith
+            · -- get?
+              rw [get?_node_nz]
+              · have hmod : UInt32.ofNat (2 * jr + 1) % 2 ≠ 0 := by
+                  intro h; apply UInt32.toNat.inj at h
+                  have h_sz : 2 * jr + 1 < UInt32.size := ofNat_lt_size hd h2jr1_lt
+                  rw [toNat_mod2, ofNat_toNat' h_sz, show (0:UInt32).toNat=0 from rfl] at h
+                  omega
+                have hdiv : UInt32.ofNat (2 * jr + 1) / 2 = UInt32.ofNat jr := by
+                  apply UInt32.toNat.inj; rw [toNat_div2]
+                  have h_sz : 2 * jr + 1 < UInt32.size := ofNat_lt_size hd h2jr1_lt
+                  have hjr_sz : jr < UInt32.size := ofNat_lt_size (by omega) hjr
+                  rw [ofNat_toNat' h_sz, ofNat_toNat' hjr_sz]; omega
+                rw [if_neg hmod, hdiv]; exact hgetr
+              · intro h; apply UInt32.toNat.inj at h
+                have h_sz : 2 * jr + 1 < UInt32.size := ofNat_lt_size hd h2jr1_lt
+                rw [ofNat_toNat' h_sz, show (0:UInt32).toNat=0 from rfl] at h; omega
+    · intro ⟨j, hjlt, hskip_j, hknat, hget⟩
+      -- Which part does j belong to?
+      by_cases hj0 : j = 0
+      · subst hj0
+        simp only [Nat.zero_mul, Nat.add_zero, Nat.mul_zero] at hknat
+        -- k = pfx (from k.toNat = pfx.toNat + 0)
+        have hkpfx : k = pfx := UInt32.toNat.inj (by simp [hknat])
+        -- get? (ofNat 0) = o = some v
+        have hojv : o = some v := by
+          simp [get?_node_zero] at hget; exact hget
+        left  -- go to root part
+        cases hskp : skip with
+        | true => exact absurd hj0 (hskip_j rfl)
+        | false =>
+          simp only [hskp, ↓reduceIte, hojv, List.mem_singleton, Prod.mk.injEq]
+          exact ⟨hkpfx, rfl⟩
+      · -- j > 0: go to children
+        right
+        have hd32 : d < 32 := by
+          by_contra hge
+          simp only [not_lt] at hge
+          -- j < 2^(32-d) with d ≥ 32 means j < 1, i.e., j = 0, contradiction
+          have : 2^(32-d) ≤ 1 := by
+            cases Nat.eq_or_gt_of_le (Nat.le_of_lt_succ (Nat.lt_of_lt_of_le hjlt (by omega))) with
+            | inl h => exact h ▸ le_refl _
+            | inr h => exact absurd h (Nat.not_lt.mpr (Nat.one_le_iff_ne_zero.mpr (fun e => by simp [e] at hjlt; omega)))
+          omega
+        simp only [if_neg (show ¬ d ≥ 32 from by omega), List.mem_append]
+        have h2d_sz : 2^d < UInt32.size := ofNat_pow_d_lt_size hd32
+        have hj_sz : j < UInt32.size := ofNat_lt_size hd hjlt
+        -- get? (ofNat j) with j ≠ 0: depends on parity
+        rw [get?_node_nz] at hget
+        · by_cases hmod : j % 2 = 0
+          · -- j even, j ≥ 2: left subtrie with jl = j/2
+            simp only [if_pos (show UInt32.ofNat j % 2 = 0 from by
+              apply UInt32.toNat.inj; rw [toNat_mod2, show (0:UInt32).toNat=0 from rfl]
+              rw [ofNat_toNat' hj_sz]; exact hmod)] at hget
+            have hkdiv : UInt32.ofNat j / 2 = UInt32.ofNat (j / 2) := by
+              apply UInt32.toNat.inj; rw [toNat_div2, ofNat_toNat' hj_sz, ofNat_toNat']
+              exact Nat.lt_of_le_of_lt (Nat.div_le_self _ _) hj_sz
+            rw [hkdiv] at hget
+            set jl := j / 2
+            have hjl_ne0 : jl ≠ 0 := by
+              intro h; rw [h, Nat.zero_div] at *; omega
+            have hjl_lt : jl < 2^(32-(d+1)) := by
+              have h2pow : 2^(32-d) = 2 * 2^(32-d-1) := by
+                rw [show 32-d = 32-d-1+1 from by omega, Nat.pow_add, Nat.pow_one]
+              rw [show 32-(d+1) = 32-d-1 from by omega]
+              have hj2 := Nat.div_lt_iff_lt_mul (Nat.two_pos) |>.mpr (by rw [← h2pow]; exact hjlt)
+              exact hj2
+            have hknat_l : k.toNat = pfx.toNat + jl * 2^(d+1) := by
+              rw [hknat, show 32-d = 32-d-1+1 from by omega] at *
+              simp only [Nat.pow_add, Nat.pow_one] at hknat
+              have : j * 2^d = jl * (2^d * 2) := by
+                simp [jl]; rw [Nat.div_mul_cancel (Nat.dvd_of_mod_eq_zero hmod)]
+                ring
+              linarith [this.symm]
+            left
+            rw [ih_l (d+1) (by omega) pfx (by omega) true k v]
+            exact ⟨jl, hjl_lt, fun _ => hjl_ne0, hknat_l, hget⟩
+          · -- j odd: right subtrie with jr = j/2
+            simp only [if_neg (show UInt32.ofNat j % 2 ≠ 0 from by
+              intro h; apply UInt32.toNat.inj at h
+              rw [toNat_mod2, ofNat_toNat' hj_sz, show (0:UInt32).toNat=0 from rfl] at h
+              exact hmod h)] at hget
+            have hkdiv : UInt32.ofNat j / 2 = UInt32.ofNat (j / 2) := by
+              apply UInt32.toNat.inj; rw [toNat_div2, ofNat_toNat' hj_sz, ofNat_toNat']
+              exact Nat.lt_of_le_of_lt (Nat.div_le_self _ _) hj_sz
+            rw [hkdiv] at hget
+            set jr := j / 2
+            have hjr_lt : jr < 2^(32-(d+1)) := by
+              rw [show 32-(d+1) = 32-d-1 from by omega]
+              have h2pow : 2^(32-d) = 2 * 2^(32-d-1) := by
+                rw [show 32-d = 32-d-1+1 from by omega, Nat.pow_add, Nat.pow_one]
+              have : j = 2 * jr + 1 := by
+                simp [jr]; omega
+              omega
+            have hpfx_new : (pfx + UInt32.ofNat (2^d)).toNat = pfx.toNat + 2^d := by
+              rw [UInt32.toNat_add, ofNat_toNat' h2d_sz]
+              have := pfx.toNat_lt; simp only [UInt32.size] at *; omega
+            have hknat_r : k.toNat = (pfx + UInt32.ofNat (2^d)).toNat + jr * 2^(d+1) := by
+              rw [hpfx_new, hknat]
+              have hjodd : j = 2 * jr + 1 := by simp [jr]; omega
+              rw [hjodd]; ring
+            right
+            rw [ih_r (d+1) (by omega) (pfx + UInt32.ofNat (2^d)) (by rw [hpfx_new]; omega)
+                false k v]
+            exact ⟨jr, hjr_lt, by simp, hknat_r, hget⟩
+        · -- j ≠ 0 as UInt32
+          intro h; apply UInt32.toNat.inj at h
+          rw [ofNat_toNat' hj_sz, show (0:UInt32).toNat=0 from rfl] at h
+          exact hj0 h
+
+-- toListAux has no duplicate pairs
+private theorem toListAux_nodup (t : Raw V) :
+    ∀ d, d ≤ 32 → ∀ (pfx : UInt32), pfx.toNat < 2^d → ∀ (skip : Bool),
+    (t.toListAux d pfx skip).Nodup := by
+  induction t with
+  | empty => intro d _ pfx _ skip; simp [toListAux]
+  | node o l r ih_l ih_r =>
+    intro d hd pfx hpfx skip
+    simp only [toListAux]
+    by_cases hge : d ≥ 32
+    · simp only [if_pos hge, List.append_nil]
+      cases skip with
+      | true => exact List.nodup_nil
+      | false => cases o <;> simp
+    · simp only [if_neg hge]
+      have hd32 : d < 32 := by omega
+      have h2d_sz : 2^d < UInt32.size := ofNat_pow_d_lt_size hd32
+      have hpfx_new : (pfx + UInt32.ofNat (2^d)).toNat = pfx.toNat + 2^d := by
+        rw [UInt32.toNat_add, ofNat_toNat' h2d_sz]
+        have := pfx.toNat_lt; simp only [UInt32.size] at *; omega
+      rw [show (if skip then [] else match o with | none => [] | some u => [(pfx, u)]) ++
+           (l.toListAux (d+1) pfx true ++ r.toListAux (d+1) (pfx + UInt32.ofNat (2^d)) false) =
+           (if skip then [] else match o with | none => [] | some u => [(pfx, u)]) ++
+           l.toListAux (d+1) pfx true ++
+           r.toListAux (d+1) (pfx + UInt32.ofNat (2^d)) false from by rw [List.append_assoc]]
+      rw [List.nodup_append, List.nodup_append]
+      refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_⟩
+      · -- root part nodup
+        cases skip with
+        | true => exact List.nodup_nil
+        | false => cases o <;> simp
+      · -- left nodup
+        exact ih_l (d+1) (by omega) pfx (by omega) true
+      · -- root and left are disjoint
+        intro ⟨k₁, v₁⟩ hkv₁ ⟨k₂, v₂⟩ hkv₂ heq
+        simp only at heq; subst heq
+        cases hskp : skip with
+        | true => simp [hskp] at hkv₁
+        | false =>
+          simp only [hskp, ↓reduceIte] at hkv₁
+          cases ho : o with
+          | none => simp [ho] at hkv₁
+          | some u =>
+            simp only [ho, List.mem_singleton, Prod.mk.injEq] at hkv₁
+            obtain ⟨rfl, rfl⟩ := hkv₁
+            rw [ih_l (d+1) (by omega) pfx (by omega) true k₂ v₂] at hkv₂
+            obtain ⟨jl, hjl, hskipl, hknat, _⟩ := hkv₂
+            have hjl_ne0 := hskipl (by rfl)
+            -- k₁ = pfx: k₂.toNat = pfx.toNat + jl * 2^(d+1) with jl ≥ 1
+            have : k₂.toNat > pfx.toNat := by
+              rw [hknat]; have := Nat.two_pow_pos (d+1); omega
+            -- But k₁ = pfx = k₂ from heq... but k₁.toNat = pfx.toNat and k₂.toNat > pfx.toNat
+            have hk12 : k₁.toNat = k₂.toNat := by rfl  -- k₁ = k₂ from heq
+            linarith [show k₁.toNat = pfx.toNat from by simp]
+      · -- right nodup
+        exact ih_r (d+1) (by omega) (pfx + UInt32.ofNat (2^d)) (by rw [hpfx_new]; omega) false
+      · -- (root ++ left) and right are disjoint
+        intro ⟨k₁, v₁⟩ hkv₁ ⟨k₂, v₂⟩ hkv₂ heq
+        simp only at heq; subst heq
+        simp only [List.mem_append] at hkv₁
+        rw [ih_r (d+1) (by omega) (pfx + UInt32.ofNat (2^d)) (by rw [hpfx_new]; omega)
+            false k₂ v₂] at hkv₂
+        obtain ⟨jr, hjr, _, hknat_r, _⟩ := hkv₂
+        -- k₂.toNat = pfx.toNat + 2^d + jr * 2^(d+1)
+        rw [hpfx_new] at hknat_r
+        -- k₂.toNat ≡ pfx.toNat + 2^d (mod 2^(d+1)), i.e., odd multiple of 2^d after pfx
+        -- But elements from root have k.toNat = pfx.toNat (j=0)
+        -- Elements from left have k.toNat = pfx.toNat + jl * 2^(d+1) (even multiple after pfx)
+        -- These differ from right (odd multiple + 2^d after pfx) by parity mod 2^(d+1)
+        -- Key parity: (k₂.toNat - pfx.toNat) mod 2^(d+1) = 2^d ≠ 0
+        -- For root: (k₁.toNat - pfx.toNat) mod 2^(d+1) = 0 mod 2^(d+1)
+        -- For left: (k₁.toNat - pfx.toNat) mod 2^(d+1) = (jl * 2^(d+1)) mod 2^(d+1) = 0
+        -- Contradiction since 2^d ≠ 0 and 0 ≠ 2^d mod 2^(d+1) = 2^d
+        rcases hkv₁ with hkv₁_root | hkv₁_left
+        · -- root: k₁ = pfx
+          cases hskp : skip with
+          | true => simp [hskp] at hkv₁_root
+          | false =>
+            simp only [hskp, ↓reduceIte] at hkv₁_root
+            cases ho : o with
+            | none => simp [ho] at hkv₁_root
+            | some u =>
+              simp only [ho, List.mem_singleton, Prod.mk.injEq] at hkv₁_root
+              obtain ⟨rfl, _⟩ := hkv₁_root
+              -- k₁ = pfx, k₂ = k₁ means pfx.toNat = pfx.toNat + 2^d + jr * 2^(d+1)
+              have := Nat.two_pow_pos d; omega
+        · -- left: k₁.toNat = pfx.toNat + jl * 2^(d+1)
+          rw [ih_l (d+1) (by omega) pfx (by omega) true k₂ v₁] at hkv₁_left
+          obtain ⟨jl, hjl, _, hknat_l, _⟩ := hkv₁_left
+          -- k₁.toNat = k₂.toNat (since k₁ = k₂)
+          -- pfx.toNat + jl * 2^(d+1) = pfx.toNat + 2^d + jr * 2^(d+1)
+          -- jl * 2^(d+1) = 2^d + jr * 2^(d+1)
+          -- (jl - jr) * 2^(d+1) = 2^d  (or the signed version)
+          -- 2^d divides both sides, so 2 * (jl - jr) = 1 → impossible (parity)
+          have heqnat : jl * 2^(d+1) = 2^d + jr * 2^(d+1) := by omega
+          have := Nat.two_pow_pos d
+          have := Nat.two_pow_pos (d+1)
+          -- 2^(d+1) = 2 * 2^d, so jl * 2 * 2^d = 2^d + jr * 2 * 2^d
+          -- 2^d * (2*jl) = 2^d * (1 + 2*jr) → 2*jl = 1 + 2*jr (impossible)
+          have h2d : 2^(d+1) = 2 * 2^d := by rw [Nat.pow_add, Nat.pow_one]
+          rw [h2d] at heqnat
+          have hmod2 : (2 * jl) * 2^d = (1 + 2 * jr) * 2^d := by linarith
+          have hfact := Nat.eq_of_mul_eq_mul_right (Nat.two_pow_pos d) hmod2
+          omega  -- 2*jl = 1 + 2*jr has no nat solution
+
+end Raw
+
+-- ─── Public PosTrie type ─────────────────────────────────────────────────────
+
+def PosTrie (V : Type) := {t : Raw V // t.canonical}
+
+namespace PosTrie
+
+variable {V V' : Type}
+
+def empty : PosTrie V := ⟨.empty, Raw.canonical_empty⟩
+
+def get? (t : PosTrie V) (k : UInt32) : Option V := t.val.get? k
+
+def insert (t : PosTrie V) (k : UInt32) (v : V) : PosTrie V :=
+  ⟨t.val.insert k v, Raw.insert_canonical t.val t.property k v⟩
+
+def delete (t : PosTrie V) (k : UInt32) : PosTrie V :=
+  ⟨t.val.delete k, Raw.delete_canonical t.val t.property k⟩
+
+def bindAlter (f : UInt32 → V → Option V') (t : PosTrie V) : PosTrie V' :=
+  ⟨t.val.bindAlter f, Raw.bindAlterAux_canonical f t.val t.property 1 0⟩
+
+def merge (op : UInt32 → V → V → V) (t1 t2 : PosTrie V) : PosTrie V :=
+  ⟨t1.val.mergeAux op t2.val 1 0,
+   Raw.mergeAux_canonical op t1.val t2.val t1.property t2.property 1 0⟩
+
+def toList (t : PosTrie V) : List (UInt32 × V) := t.val.toList
+
+-- ─── API theorems ─────────────────────────────────────────────────────────────
+
+@[simp] theorem get?_empty (k : UInt32) : (PosTrie.empty : PosTrie V).get? k = none := rfl
+
+theorem get?_insert (t : PosTrie V) (k k' : UInt32) (v : V) :
+    (t.insert k v).get? k' = if k = k' then some v else t.get? k' :=
+  Raw.get?_insert t.val k k' v
 
 theorem get?_insert_eq (t : PosTrie V) (k : UInt32) (v : V) :
     (t.insert k v).get? k = some v := by simp [get?_insert]
@@ -312,87 +1255,8 @@ theorem get?_insert_ne (t : PosTrie V) (k k' : UInt32) (v : V) (h : k ≠ k') :
     (t.insert k v).get? k' = t.get? k' := by simp [get?_insert, h]
 
 theorem get?_delete (t : PosTrie V) (k k' : UInt32) :
-    (t.delete k).get? k' = if k = k' then none else t.get? k' := by
-  suffices h : ∀ n, ∀ k : UInt32, k.toNat ≤ n →
-      ∀ k' (t : PosTrie V),
-      (t.delete k).get? k' = if k = k' then none else t.get? k' by
-    exact h k.toNat k (Nat.le_refl _) k' t
-  intro n
-  induction n with
-  | zero =>
-    intro k hle k' t
-    have hk0 : k = 0 := by
-      have hn : k.toNat = 0 := Nat.le_zero.mp hle
-      exact UInt32.toNat.inj (by simpa using hn)
-    subst hk0
-    rw (config := { occs := .pos [1] }) [PosTrie.delete.eq_def]
-    simp only [dif_pos rfl]
-    cases t with
-    | empty =>
-      by_cases hk' : k' = 0
-      · subst hk'; rfl
-      · simp [if_neg (Ne.symm hk'), if_neg hk']
-    | leaf w =>
-      by_cases hk' : k' = 0
-      · subst hk'; rfl
-      · simp [if_neg (Ne.symm hk'), get?_leaf_nz w k' hk']
-    | node w l r =>
-      by_cases hk' : k' = 0
-      · subst hk'; simp [mkNode_get?_zero]
-      · simp [mkNode_get?_nz _ _ _ _ hk', get?_node_nz _ _ _ _ hk', Ne.symm hk']
-  | succ n ih =>
-    intro k hle k' t
-    by_cases hk0 : k = 0
-    · subst hk0
-      rw (config := { occs := .pos [1] }) [PosTrie.delete.eq_def]
-      simp only [dif_pos rfl]
-      cases t with
-      | empty =>
-        by_cases hk' : k' = 0
-        · subst hk'; rfl
-        · simp [if_neg (Ne.symm hk'), if_neg hk']
-      | leaf w =>
-        by_cases hk' : k' = 0
-        · subst hk'; rfl
-        · simp [if_neg (Ne.symm hk'), get?_leaf_nz w k' hk']
-      | node w l r =>
-        by_cases hk' : k' = 0
-        · subst hk'; simp [mkNode_get?_zero]
-        · simp [mkNode_get?_nz _ _ _ _ hk', get?_node_nz _ _ _ _ hk', Ne.symm hk']
-    · have hdivle : (k / 2).toNat ≤ n := by
-        rw [toNat_div2]; have := toNat_ne_zero hk0; omega
-      rw (config := { occs := .pos [1] }) [PosTrie.delete.eq_def]
-      simp only [dif_neg hk0]
-      by_cases hmod : k % 2 = 0
-      · simp only [if_pos hmod]
-        by_cases hk'0 : k' = 0
-        · subst hk'0
-          simp only [if_neg hk0, mkNode_get?_zero]
-          exact (get?_zero t).symm
-        · rw [mkNode_get?_nz _ _ _ _ hk'0, get?_nz t k' hk'0]
-          by_cases hmod' : k' % 2 = 0
-          · simp only [hmod', ↓reduceIte]
-            rw [ih (k / 2) hdivle (k' / 2) t.lc]
-            by_cases heq : k / 2 = k' / 2
-            · simp [heq, uint32_eq_of_div_mod heq (by rw [hmod, hmod'])]
-            · simp [if_neg heq, if_neg (fun e : k = k' => heq (congrArg (· / 2) e))]
-          · have hkk' : k ≠ k' := fun e => hmod' (e ▸ hmod)
-            simp [if_neg hmod', if_neg hkk']
-      · simp only [if_neg hmod]
-        by_cases hk'0 : k' = 0
-        · subst hk'0
-          simp only [if_neg hk0, mkNode_get?_zero]
-          exact (get?_zero t).symm
-        · rw [mkNode_get?_nz _ _ _ _ hk'0, get?_nz t k' hk'0]
-          by_cases hmod' : k' % 2 = 0
-          · have hkk' : k ≠ k' := fun e => hmod (e ▸ hmod')
-            simp [hmod', if_neg hkk']
-          · simp only [if_neg hmod']
-            rw [ih (k / 2) hdivle (k' / 2) t.rc]
-            by_cases heq : k / 2 = k' / 2
-            · simp [heq, uint32_eq_of_div_mod heq
-                (by rw [mod2_eq_one hmod, mod2_eq_one hmod'])]
-            · simp [if_neg heq, if_neg (fun e : k = k' => heq (congrArg (· / 2) e))]
+    (t.delete k).get? k' = if k = k' then none else t.get? k' :=
+  Raw.get?_delete t.val k k'
 
 theorem get?_delete_eq (t : PosTrie V) (k : UInt32) : (t.delete k).get? k = none := by
   simp [get?_delete]
@@ -400,609 +1264,111 @@ theorem get?_delete_eq (t : PosTrie V) (k : UInt32) : (t.delete k).get? k = none
 theorem get?_delete_ne (t : PosTrie V) (k k' : UInt32) (h : k ≠ k') :
     (t.delete k).get? k' = t.get? k' := by simp [get?_delete, h]
 
--- ─── bindAlter ───────────────────────────────────────────────────────────────
+theorem get?_bindAlter (f : UInt32 → V → Option V') (t : PosTrie V) (k : UInt32) :
+    (t.bindAlter f).get? k = (t.get? k).bind (f k) :=
+  Raw.get?_bindAlter f t.val k
 
--- (step, pfx) tracks global key: position j has global key j*step+pfx.
-private def bindAlterAux (f : UInt32 → V → Option V')
-    (t : PosTrie V) (step pfx : UInt32) : PosTrie V' :=
-  match t with
-  | .empty      => .empty
-  | .leaf v     => mkNode (f pfx v) .empty .empty
-  | .node v l r =>
-    mkNode (v.bind (f pfx))
-           (bindAlterAux f l (step * 2) pfx)
-           (bindAlterAux f r (step * 2) (pfx + step))
+theorem get?_merge (op : UInt32 → V → V → V) (t1 t2 : PosTrie V) (k : UInt32) :
+    (t1.merge op t2).get? k = Option.merge (op k) (t1.get? k) (t2.get? k) :=
+  Raw.get?_merge op t1.val t2.val k
 
-def bindAlter (f : UInt32 → V → Option V') (t : PosTrie V) : PosTrie V' :=
-  bindAlterAux f t 1 0
+-- ─── Extensionality ──────────────────────────────────────────────────────────
 
-private theorem get?_bindAlterAux (f : UInt32 → V → Option V')
-    (t : PosTrie V) (step pfx j : UInt32) :
-    (bindAlterAux f t step pfx).get? j = (t.get? j).bind (f (j * step + pfx)) := by
-  induction t generalizing step pfx j with
-  | empty => simp [bindAlterAux]
-  | leaf v =>
-    simp only [bindAlterAux]
-    by_cases hj : j = 0
-    · subst hj; simp [mkNode_get?_zero]
-    · rw [mkNode_get?_nz _ _ _ _ hj, get?_leaf_nz _ _ hj]
-      simp [hj]
-  | node v l r ihl ihr =>
-    simp only [bindAlterAux]
-    by_cases hj : j = 0
-    · subst hj; simp [mkNode_get?_zero, get?_node_zero]
-    · rw [mkNode_get?_nz _ _ _ _ hj, get?_node_nz _ _ _ _ hj]
-      by_cases hmod : j % 2 = 0
-      · simp only [hmod, ↓reduceIte]
-        have hkey : j / 2 * (step * 2) + pfx = j * step + pfx := by
-          have h1 : j / 2 * (step * 2) = j * step := by
-            rw [mul_step_comm, uint32_div2_even hmod]
-          rw [h1]
-        rw [ihl (step * 2) pfx (j / 2), hkey]
-      · simp only [if_neg hmod]
-        have hkey : j / 2 * (step * 2) + (pfx + step) = j * step + pfx := by
-          have h1 : j / 2 * (step * 2) = j / 2 * 2 * step := mul_step_comm (j / 2) step
-          have h2 : j / 2 * 2 * step + (pfx + step) = (j / 2 * 2 + 1) * step + pfx := by
-            rw [uint32_add_mul, uint32_one_mul]
-            rw [← uint32_add_assoc (j / 2 * 2 * step) pfx step]
-            rw [uint32_add_right_comm (j / 2 * 2 * step) pfx step]
-          rw [h1, h2, uint32_div2_odd hmod]
-        rw [ihr (step * 2) (pfx + step) (j / 2), hkey]
+theorem equiv_iff_eq {m₁ m₂ : PosTrie V} :
+    (∀ k, m₁.get? k = m₂.get? k) ↔ m₁ = m₂ := by
+  constructor
+  · intro heq
+    exact Subtype.ext (Raw.canonical_equiv_implies_eq m₁.val m₂.val m₁.property m₂.property heq)
+  · intro h; subst h; intro _; rfl
 
-theorem get?_bindAlter_eq (f : UInt32 → V → Option V') (t : PosTrie V) (k : UInt32) :
-    (t.bindAlter f).get? k = (t.get? k).bind (f k) := by
-  simp only [bindAlter, get?_bindAlterAux, uint32_mul1_add0]
+-- ─── toList ───────────────────────────────────────────────────────────────────
 
--- ─── merge ───────────────────────────────────────────────────────────────────
+private theorem mem_toListAux_iff (t : PosTrie V) (d : Nat) (hd : d ≤ 32)
+    (pfx : UInt32) (hpfx : pfx.toNat < 2^d) (skip : Bool) (k : UInt32) (v : V) :
+    (k, v) ∈ t.val.toListAux d pfx skip ↔
+    ∃ j : Nat, j < 2^(32-d) ∧ (skip → j ≠ 0) ∧
+      k.toNat = pfx.toNat + j * 2^d ∧ t.val.get? (UInt32.ofNat j) = some v :=
+  Raw.mem_toListAux_iff t.val d hd pfx hpfx skip k v
 
-private def mergeAux (op : UInt32 → V → V → V)
-    (t1 t2 : PosTrie V) (step pfx : UInt32) : PosTrie V :=
-  match t1, t2 with
-  | .empty, t  => t
-  | t, .empty  => t
-  | .leaf v,  .leaf w  => mkNode (some (op pfx v w)) .empty .empty
-  | .leaf v,  .node w l2 r2 =>
-    mkNode (Option.merge (op pfx) (some v) w) l2 r2
-  | .node v l1 r1, .leaf w =>
-    mkNode (Option.merge (op pfx) v (some w)) l1 r1
-  | .node v l1 r1, .node w l2 r2 =>
-    mkNode (Option.merge (op pfx) v w)
-           (mergeAux op l1 l2 (step * 2) pfx)
-           (mergeAux op r1 r2 (step * 2) (pfx + step))
+private theorem toListAux_nodup (t : PosTrie V) (d : Nat) (hd : d ≤ 32)
+    (pfx : UInt32) (hpfx : pfx.toNat < 2^d) (skip : Bool) :
+    (t.val.toListAux d pfx skip).Nodup :=
+  Raw.toListAux_nodup t.val d hd pfx hpfx skip
 
-def merge (op : UInt32 → V → V → V) (t1 t2 : PosTrie V) : PosTrie V :=
-  mergeAux op t1 t2 1 0
+end PosTrie
 
-private theorem get?_mergeAux (op : UInt32 → V → V → V)
-    (t1 t2 : PosTrie V) (step pfx j : UInt32) :
-    (mergeAux op t1 t2 step pfx).get? j =
-      Option.merge (op (j * step + pfx)) (t1.get? j) (t2.get? j) := by
-  induction t1 generalizing t2 step pfx j with
-  | empty => simp [mergeAux]
-  | leaf v =>
-    cases t2 with
-    | empty => simp [mergeAux]
-    | leaf w =>
-      simp only [mergeAux]
-      by_cases hj : j = 0
-      · subst hj; simp [mkNode_get?_zero]
-      · rw [mkNode_get?_nz _ _ _ _ hj]
-        simp [get?_leaf_nz _ _ hj, hj]
-    | node w l2 r2 =>
-      simp only [mergeAux]
-      by_cases hj : j = 0
-      · subst hj; simp [mkNode_get?_zero]
-      · rw [mkNode_get?_nz _ _ _ _ hj, get?_node_nz _ _ _ _ hj]
-        simp [get?_leaf_nz _ _ hj, hj]
-  | node v l1 r1 ihl ihr =>
-    cases t2 with
-    | empty => simp [mergeAux]
-    | leaf w =>
-      simp only [mergeAux]
-      by_cases hj : j = 0
-      · subst hj; simp [mkNode_get?_zero]
-      · rw [mkNode_get?_nz _ _ _ _ hj, get?_node_nz _ _ _ _ hj]
-        simp [get?_leaf_nz _ _ hj, hj]
-    | node w l2 r2 =>
-      simp only [mergeAux]
-      by_cases hj : j = 0
-      · subst hj; simp [mkNode_get?_zero, get?_node_zero]
-      · rw [mkNode_get?_nz _ _ _ _ hj, get?_node_nz _ _ _ _ hj, get?_node_nz _ _ _ _ hj]
-        by_cases hmod : j % 2 = 0
-        · simp only [hmod, ↓reduceIte]
-          have hkey : j / 2 * (step * 2) + pfx = j * step + pfx := by
-            have h1 : j / 2 * (step * 2) = j * step := by
-              rw [mul_step_comm, uint32_div2_even hmod]
-            rw [h1]
-          rw [ihl l2 (step * 2) pfx (j / 2), hkey]
-        · simp only [if_neg hmod]
-          have hkey : j / 2 * (step * 2) + (pfx + step) = j * step + pfx := by
-            have h1 : j / 2 * (step * 2) = j / 2 * 2 * step := mul_step_comm (j / 2) step
-            have h2 : j / 2 * 2 * step + (pfx + step) = (j / 2 * 2 + 1) * step + pfx := by
-              rw [uint32_add_mul, uint32_one_mul]
-              rw [← uint32_add_assoc (j / 2 * 2 * step) pfx step]
-              rw [uint32_add_right_comm (j / 2 * 2 * step) pfx step]
-            rw [h1, h2, uint32_div2_odd hmod]
-          rw [ihr r2 (step * 2) (pfx + step) (j / 2), hkey]
-
-theorem get?_merge_eq (op : UInt32 → V → V → V) (t1 t2 : PosTrie V) (k : UInt32) :
-    (merge op t1 t2).get? k = Option.merge (op k) (t1.get? k) (t2.get? k) := by
-  simp only [merge, get?_mergeAux, uint32_mul1_add0]
-
--- ─── PartialMap instance ─────────────────────────────────────────────────────
+-- ─── PartialMap and LawfulPartialMap instances ────────────────────────────────
 
 open Iris.Std in
 instance : Iris.Std.PartialMap PosTrie UInt32 where
   get?      t k   := t.get? k
   insert    t k v := t.insert k v
   delete    t k   := t.delete k
-  empty           := .empty
+  empty           := PosTrie.empty
   bindAlter f t   := t.bindAlter f
   merge op  t1 t2 := t1.merge op t2
-
--- ─── LawfulPartialMap instance ───────────────────────────────────────────────
 
 open Iris.Std in
 instance : Iris.Std.LawfulPartialMap PosTrie UInt32 where
   get?_empty k := rfl
   get?_insert_eq {V m k k' v} h := by
-    simp only [Iris.Std.get?, Iris.Std.insert]
-    subst h; exact PosTrie.get?_insert_eq m k v
+    simp only [Iris.Std.get?, Iris.Std.insert, PosTrie.get?_insert]
   get?_insert_ne {V m k k' v} h := by
-    simp only [Iris.Std.get?, Iris.Std.insert]
-    exact PosTrie.get?_insert_ne m k k' v h
+    simp [Iris.Std.get?, Iris.Std.insert, PosTrie.get?_insert, h]
   get?_delete_eq {V m k k'} h := by
-    simp only [Iris.Std.get?, Iris.Std.delete]
-    subst h; exact PosTrie.get?_delete_eq m k
+    simp [Iris.Std.get?, Iris.Std.delete, PosTrie.get?_delete, h]
   get?_delete_ne {V m k k'} h := by
-    simp only [Iris.Std.get?, Iris.Std.delete]
-    exact PosTrie.get?_delete_ne m k k' h
-  get?_bindAlter := by
-    simp only [Iris.Std.get?, Iris.Std.bindAlter]
-    exact PosTrie.get?_bindAlter_eq _ _ _
-  get?_merge {V op m₁ m₂ k} := by
-    simp only [Iris.Std.get?, Iris.Std.merge]
-    exact PosTrie.get?_merge_eq op m₁ m₂ k
-  equiv_iff_eq {V m₁ m₂} :=
-    ⟨fun _ => sorry, fun h => h ▸ fun _ => rfl⟩
+    simp [Iris.Std.get?, Iris.Std.delete, PosTrie.get?_delete, h]
+  get?_bindAlter {V V' f m k} := PosTrie.get?_bindAlter f m k
+  get?_merge {V op m₁ m₂ k} := PosTrie.get?_merge op m₁ m₂ k
+  equiv_iff_eq {V m₁ m₂} := by
+    simp only [Iris.Std.get?]; exact PosTrie.equiv_iff_eq
 
--- ─── toList / FiniteMap / LawfulFiniteMap ────────────────────────────────────
-
--- depth replaces the old UInt32 step to avoid overflow at depth ≥ 32.
--- skipRoot=true skips position 0 of the current subtrie.
-private def toListAux (t : PosTrie V) (depth : Nat) (pfx : UInt32) (skipRoot : Bool) :
-    List (UInt32 × V) :=
-  match t with
-  | .empty  => []
-  | .leaf u => if skipRoot then [] else [(pfx, u)]
-  | .node o l r =>
-    (if skipRoot then [] else match o with | none => [] | some u => [(pfx, u)]) ++
-    if depth ≥ 32 then [] else
-      toListAux l (depth + 1) pfx true ++
-      toListAux r (depth + 1) (pfx + UInt32.ofNat (2 ^ depth)) false
-
-def toList (t : PosTrie V) : List (UInt32 × V) := toListAux t 0 0 false
-
--- j < 2^(32-d) implies j < 2^32 = UInt32.size
-private theorem tl_j_lt_size {d j : Nat} (hj : j < 2^(32-d)) : j < UInt32.size :=
-  Nat.lt_of_lt_of_le hj (by
-    simp only [UInt32.size]
-    exact Nat.pow_le_pow_right (by omega) (Nat.sub_le 32 d))
-
--- j < 2^(32-d) and d ≤ 32 implies j * 2^d < 2^32 = UInt32.size
-private theorem tl_pow_j_lt_size {d j : Nat} (hd : d ≤ 32) (hj : j < 2^(32-d)) :
-    j * 2^d < UInt32.size := by
-  simp only [UInt32.size]
-  have hmul := (Nat.mul_lt_mul_right (Nat.two_pow_pos d)).mpr hj
-  rw [show 2^(32-d) * 2^d = 2^32 from by rw [← Nat.pow_add, Nat.sub_add_cancel hd]] at hmul
-  exact hmul
-
-private theorem tl_ofNat_toNat {n : Nat} (h : n < UInt32.size) :
-    (UInt32.ofNat n).toNat = n := by
-  simp [UInt32.toNat_ofNat, Nat.mod_eq_of_lt h]
-
-private theorem tl_ofNat_inj {n m : Nat} (hn : n < UInt32.size) (hm : m < UInt32.size)
-    (h : UInt32.ofNat n = UInt32.ofNat m) : n = m := by
-  have := congrArg UInt32.toNat h
-  rwa [tl_ofNat_toNat hn, tl_ofNat_toNat hm] at this
-
-private theorem tl_ofNat_div2 {n : Nat} (hn : n < UInt32.size) :
-    UInt32.ofNat n / 2 = UInt32.ofNat (n / 2) := by
-  apply UInt32.toNat.inj
-  rw [UInt32.toNat_div, tl_ofNat_toNat hn, show (2 : UInt32).toNat = 2 from by decide,
-      tl_ofNat_toNat (by simp only [UInt32.size] at hn ⊢; omega)]
-
-private theorem tl_ofNat_mod2 {n : Nat} (hn : n < UInt32.size) :
-    UInt32.ofNat n % 2 = UInt32.ofNat (n % 2) := by
-  apply UInt32.toNat.inj
-  rw [UInt32.toNat_mod, tl_ofNat_toNat hn, show (2 : UInt32).toNat = 2 from by decide,
-      tl_ofNat_toNat (by simp only [UInt32.size] at hn ⊢; omega)]
-
-private theorem tl_ofNat_add {a b : Nat} (h : a + b < UInt32.size) :
-    UInt32.ofNat a + UInt32.ofNat b = UInt32.ofNat (a + b) := by
-  apply UInt32.toNat.inj
-  rw [UInt32.toNat_add, tl_ofNat_toNat (by omega), tl_ofNat_toNat (by omega),
-      tl_ofNat_toNat h, Nat.mod_eq_of_lt h]
-
--- 2^(32-(d+1)) * 2 = 2^(32-d) when d < 32
-private theorem tl_pow_step (d : Nat) (hd : d < 32) : 2^(32-(d+1)) * 2 = 2^(32-d) := by
-  rw [show (2:Nat) = 2^1 from (Nat.pow_one 2).symm, ← Nat.pow_add]
-  congr 1; omega
-
--- full characterization: (k,v) ∈ toListAux t d pfx skip ↔
---   ∃ j < 2^(32-d), (skip → j≠0) ∧ k = pfx + ofNat(j*2^d) ∧ t.get? (ofNat j) = some v
-private theorem mem_toListAux_iff (t : PosTrie V) (depth : Nat) (pfx : UInt32) (skip : Bool)
-    (k : UInt32) (v : V) :
-    (k, v) ∈ toListAux t depth pfx skip ↔
-    ∃ j : Nat, j < 2^(32-depth) ∧ (skip → j ≠ 0) ∧
-      k = pfx + UInt32.ofNat (j * 2^depth) ∧ t.get? (UInt32.ofNat j) = some v := by
-  induction t generalizing depth pfx skip k v with
-  | empty => simp [toListAux, get?]
-  | leaf u =>
-    simp only [toListAux]
-    constructor
-    · intro hmem
-      cases skip with
-      | true  => simp at hmem
-      | false =>
-        simp only [Bool.false_eq_true, ↓reduceIte, List.mem_singleton,
-                   Prod.mk.injEq] at hmem
-        obtain ⟨rfl, rfl⟩ := hmem
-        exact ⟨0, Nat.two_pow_pos _, fun h => absurd h (by decide),
-               by simp, by simp [get?]⟩
-    · rintro ⟨j, hj, hskip, hk, hget⟩
-      have hjsz : j < UInt32.size := tl_j_lt_size hj
-      -- get? (.leaf u) (ofNat j) = some v requires ofNat j = 0
-      have hj0 : UInt32.ofNat j = 0 := by
-        simp only [get?] at hget
-        rcases Classical.em (UInt32.ofNat j = 0) with h | h
-        · exact h
-        · rw [if_neg h] at hget; simp at hget
-      have hjz : j = 0 := tl_ofNat_inj hjsz (by decide) hj0
-      subst hjz
-      have h0 : UInt32.ofNat 0 = 0 := by decide
-      simp only [Nat.zero_mul, h0, UInt32.add_zero] at hk
-      simp only [get?, h0, ↓reduceIte] at hget
-      cases skip with
-      | false =>
-        simp only [Bool.false_eq_true, ↓reduceIte, List.mem_singleton, Prod.mk.injEq]
-        exact ⟨hk, (Option.some.inj hget).symm⟩
-      | true  => exact absurd rfl (hskip rfl)
-  | node o l r ihl ihr =>
-    simp only [toListAux, List.mem_append]
-    constructor
-    · rintro (hmem | hmem)
-      · -- root part: if skip then [] else match o
-        cases skip with
-        | true  => simp at hmem
-        | false =>
-          simp only [Bool.false_eq_true, ↓reduceIte] at hmem
-          cases o with
-          | none   => simp at hmem
-          | some u =>
-            simp only [List.mem_singleton, Prod.mk.injEq] at hmem
-            obtain ⟨rfl, rfl⟩ := hmem
-            exact ⟨0, Nat.two_pow_pos _, fun h => absurd h (by decide),
-                   by simp, by simp [get?]⟩
-      · -- children: if depth≥32 then [] else (left ++ right)
-        by_cases hge : depth ≥ 32
-        · simp only [if_pos hge] at hmem; cases hmem
-        · simp only [if_neg hge] at hmem
-          have hd32 : depth < 32 := by omega
-          simp only [List.mem_append] at hmem
-          rcases hmem with hmem | hmem
-          · -- left subtrie (skip=true, so j≠0 enforced)
-            rw [ihl] at hmem
-            obtain ⟨j', hj', hne, hk, hget⟩ := hmem
-            have hj'ne  : j' ≠ 0 := hne rfl
-            have hj2_lt : j' * 2 < 2^(32-depth) := by
-              have h2pow := tl_pow_step depth hd32
-              have := (Nat.mul_lt_mul_right (by omega : 0 < 2)).mpr hj'
-              omega
-            refine ⟨j' * 2, hj2_lt, fun _ => by omega, ?_, ?_⟩
-            · -- key: pfx + ofNat(j'*2^(depth+1)) = pfx + ofNat(j'*2*2^depth)
-              rw [hk]; congr 1
-              rw [show j' * 2 * 2^depth = j' * 2^(depth+1) from by
-                rw [Nat.pow_add, Nat.pow_one, Nat.mul_comm (2^depth) 2,
-                    ← Nat.mul_assoc j' 2 (2^depth)]]
-            · -- get? (.node o l r) (ofNat(j'*2)) = some v
-              have hj2sz : j' * 2 < UInt32.size := tl_j_lt_size hj2_lt
-              simp only [get?]
-              have hne0 : UInt32.ofNat (j' * 2) ≠ 0 := by
-                intro h; exact absurd (tl_ofNat_inj hj2sz (by decide) h) (Nat.mul_ne_zero hj'ne (by decide))
-              rw [if_neg hne0, tl_ofNat_mod2 hj2sz,
-                  show UInt32.ofNat (j' * 2 % 2) = 0 from by simp,
-                  if_pos rfl, tl_ofNat_div2 hj2sz,
-                  show j' * 2 / 2 = j' from by omega]
-              exact hget
-          · -- right subtrie (skip=false)
-            rw [ihr] at hmem
-            obtain ⟨j', hj', _, hk, hget⟩ := hmem
-            have hj21_lt : j' * 2 + 1 < 2^(32-depth) := by
-              have h2pow := tl_pow_step depth hd32
-              have := (Nat.mul_lt_mul_right (by omega : 0 < 2)).mpr hj'
-              omega
-            refine ⟨j' * 2 + 1, hj21_lt, fun _ => by omega, ?_, ?_⟩
-            · -- key: pfx + ofNat(2^depth) + ofNat(j'*2^(depth+1))
-              --      = pfx + ofNat((j'*2+1)*2^depth)
-              have hj2sz  : j' * 2 < UInt32.size := tl_j_lt_size (show j' * 2 < 2^(32-depth) from by omega)
-              have h_key : 2^depth + j' * 2^(depth+1) = (j' * 2 + 1) * 2^depth := by
-                rw [Nat.add_mul, Nat.one_mul,
-                    show j' * 2 * 2^depth = j' * 2^(depth+1) from by
-                      rw [Nat.pow_add, Nat.pow_one, Nat.mul_comm (2^depth) 2,
-                          ← Nat.mul_assoc j' 2 (2^depth)],
-                    Nat.add_comm]
-              have hsum_lt : 2^depth + j' * 2^(depth+1) < UInt32.size :=
-                h_key ▸ tl_pow_j_lt_size (by omega) hj21_lt
-              rw [hk, UInt32.add_assoc, tl_ofNat_add hsum_lt]
-              congr 1; exact congrArg UInt32.ofNat h_key
-            · -- get? (.node o l r) (ofNat(j'*2+1)) = some v
-              have hj21sz : j' * 2 + 1 < UInt32.size := tl_j_lt_size hj21_lt
-              simp only [get?]
-              have hne0 : UInt32.ofNat (j' * 2 + 1) ≠ 0 := by
-                intro h; exact absurd (tl_ofNat_inj hj21sz (by decide) h) (Nat.succ_ne_zero _)
-              rw [if_neg hne0, tl_ofNat_mod2 hj21sz,
-                  show UInt32.ofNat ((j' * 2 + 1) % 2) = 1 from by simp,
-                  if_neg (by decide),
-                  tl_ofNat_div2 hj21sz, show (j' * 2 + 1) / 2 = j' from by omega]
-              exact hget
-    · -- backward direction
-      rintro ⟨j, hj, hskip, hk, hget⟩
-      simp only [get?] at hget
-      by_cases hj0 : j = 0
-      · -- j = 0: root entry
-        subst hj0
-        have h0 : UInt32.ofNat 0 = 0 := by decide
-        simp only [Nat.zero_mul, h0, UInt32.add_zero] at hk
-        simp only [h0, ↓reduceIte] at hget
-        left
-        cases skip with
-        | true  => exact absurd rfl (hskip rfl)
-        | false =>
-          simp only [Bool.false_eq_true, ↓reduceIte]
-          rw [hk, hget]; simp
-      · -- j ≠ 0: from children
-        right
-        have hd32 : depth < 32 := by
-          rcases Nat.lt_or_ge depth 32 with h | h
-          · exact h
-          · simp only [Nat.sub_eq_zero_of_le h, Nat.pow_zero] at hj; omega
-        simp only [show ¬(depth ≥ 32) from by omega, ↓reduceIte, List.mem_append]
-        have hjsz : j < UInt32.size := tl_j_lt_size hj
-        have hne0 : UInt32.ofNat j ≠ 0 := by
-          intro h; exact absurd (tl_ofNat_inj hjsz (by decide) h) hj0
-        by_cases hmod : j % 2 = 0
-        · -- even: in left subtrie
-          left; rw [ihl]
-          have hj'_lt : j / 2 < 2^(32-(depth+1)) := by
-            have h2pow := tl_pow_step depth hd32
-            have : j / 2 * 2 ≤ j := Nat.div_mul_le_self j 2
-            have hmul := (Nat.mul_lt_mul_right (by omega : 0 < 2)).mp (by omega : j / 2 * 2 < 2^(32-(depth+1)) * 2)
-            exact hmul
-          refine ⟨j / 2, hj'_lt, fun _ => by omega, ?_, ?_⟩
-          · -- key: pfx + ofNat(j*2^depth) = pfx + ofNat(j/2 * 2^(depth+1))
-            rw [hk]; congr 1
-            have hj2 : j / 2 * 2 = j := by omega
-            have heq : j / 2 * 2^(depth+1) = j * 2^depth := by
-              calc j / 2 * 2^(depth+1)
-                  = j / 2 * (2^depth * 2)   := by rw [Nat.pow_add, Nat.pow_one]
-                _ = j / 2 * (2 * 2^depth)   := by rw [Nat.mul_comm (2^depth) 2]
-                _ = j / 2 * 2 * 2^depth     := by rw [← Nat.mul_assoc (j/2) 2 (2^depth)]
-                _ = j * 2^depth              := by rw [hj2]
-            rw [heq]
-          · -- get? node (ofNat j) = some v → l.get? (ofNat(j/2)) = some v
-            rw [if_neg hne0, tl_ofNat_mod2 hjsz,
-                show UInt32.ofNat (j % 2) = 0 from by simp [hmod], if_pos rfl,
-                tl_ofNat_div2 hjsz] at hget
-            exact hget
-        · -- odd: in right subtrie
-          right; rw [ihr]
-          have hmod1 : j % 2 = 1 := by omega
-          have hj'_lt : j / 2 < 2^(32-(depth+1)) := by
-            have h2pow := tl_pow_step depth hd32
-            have : j / 2 * 2 ≤ j := Nat.div_mul_le_self j 2
-            have hmul := (Nat.mul_lt_mul_right (by omega : 0 < 2)).mp (by omega : j / 2 * 2 < 2^(32-(depth+1)) * 2)
-            exact hmul
-          have hj'sz  : j / 2 < UInt32.size := tl_j_lt_size hj'_lt
-          have h2d_lt : 2^depth < UInt32.size := by
-            have h1 := tl_pow_j_lt_size (by omega) (show 1 < 2^(32-depth) from by omega)
-            rwa [Nat.one_mul] at h1
-          refine ⟨j / 2, hj'_lt, fun h => absurd h (by decide), ?_, ?_⟩
-          · -- key: pfx + ofNat(j*2^depth) = (pfx + ofNat(2^depth)) + ofNat(j/2 * 2^(depth+1))
-            rw [hk]
-            have hsum : 2^depth + j / 2 * 2^(depth+1) < UInt32.size :=
-              calc 2^depth + j / 2 * 2^(depth+1)
-                  = (j / 2 * 2 + 1) * 2^depth := by
-                        rw [Nat.add_mul, Nat.one_mul, Nat.pow_add, Nat.pow_one,
-                            Nat.mul_comm (2^depth) 2, ← Nat.mul_assoc (j/2) 2 (2^depth), Nat.add_comm]
-                _ = j * 2^depth := by congr 1; omega
-                _ < UInt32.size := tl_pow_j_lt_size (by omega) hj
-            have hj2 : j / 2 * 2 + 1 = j := by omega
-            have h_mul : j / 2 * 2^(depth+1) = j / 2 * 2 * 2^depth := by
-              rw [Nat.pow_add, Nat.pow_one, Nat.mul_comm (2^depth) 2,
-                  ← Nat.mul_assoc (j/2) 2 (2^depth)]
-            have hnat : 2^depth + j / 2 * 2^(depth+1) = j * 2^depth := by
-              rw [h_mul, Nat.add_comm,
-                  show j / 2 * 2 * 2^depth + 2^depth = (j / 2 * 2 + 1) * 2^depth from by
-                    rw [Nat.add_mul, Nat.one_mul],
-                  hj2]
-            rw [UInt32.add_assoc, tl_ofNat_add hsum, hnat]
-          · -- get? node (ofNat j) = some v → r.get? (ofNat(j/2)) = some v
-            rw [if_neg hne0, tl_ofNat_mod2 hjsz,
-                show UInt32.ofNat (j % 2) = 1 from by simp [hmod1],
-                if_neg (by decide : ¬(1:UInt32) = 0),
-                tl_ofNat_div2 hjsz] at hget
-            exact hget
+-- ─── FiniteMap and LawfulFiniteMap instances ──────────────────────────────────
 
 open Iris.Std in
 instance : Iris.Std.FiniteMap PosTrie UInt32 where
   toList t := t.toList
 
--- j * 2^d < UInt32.size from j < 2^(32-d), even when d > 32
-private theorem tl_pow_j_lt_size' {d j : Nat} (hj : j < 2^(32-d)) : j * 2^d < UInt32.size := by
-  by_cases hd : d ≤ 32
-  · exact tl_pow_j_lt_size hd hj
-  · simp only [Nat.sub_eq_zero_of_le (show 32 ≤ d from by omega)] at hj
-    have hj0 : j = 0 := by omega
-    subst hj0
-    simp [UInt32.size]
-
--- same key in toListAux means same value
-private theorem toListAux_key_unique (t : PosTrie V) (d : Nat) (pfx : UInt32) (skip : Bool)
-    (k : UInt32) (v₁ v₂ : V)
-    (h₁ : (k, v₁) ∈ toListAux t d pfx skip) (h₂ : (k, v₂) ∈ toListAux t d pfx skip) :
-    v₁ = v₂ := by
-  rw [mem_toListAux_iff] at h₁ h₂
-  obtain ⟨j₁, hj₁, _, hk₁, hg₁⟩ := h₁
-  obtain ⟨j₂, hj₂, _, hk₂, hg₂⟩ := h₂
-  have hj1sz : j₁ * 2^d < UInt32.size := tl_pow_j_lt_size' hj₁
-  have hj2sz : j₂ * 2^d < UInt32.size := tl_pow_j_lt_size' hj₂
-  have hpow_eq : UInt32.ofNat (j₁ * 2^d) = UInt32.ofNat (j₂ * 2^d) := by
-    have h := hk₁.symm.trans hk₂
-    have key := congrArg UInt32.toNat h
-    simp only [UInt32.toNat_add, tl_ofNat_toNat hj1sz, tl_ofNat_toNat hj2sz] at key
-    have hpfxlt := UInt32.toNat_lt pfx
-    simp only [UInt32.size] at key hj1sz hj2sz hpfxlt
-    exact congrArg UInt32.ofNat (by omega)
-  have hj12 : j₁ = j₂ :=
-    Nat.eq_of_mul_eq_mul_right (Nat.two_pow_pos d) (tl_ofNat_inj hj1sz hj2sz hpow_eq)
-  exact Option.some.inj (hg₁.symm.trans (hj12 ▸ hg₂))
-
--- 2^d + jr * 2^(d+1) < UInt32.size when d < 32 and jr < 2^(32-(d+1))
-private theorem tl_rsum_lt_size {d jr : Nat} (hd32 : d < 32) (hjr : jr < 2^(32-(d+1))) :
-    2^d + jr * 2^(d+1) < UInt32.size := by
-  have h2step := tl_pow_step d hd32
-  have hd_le : d ≤ 32 := by omega
-  have h1jr2_lt : 1 + jr * 2 < 2^(32-d) := by omega
-  have hmul := (Nat.mul_lt_mul_right (Nat.two_pow_pos d)).mpr h1jr2_lt
-  rw [show 2^(32-d) * 2^d = UInt32.size from by
-    rw [← Nat.pow_add, Nat.sub_add_cancel hd_le]] at hmul
-  rw [show 2^d + jr * 2^(d+1) = (1 + jr * 2) * 2^d from by
-    rw [Nat.add_mul, Nat.one_mul,
-        show jr * 2 * 2^d = jr * 2^(d+1) from by
-          rw [Nat.pow_add, Nat.pow_one, Nat.mul_comm (2^d) 2, ← Nat.mul_assoc jr 2 (2^d)]]]
-  exact hmul
-
--- toListAux produces a nodup list of pairs
-private theorem toListAux_nodup (t : PosTrie V) (d : Nat) (pfx : UInt32) (skip : Bool) :
-    (toListAux t d pfx skip).Nodup := by
-  induction t generalizing d pfx skip with
-  | empty => simp [toListAux]
-  | leaf u => cases skip <;> simp [toListAux]
-  | node o l r ihl ihr =>
-    simp only [toListAux]
-    by_cases hge : d ≥ 32
-    · simp only [if_pos hge, List.append_nil]
-      cases skip <;> simp <;> cases o <;> simp
-    · have hd32 : d < 32 := by omega
-      simp only [if_neg hge]
-      rw [List.nodup_append]
-      refine ⟨?_, ?_, ?_⟩
-      · cases skip <;> simp <;> cases o <;> simp
-      · rw [List.nodup_append]
-        refine ⟨ihl (d+1) pfx true, ihr (d+1) _ false, ?_⟩
-        intro ⟨k, v⟩ hml ⟨k', v'⟩ hmr heq
-        have hkeq : k = k' := congrArg Prod.fst heq
-        rw [mem_toListAux_iff] at hml hmr
-        obtain ⟨jl, hjl, _, hkl, _⟩ := hml
-        obtain ⟨jr, hjr, _, hkr, _⟩ := hmr
-        have hjlsz : jl * 2^(d+1) < UInt32.size := tl_pow_j_lt_size (by omega) hjl
-        have hsum : 2^d + jr * 2^(d+1) < UInt32.size := tl_rsum_lt_size hd32 hjr
-        have hnat_eq : jl * 2^(d+1) = 2^d + jr * 2^(d+1) := by
-          have h := (hkl.symm.trans hkeq).trans hkr
-          have hrhs := tl_ofNat_add hsum
-          have h' : pfx + UInt32.ofNat (jl * 2^(d+1)) = pfx + UInt32.ofNat (2^d + jr * 2^(d+1)) :=
-            h.trans (by rw [UInt32.add_assoc, hrhs])
-          have key := congrArg UInt32.toNat h'
-          simp only [UInt32.toNat_add, tl_ofNat_toNat hjlsz, tl_ofNat_toNat hsum] at key
-          have hpfxlt := UInt32.toNat_lt pfx
-          simp only [UInt32.size] at key hjlsz hsum hpfxlt
-          -- generalize both nonlinear sides so omega has simple linear vars
-          generalize hX : jl * 2^(d+1) = X
-          generalize hY : 2^d + jr * 2^(d+1) = Y
-          rw [hX] at key hjlsz
-          rw [hY] at key hsum
-          omega
-        have h_parity : jl * 2 = 1 + jr * 2 := by
-          apply Nat.eq_of_mul_eq_mul_right (Nat.two_pow_pos d)
-          rw [show jl * 2 * 2^d = jl * 2^(d+1) from by
-                rw [Nat.pow_add, Nat.pow_one, Nat.mul_comm (2^d) 2, ← Nat.mul_assoc jl 2 (2^d)],
-              hnat_eq,
-              show 2^d + jr * 2^(d+1) = (1 + jr * 2) * 2^d from by
-                rw [Nat.add_mul, Nat.one_mul,
-                    show jr * 2 * 2^d = jr * 2^(d+1) from by
-                      rw [Nat.pow_add, Nat.pow_one, Nat.mul_comm (2^d) 2,
-                          ← Nat.mul_assoc jr 2 (2^d)]]]
-        exact absurd h_parity (by omega)
-      · intro ⟨k, v⟩ hroot ⟨k', v'⟩ hmem heq
-        have hkeq : k = k' := congrArg Prod.fst heq
-        simp only [List.mem_append] at hmem
-        cases hskip : skip with
-        | true => simp [hskip] at hroot
-        | false =>
-          simp only [hskip, Bool.false_eq_true, ↓reduceIte] at hroot
-          cases ho : o with
-          | none => simp [ho] at hroot
-          | some u =>
-            simp only [ho, List.mem_singleton, Prod.mk.injEq] at hroot
-            obtain ⟨rfl, rfl⟩ := hroot
-            rcases hmem with hmem | hmem
-            · rw [mem_toListAux_iff] at hmem
-              obtain ⟨j', hj', hne, hk', _⟩ := hmem
-              have hj'sz : j' * 2^(d+1) < UInt32.size := tl_pow_j_lt_size (by omega) hj'
-              have hzero : UInt32.ofNat (j' * 2^(d+1)) = 0 := by
-                have heq' := hkeq.trans hk'
-                have key := congrArg UInt32.toNat heq'
-                simp only [UInt32.toNat_add, tl_ofNat_toNat hj'sz] at key
-                have hpfxlt := UInt32.toNat_lt k
-                simp only [UInt32.size] at key hj'sz hpfxlt
-                have hnat : j' * 2^(d+1) = 0 := by omega
-                rw [hnat]; decide
-              have h0nat : j' * 2^(d+1) = 0 :=
-                tl_ofNat_inj hj'sz (by decide)
-                  (hzero.trans (show (0 : UInt32) = UInt32.ofNat 0 from rfl))
-              exact absurd ((Nat.mul_eq_zero.mp h0nat).resolve_right
-                (by have := Nat.two_pow_pos (d+1); omega)) (hne rfl)
-            · rw [mem_toListAux_iff] at hmem
-              obtain ⟨j', hj', _, hk', _⟩ := hmem
-              have hj'sz : j' * 2^(d+1) < UInt32.size := tl_pow_j_lt_size (by omega) hj'
-              have hsum' : 2^d + j' * 2^(d+1) < UInt32.size := tl_rsum_lt_size hd32 hj'
-              have h0nat : 2^d + j' * 2^(d+1) = 0 := by
-                have h1 := hkeq.trans hk'
-                have h2 := tl_ofNat_add hsum'
-                have h3 : k = k + UInt32.ofNat (2^d + j' * 2^(d+1)) :=
-                  h1.trans (by rw [UInt32.add_assoc, h2])
-                have key := congrArg UInt32.toNat h3
-                simp only [UInt32.toNat_add, tl_ofNat_toNat hsum'] at key
-                have hpfxlt := UInt32.toNat_lt k
-                simp only [UInt32.size] at key hsum' hpfxlt
-                generalize hZ : 2^d + j' * 2^(d+1) = Z
-                rw [hZ] at key hsum'
-                omega
-              have := Nat.two_pow_pos d; omega
-
 open Iris.Std in
 instance : Iris.Std.LawfulFiniteMap PosTrie UInt32 where
   toList_empty := rfl
   toList_noDupKeys {V m} := by
-    show ((toListAux m 0 0 false).map (·.1)).Nodup
-    apply FromMathlib.Nodup.map_on
-    · intro ⟨k₁, v₁⟩ hm₁ ⟨k₂, v₂⟩ hm₂ hkeq
+    show ((m.val.toListAux 0 0 false).map Prod.fst).Nodup
+    have hnodup := Raw.toListAux_nodup m.val 0 (by omega) 0 (by simp) false
+    have hinj : ∀ p₁ ∈ m.val.toListAux 0 0 false, ∀ p₂ ∈ m.val.toListAux 0 0 false,
+        p₁.1 = p₂.1 → p₁ = p₂ := by
+      intro ⟨k₁, v₁⟩ hm₁ ⟨k₂, v₂⟩ hm₂ hkeq
       simp only at hkeq; subst hkeq
-      exact Prod.ext rfl (toListAux_key_unique m 0 0 false k₁ v₁ v₂ hm₁ hm₂)
-    · exact toListAux_nodup m 0 0 false
+      rw [Raw.mem_toListAux_iff m.val 0 (by omega) 0 (by simp) false k₁ v₁] at hm₁
+      rw [Raw.mem_toListAux_iff m.val 0 (by omega) 0 (by simp) false k₁ v₂] at hm₂
+      obtain ⟨j₁, hb₁, _, hk₁, hg₁⟩ := hm₁
+      obtain ⟨j₂, hb₂, _, hk₂, hg₂⟩ := hm₂
+      simp only [Nat.mul_one, Nat.zero_add, show (2:Nat)^0 = 1 from rfl] at hk₁ hk₂
+      have hj : j₁ = j₂ := by
+        have h1 : (UInt32.ofNat j₁).toNat = j₁ :=
+          Raw.ofNat_toNat' (Raw.ofNat_lt_size (by omega) hb₁)
+        have h2 : (UInt32.ofNat j₂).toNat = j₂ :=
+          Raw.ofNat_toNat' (Raw.ofNat_lt_size (by omega) hb₂)
+        omega
+      rw [← hj] at hg₂
+      exact congrArg (Prod.mk k₁) (Option.some.inj (hg₁.symm.trans hg₂))
+    exact List.pairwise_map.mpr
+      (hnodup.imp_of_mem (fun ha hb hne hfst => hne (hinj _ ha _ hb hfst)))
   toList_get {V m k v} := by
-    show (k, v) ∈ toListAux m 0 0 false ↔ m.get? k = some v
-    rw [mem_toListAux_iff]
-    simp only [Nat.sub_zero, show (2:Nat)^0 = 1 from rfl, Nat.mul_one,
-               UInt32.zero_add, Bool.false_eq_true, false_implies, true_and]
+    show (k, v) ∈ m.val.toListAux 0 0 false ↔ m.val.get? k = some v
+    rw [Raw.mem_toListAux_iff m.val 0 (by omega) 0 (by simp) false k v]
     constructor
-    · rintro ⟨j, _, hk, hget⟩
-      rwa [hk]
+    · rintro ⟨j, _, _, hkj, hget⟩
+      simp only [Nat.pow_zero, Nat.mul_one, Nat.zero_add] at hkj
+      have hjsz : j < UInt32.size := by
+        have := k.toNat_lt; simp only [UInt32.size] at *; omega
+      have hkj' : UInt32.ofNat j = k := by rw [← hkj]; exact UInt32.ofNat_toNat k
+      rw [hkj'] at hget; exact hget
     · intro hget
-      refine ⟨k.toNat, ?_, UInt32.ofNat_toNat.symm, by rwa [UInt32.ofNat_toNat]⟩
-      have h := UInt32.toNat_lt k
-      omega
+      refine ⟨k.toNat, ?_, fun h => absurd h (by decide), by simp [Nat.pow_zero], ?_⟩
+      · simp only [Nat.sub_zero]
+        linarith [k.toNat_lt, show (2:Nat)^32 = UInt32.size from by native_decide]
+      · rwa [UInt32.ofNat_toNat]
 
-end PosTrie
 end Wasm.SepLogic
