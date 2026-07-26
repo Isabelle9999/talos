@@ -551,8 +551,20 @@ private theorem func0_sort_terminates
               BI.pure_elim' (fun h => BI.pure_intro ⟨i, ys, h⟩))))))
       obtain ⟨i, ys, hlen_ys, hwords_ys, hsorted, hperm, hread_i, hglob, hpages, hget1, hget2, hvalues⟩ := h_pure
       by_cases hi : i.toNat < len.toNat
-      · -- i < len: inner shift loop (sorry: not yet proved)
-        sorry
+      · -- i < len: inner shift loop body
+        -- Break 0 branch: INSERT block's br 1 → exec N body = .Break 0.
+        -- exec proof: inner loop induction needed (sorry'd).
+        -- inv restoration: array-sorting argument needed (sorry'd).
+        -- measure decrease: (len-(i+1)).toNat < (len-i).toNat, proved from i.toNat < len.toNat.
+        let stB : Store Unit := sorry
+        let sB : Locals := sorry
+        -- after INSERT phase, mem[sp+8] = i+1
+        have hread_iB : stB.mem.read32 (sp + 8) = i + 1 := sorry
+        refine ⟨sorry, Or.inr (Or.inl ⟨stB, sB, sorry, ?_, ?_⟩)⟩
+        · sorry  -- ⊢ inv stB { sB with values := [] }
+        · -- (len - stB.mem.read32 (sp+8)).toNat < (len - stA.mem.read32 (sp+8)).toNat
+          rw [hread_iB, hread_i]
+          omega
       · -- i ≥ len: sorted prefix covers ys; restore global[0] and return
         push_neg at hi
         have hys_sorted : ys.Pairwise (· ≤ ·) := by
