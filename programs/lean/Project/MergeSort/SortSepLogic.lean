@@ -2499,19 +2499,39 @@ theorem func6_iProp
           refine ⟨1, fun fuel hfuel => ?_⟩
           left
           refine ⟨stA, locA, ?_, ?_⟩
-          · -- Goal: exec fuel «module» stA locA mergeBody env = .Break 1 stA locA
-            -- Use hmerge_split16 to expose the concrete 16-instruction prefix.
-            -- Instructions 0-7 (i-check): localGet 6 → hframe, load32 8 → hmem8 (hnotrap8),
-            --   localGet 1 → hloc1, ltU: i < n_left (hi) → 1, const 1, and = 1, eqz = 0,
-            --   br_if 1: pops 0 → Fallthrough.
-            -- Instructions 8-15 (j-check): localGet 6 → hframe, load32 12 → hmem12 (hnotrap12),
-            --   localGet 3 → hloc3, ltU: j ≥ n_right (hj) → 0, const 1, and = 0, eqz = 1,
-            --   br_if 1: pops 1 ≠ 0 → Break 1 stA {locA with values := locA.values}.
-            -- {locA with values := locA.values} = locA by record eta.
-            -- To fill: rw [hmerge_split16]; simp [exec, execOne.eq_def, if_neg hnotrap8,
-            --   if_neg hnotrap12, hframe, hmem8, hmem12, hloc1, hloc3, UInt32.ltU, ...]
-            -- with omega/decide for the arithmetic branches (ltU results, eqz).
-            sorry
+          · rw [hmerge_split16]
+            have hgv6 : ∀ xs, ({locA with values := xs} : Locals).get 6 = some (.i32 frame) := fun _ => hframe
+            have hgv1 : ∀ xs, ({locA with values := xs} : Locals).get 1 = some (.i32 n_left) := fun _ => hloc1
+            have hgv3 : ∀ xs, ({locA with values := xs} : Locals).get 3 = some (.i32 n_right) := fun _ => hloc3
+            have hi_lt : i < n_left := by rw [UInt32.lt_iff_toNat_lt_toNat]; exact hi
+            have hj_notlt : ¬(j < n_right) := by rw [UInt32.lt_iff_toNat_lt_toNat]; omega
+            have h_ea : ∀ (p1 p2 : Program) (st : Store Unit) (s : Locals),
+                exec fuel module st s (p1 ++ p2) env =
+                (match exec fuel module st s p1 env with
+                 | .Fallthrough st' s' => exec fuel module st' s' p2 env
+                 | other => other) := by
+              intro p1 p2 st s
+              induction p1 generalizing st s with
+              | nil => simp [exec]
+              | cons hd tl ih =>
+                simp only [List.cons_append, exec]
+                cases execOne fuel module st s hd env with
+                | Fallthrough st' s' => exact ih st' s'
+                | _ => rfl
+            rw [h_ea]
+            rcases fuel with _ | n
+            · omega
+            · simp only [exec, execOne.eq_def,
+                hframe, hgv6, hgv1, hgv3,
+                if_neg hnotrap8, hmem8, if_pos hi_lt,
+                show (1 : UInt32) &&& 1 = 1 from by decide,
+                show (if (1 : UInt32) = 0 then (1 : UInt32) else 0) = 0 from by decide,
+                if_neg hnotrap12, hmem12,
+                if_neg hj_notlt,
+                show (1 : UInt32) &&& 0 = 0 from by decide,
+                show (if (0 : UInt32) = 0 then (1 : UInt32) else 0) = 1 from by decide,
+                show (if True then (1 : UInt32) else 0) = 1 from rfl]
+              rfl
           · -- Goal: wp_wasm_prop «module» stA locA (func6.drop 28) env Q
             --   (take 0 / drop 0 simplify away the trivial list prefix from wp_wasm_iProp_block).
             -- func6.drop 28 is the post-loop tail: drain-left block, drain-right block, epilogue.
@@ -2527,16 +2547,34 @@ theorem func6_iProp
         refine ⟨1, fun fuel hfuel => ?_⟩
         left
         refine ⟨stA, locA, ?_, ?_⟩
-        · -- Goal: exec fuel «module» stA locA mergeBody env = .Break 1 stA locA
-          -- Use hmerge_split8 to expose the concrete 8-instruction prefix.
-          -- Instructions 0-7 (i-check): localGet 6 → hframe, load32 8 → hmem8 (hnotrap8),
-          --   localGet 1 → hloc1, ltU: i ≥ n_left (hi) → 0, const 1, and = 0, eqz = 1,
-          --   br_if 1: pops 1 ≠ 0 → Break 1 stA {locA with values := locA.values} = Break 1 stA locA.
-          -- To fill: rw [hmerge_split8]; simp [exec, execOne.eq_def, if_neg hnotrap8,
-          --   hframe, hmem8, hloc1, UInt32.ltU, ...]
-          -- with omega/decide for ltU = 0 when i.toNat ≥ n_left.toNat,
-          -- and Locals.ext (or rfl) for {locA with values := locA.values} = locA.
-          sorry
+        · rw [hmerge_split8]
+          have hgv6 : ∀ xs, ({locA with values := xs} : Locals).get 6 = some (.i32 frame) := fun _ => hframe
+          have hgv1 : ∀ xs, ({locA with values := xs} : Locals).get 1 = some (.i32 n_left) := fun _ => hloc1
+          have hi_notlt : ¬(i < n_left) := by rw [UInt32.lt_iff_toNat_lt_toNat]; omega
+          have h_ea : ∀ (p1 p2 : Program) (st : Store Unit) (s : Locals),
+              exec fuel module st s (p1 ++ p2) env =
+              (match exec fuel module st s p1 env with
+               | .Fallthrough st' s' => exec fuel module st' s' p2 env
+               | other => other) := by
+            intro p1 p2 st s
+            induction p1 generalizing st s with
+            | nil => simp [exec]
+            | cons hd tl ih =>
+              simp only [List.cons_append, exec]
+              cases execOne fuel module st s hd env with
+              | Fallthrough st' s' => exact ih st' s'
+              | _ => rfl
+          rw [h_ea]
+          rcases fuel with _ | n
+          · omega
+          · simp only [exec, execOne.eq_def,
+              hframe, hgv6, hgv1,
+              if_neg hnotrap8, hmem8,
+              if_neg hi_notlt,
+              show (1 : UInt32) &&& 0 = 0 from by decide,
+              show (if (0 : UInt32) = 0 then (1 : UInt32) else 0) = 1 from by decide,
+              show (if True then (1 : UInt32) else 0) = 1 from rfl]
+            rfl
         · -- Goal: wp_wasm_prop «module» stA locA (func6.drop 28) env Q
             --   (take 0 / drop 0 simplify away the trivial list prefix from wp_wasm_iProp_block).
             -- func6.drop 28 is the post-loop tail: drain-left block, drain-right block, epilogue.
