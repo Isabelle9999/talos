@@ -398,13 +398,15 @@ The full loop invariant maintenance (sorted + permutation) is admitted here. -/
 
 private theorem func0_sort_terminates
     [WasmHeapGS]
+    (σ₀ : WasmHeapMap (Option UInt8))
     (st : Store Unit) (ptr len : UInt32) (xs : List UInt32)
     (hlen  : xs.length = len.toNat)
     (hbounds  : ptr.toNat + 4 * xs.length ≤ st.mem.pages * 65536)
     (hmem_size : (1048576 : Nat) ≤ st.mem.pages * 65536)
     (hglobal1 : st.globals.globals[0]? = some (.i32 (1048560 : UInt32)))
     (hwords   : wordsAt st.mem ptr xs.length = xs)
-    (hbounds2 : ptr.toNat + 4 * xs.length ≤ 1048544) :
+    (hbounds2 : ptr.toNat + 4 * xs.length ≤ 1048544)
+    (hinit_ownership : ⊢ genHeapInterp σ₀ ∗ arrayAt ptr xs) :
     TerminatesWith {} «module» 0 st [.i32 len, .i32 ptr]
         (fun st' rs =>
           rs = [] ∧
@@ -471,8 +473,6 @@ private theorem func0_sort_terminates
     --                  .call 54, .unreachable]
     -- Unfold to get the loop constructor in head position, then apply loop rule.
     simp only [func0, List.drop]
-    -- iProp outer-loop invariant: arrayAt owns the array + pure bookkeeping in ⌜...⌝.
-    -- wordsAt is kept as a pure conjunct alongside arrayAt until heapAgreesWithMem is wired.
     apply wp_wasm_iProp_loop
         (inv := fun stA locA => iprop%
           ∃ i : UInt32, ∃ ys : List UInt32,
@@ -492,7 +492,7 @@ private theorem func0_sort_terminates
       iexists (1 : UInt32)
       iexists xs
       isplitl []
-      · sorry  -- ⊢ arrayAt ptr xs: requires ghost heap allocation
+      · exact hinit_ownership.trans BI.sep_elim_right
       · ipureintro
         refine ⟨hlen, ?_, ?_, List.Perm.refl xs, ?_, ?_, ?_, rfl, rfl, rfl⟩
         · -- wordsAt st_loop.mem ptr xs.length = xs
@@ -532,8 +532,7 @@ private theorem func0_sort_terminates
         · exact Mem.write32_pages st.mem (sp + 8) 1
     · -- hstep: each loop-body iteration terminates via Return (i ≥ len) or sorry (i < len)
       intro stA locA hinv
-      -- Extract pure facts from hinv : ⊢ ∃ i ys, arrayAt ptr ys ∗ ⌜φ⌝
-      -- sep_elim_right : P ∗ ⌜φ⌝ ⊢ ⌜φ⌝  (Absorbing ⌜φ⌝ from pure_absorbing)
+      -- Extract pure facts from hinv : ⊢ ∃ i ys, ⌜φ⌝
       have h_pure : ∃ i : UInt32, ∃ ys : List UInt32,
           ys.length = len.toNat ∧
           wordsAt stA.mem ptr ys.length = ys ∧
@@ -548,8 +547,8 @@ private theorem func0_sort_terminates
         pure_soundness (hinv.trans (
           BI.exists_elim (fun i =>
           BI.exists_elim (fun ys =>
-            BI.sep_elim_right.trans
-            (BI.pure_elim' (fun h => BI.pure_intro ⟨i, ys, h⟩))))))
+            BI.sep_elim_right.trans (
+              BI.pure_elim' (fun h => BI.pure_intro ⟨i, ys, h⟩))))))
       obtain ⟨i, ys, hlen_ys, hwords_ys, hsorted, hperm, hread_i, hglob, hpages, hget1, hget2, hvalues⟩ := h_pure
       by_cases hi : i.toNat < len.toNat
       · -- i < len: inner shift loop (sorry: not yet proved)
@@ -702,10 +701,10 @@ theorem insertion_sort_correct : InsertionSortSpec := by
         simp [exec, execOne.eq_def, if_neg h_12_not, if_neg h_8_not, hread_len, hread_ptr]
       -- ── Call 0: func0 (insertion sort) ───────────────────────────────────
       · apply wp_wasm_prop_call
-        refine (func0_sort_terminates st1 ptr len xs hlen
+        refine (func0_sort_terminates sorry st1 ptr len xs hlen
             (by rw [hst1_pages]; exact hbounds)
             (by rw [hst1_pages]; exact hmem_size)
-            hg1 hwords1 hbounds2).mono ?_
+            hg1 hwords1 hbounds2 sorry).mono ?_
         rintro st0 rs0 ⟨hrs0, ys, hys_words, hys_sorted, hys_perm, hg0, hpages0⟩
         subst hrs0
         -- ── Teardown: localGet 2, const 16, add, globalSet 0, then [ret] ──
