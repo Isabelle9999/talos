@@ -35,7 +35,18 @@ the shift direction), so it is proven here once and reused by every shift
 (`shl`, `shr`, and any future shift-like op). -/
 theorem shiftAmount_norm (b : UInt32) :
     UInt64.ofNat (shiftMask &&& b).toNat % 64 = b.toUInt64 % 64 := by
-  simp; bv_decide
+  have and63 : 63 &&& b.toNat = b.toNat % 64 := by
+    apply Nat.eq_of_testBit_eq; intro i
+    simp only [Nat.testBit_and, show (63 : Nat) = 2^6 - 1 from rfl,
+               Nat.testBit_two_pow_sub_one, Nat.testBit_mod_two_pow,
+               show (64 : Nat) = 2^6 from rfl]
+  apply UInt64.ext
+  simp only [UInt64.toNat_mod, UInt32.toNat_and,
+             show (shiftMask : UInt32).toNat = 63 from rfl, UInt32.toUInt64_toNat, and63]
+  simp only [show (64 : UInt64).toNat = 64 from rfl]
+  simp only [UInt64.ofNat, UInt64.toNat, BitVec.toNat_ofNat]
+  have hb : b.toNat < 2^32 := b.toNat_lt
+  omega
 
 /-- The emitted nonzero-divisor guard prefix used before unsigned division and
 remainder. -/

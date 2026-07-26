@@ -14,7 +14,11 @@ operand. The `a ^^^ MAX_U64 = ~~~a` `bv_decide` lives here, once. -/
 theorem not_chunk : UnChunk (T := UInt64) [.constI64 MAX_U64, .xorI64] (~~~ ·) := by
   intro α m env Q st P L rest a vs
   simp only [List.cons_append, List.nil_append, toV_u64, wp_constI64_cons, wp_xorI64_cons]
-  rw [show a ^^^ MAX_U64 = ~~~a from by simp [MAX_U64]; bv_decide]
+  rw [show a ^^^ MAX_U64 = ~~~a from by
+    apply UInt64.toBitVec_inj.mp
+    simp only [UInt64.toBitVec_xor, UInt64.toBitVec_not, MAX_U64]
+    rw [show (0xFFFF_FFFF_FFFF_FFFF : UInt64).toBitVec = BitVec.allOnes 64 from rfl,
+        BitVec.xor_allOnes]]
 
 /-- Concrete `i64` restatement of `not_chunk` for `rw`/`simp` at an inlined `not`. -/
 theorem not_seq {α : Type} {m : Module} {env : HostEnv α} {Q : Assertion α}
