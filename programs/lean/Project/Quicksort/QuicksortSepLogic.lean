@@ -265,7 +265,7 @@ private theorem func4_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   iintro %σ₁ %hagree₁ Hσ₁
   imod (wp_iProp_load32 hagree₁ (ptr := ptr_a) (xs := [va]) (k := 0) (hk := by simp)
         (hbounds := by rw [h40, UInt32.add_zero]; exact hpa)
-        hpg_u32) $$ [$Hσ₁ $HA_a] with ⟨Hσ₁', HA_a', hread_a⟩
+        hpg_u32) $$ [$Hσ₁ $HA_a] with ⟨Hσ₁', HA_a', %hread_a⟩
   imodintro; iexists σ₁, _, _
   isplitl []; · exact BI.pure_intro (by
     simp only [execOne.eq_def, show (0:UInt32).toNat = 0 from rfl]
@@ -279,15 +279,15 @@ private theorem func4_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   imod (wp_iProp_store32 hagree₂ (ptr := g0 - 4) (xs := [old_scr]) (k := 0) (hk := by simp)
         (st.mem.read32 (ptr_a + (0:UInt32)))
         (hbounds := by rw [h40, UInt32.add_zero]; exact hscr)
-        hpg_u32) $$ [$Hσ₂ $HA_scr] with ⟨%σ₃, Hagree₃_raw, Hσ₃, HA_scr'⟩
-  simp only [h_eq_scr] at Hagree₃_raw
+        hpg_u32) $$ [$Hσ₂ $HA_scr] with ⟨%σ₃, %hagree₃_raw, Hσ₃, HA_scr'⟩
+  simp only [h_eq_scr] at hagree₃_raw
   imodintro; iexists σ₃, _, _
   isplitl []; · exact BI.pure_intro (by
     simp only [execOne.eq_def, show (12:UInt32).toNat = 12 from rfl, h_g016]
     have hok : ¬(g0.toNat - 16 + 12 + 4 > st.mem.pages * 65536) := by
       have := hscr; rw [h_g04] at this; omega
     simp only [if_neg hok]; rfl)
-  isplitl [Hagree₃_raw]; · iexact Hagree₃_raw
+  isplitl []; · ipureintro; exact hagree₃_raw
   isplitl [Hσ₃]; · iexact Hσ₃
   -- ── localGet 0; localGet 1 (pure) ───────────────────────────────────────
   (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
@@ -307,7 +307,7 @@ private theorem func4_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   iintro %σ₄ %hagree₄ Hσ₄
   imod (wp_iProp_load32 hagree₄ (ptr := ptr_b) (xs := [vb]) (k := 0) (hk := by simp)
         (hbounds := by rw [h40, UInt32.add_zero]; simp only [Mem.write32_pages]; exact hpb)
-        (by simp only [Mem.write32_pages]; exact hpg_u32)) $$ [$Hσ₄ $HA_b] with ⟨Hσ₄', HA_b', hread_b⟩
+        (by simp only [Mem.write32_pages]; exact hpg_u32)) $$ [$Hσ₄ $HA_b] with ⟨Hσ₄', HA_b', %hread_b⟩
   imodintro; iexists σ₄, _, _
   isplitl []; · exact BI.pure_intro (by
     simp only [execOne.eq_def, show (0:UInt32).toNat = 0 from rfl, Mem.write32_pages]
@@ -321,17 +321,18 @@ private theorem func4_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   imod (wp_iProp_store32 hagree₅ (ptr := ptr_a) (xs := [va]) (k := 0) (hk := by simp)
         vb
         (hbounds := by rw [h40, UInt32.add_zero]; simp only [Mem.write32_pages]; exact hpa)
-        (by simp only [Mem.write32_pages]; exact hpg_u32)) $$ [$Hσ₅ $HA_a'] with ⟨%σ₆, Hagree₆_raw, Hσ₆, HA_a''⟩
-  -- Rewrite vb → mem.read32(ptr_b) in Hagree₆_raw to match the Wasm stack value
-  simp only [h40, UInt32.add_zero] at hread_b
-  simp only [← hread_b, h40, UInt32.add_zero] at Hagree₆_raw
+        (by simp only [Mem.write32_pages]; exact hpg_u32)) $$ [$Hσ₅ $HA_a'] with ⟨%σ₆, %hagree₆_raw, Hσ₆, HA_a''⟩
+  -- Normalize hread_b from [vb][0]! form to vb, then rewrite hagree₆_raw
+  have hread_b' := by simpa using hread_b
+  rw [← hread_b'] at hagree₆_raw
+  simp only [h40, UInt32.add_zero] at hagree₆_raw
   imodintro; iexists σ₆, _, _
   isplitl []; · exact BI.pure_intro (by
     simp only [execOne.eq_def, show (0:UInt32).toNat = 0 from rfl, Mem.write32_pages,
                UInt32.add_zero]
     have hok : ¬(ptr_a.toNat + 0 + 4 > st.mem.pages * 65536) := by omega
     simp only [if_neg hok]; rfl)
-  isplitl [Hagree₆_raw]; · iexact Hagree₆_raw
+  isplitl []; · ipureintro; exact hagree₆_raw
   isplitl [Hσ₆]; · iexact Hσ₆
   -- ── localGet 1; localGet 2 (pure) ───────────────────────────────────────
   (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
@@ -350,9 +351,9 @@ private theorem func4_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
   iintro %σ₇ %hagree₇ Hσ₇
   imod (wp_iProp_load32 hagree₇ (ptr := g0 - 4)
-        (xs := [st.mem.read32 (ptr_a + (0:UInt32))]) (k := 0) (hk := by simp)
+        (xs := [old_scr].set 0 (st.mem.read32 (ptr_a + (0:UInt32)))) (k := 0) (hk := by simp)
         (hbounds := by rw [h40, UInt32.add_zero]; simp only [Mem.write32_pages]; exact hscr)
-        (by simp only [Mem.write32_pages]; exact hpg_u32)) $$ [$Hσ₇ $HA_scr'] with ⟨Hσ₇', HA_scr'', hread_scr⟩
+        (by simp only [Mem.write32_pages]; exact hpg_u32)) $$ [$Hσ₇ $HA_scr'] with ⟨Hσ₇', HA_scr'', %hread_scr⟩
   imodintro; iexists σ₇, _, _
   isplitl []; · exact BI.pure_intro (by
     simp only [execOne.eq_def, show (12:UInt32).toNat = 12 from rfl, Mem.write32_pages, h_g016]
@@ -367,19 +368,25 @@ private theorem func4_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   imod (wp_iProp_store32 hagree₈ (ptr := ptr_b) (xs := [vb]) (k := 0) (hk := by simp)
         va
         (hbounds := by rw [h40, UInt32.add_zero]; simp only [Mem.write32_pages]; exact hpb)
-        (by simp only [Mem.write32_pages]; exact hpg_u32)) $$ [$Hσ₈ $HA_b'] with ⟨%σ₉, Hagree₉_raw, Hσ₉, HA_b''⟩
+        (by simp only [Mem.write32_pages]; exact hpg_u32)) $$ [$Hσ₈ $HA_b'] with ⟨%σ₉, %hagree₉_raw, Hσ₉, HA_b''⟩
   -- Rewrite va → mem.read32((g0-16)+12) in Hagree₉_raw to match the Wasm stack value
   simp only [h40, UInt32.add_zero] at hread_a
-  simp only [h40, UInt32.add_zero, ← h_scr_addr] at hread_scr
-  simp only [h40, UInt32.add_zero] at Hagree₉_raw
-  rw [← hread_scr.trans hread_a] at Hagree₉_raw
+  simp only [h40, UInt32.add_zero, ← h_scr_addr,
+             show ([old_scr].set 0 (st.mem.read32 (ptr_a + (0:UInt32))))[0]! =
+                  st.mem.read32 (ptr_a + (0:UInt32)) from rfl,
+             UInt32.add_zero] at hread_scr
+  simp only [h40, UInt32.add_zero] at hagree₉_raw
+  have h_scr_eq : ([old_scr].set 0 (st.mem.read32 ptr_a))[0]! = va := by
+    simpa using hread_a
+  have hread_scr' := hread_scr.trans h_scr_eq
+  rw [← hread_scr'] at hagree₉_raw
   imodintro; iexists σ₉, _, _
   isplitl []; · exact BI.pure_intro (by
     simp only [execOne.eq_def, show (0:UInt32).toNat = 0 from rfl, Mem.write32_pages,
                UInt32.add_zero]
     have hok : ¬(ptr_b.toNat + 0 + 4 > st.mem.pages * 65536) := by omega
     simp only [if_neg hok]; rfl)
-  isplitl [Hagree₉_raw]; · iexact Hagree₉_raw
+  isplitl []; · ipureintro; exact hagree₉_raw
   isplitl [Hσ₉]; · iexact Hσ₉
   -- ── .ret: close WP with postcondition ───────────────────────────────────
   (try unfold wp_wasm)
@@ -387,25 +394,17 @@ private theorem func4_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   simp only [wp_wasm_F]
   ipureintro
   refine ⟨?_, ?_, ?_, ?_⟩
-  · -- mem_final.read32 ptr_a = vb
-    -- mem_final = mem₂.write32(ptr_b+0)(mem₂.read32((g0-16)+12))
-    -- Step: disjoint write to ptr_b+0 doesn't affect read at ptr_a
-    rw [Mem.read32_write32_of_disjoint _ _ _ _ (by
-          simp only [UInt32.add_zero, h_pb0]
-          exact Or.comm.mp hdisj_ab)]
-    -- Now: mem₂.read32 ptr_a = vb
-    -- mem₂ = mem₁.write32(ptr_a+0) vb (step 12 wrote vb to ptr_a+0)
-    -- Need ptr_a+0 = ptr_a to apply read32_write32_same
-    rw [← h_pa0]
-    exact Mem.read32_write32_same _ _ _
-  · -- mem_final.read32 ptr_b = va
-    -- write32(ptr_b+0)(val) where val = mem₂.read32((g0-16)+12) = va
-    rw [← h_pb0]
-    exact Mem.read32_write32_same _ _ _
-  · -- globals unchanged
-    rfl
-  · -- pages unchanged (three stores, each preserves pages)
-    simp only [Mem.write32_pages]
+  · -- MEM_FINAL.read32 ptr_a = vb
+    -- outer write is at ptr_b (disjoint from ptr_a), inner write_same gives M₁.read32 ptr_b = vb
+    rw [Mem.read32_write32_of_disjoint _ _ _ _ (Or.comm.mp hdisj_ab),
+        Mem.read32_write32_same]
+    exact hread_b'
+  · -- MEM_FINAL.read32 ptr_b = va
+    -- last write was at ptr_b, read32_write32_same gives M₂.read32 (g0-16+12) = va
+    rw [Mem.read32_write32_same]
+    exact hread_scr'
+  · trivial
+  · simp only [Mem.write32_pages]
 
 -- ======================================================================
 -- §3  func7 spec — array element swap by index
@@ -469,8 +468,9 @@ theorem func7_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
           st'.globals = st.globals ∧ st'.mem.pages = st.mem.pages ∧
           ∀ k, k < xs.length → k ≠ i → k ≠ j →
               st'.mem.read32 (ptr + 4 * UInt32.ofNat k) = xs[k]!) := by
-    apply wasm_heap_adequacy_with_mem (ptr := ptr + 4 * UInt32.ofNat i) (xs := [xs[i]!])
-        (hf := by rfl) (himp := by rfl) (hlen := by decide)
+    apply wasm_heap_adequacy_with_mem (f := func4Def)
+        (ptr := ptr + 4 * UInt32.ofNat i) (xs := [xs[i]!])
+        (hf := by rfl) (himp := by rfl) (hlen := by simp only [List.length_cons, List.length_nil]; decide)
     intro σ₄ hagree₄
     -- Reduce func4's locals to concrete: params = [ptr+4*i, ptr+4*j], local = [0].
     have hloc_f4 : func4Def.toLocals
@@ -623,14 +623,13 @@ private theorem func8_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
         rw [h1, UInt32.toNat_add, show (4 : UInt32).toNat = 4 from rfl,
             Nat.mod_eq_of_lt (by omega)]
         omega)
-      hpg_u32) $$ [$Hσ₂ $HA_arr] with ⟨%σ₃, Hagree₃, Hσ₃, HA_arr'⟩
-  simp only [show (4:UInt32) * UInt32.ofNat 1 = 4 from by decide] at Hagree₃
+      hpg_u32) $$ [$Hσ₂ $HA_arr] with ⟨%σ₃, %hagree₃, Hσ₃, HA_arr'⟩
   imodintro; iexists σ₃, _, _
   isplitl []; · exact BI.pure_intro (by
     simp only [execOne.eq_def, show (4:UInt32).toNat = 4 from rfl]
     have hok : ¬(dst_ptr.toNat + 4 + 4 > st.mem.pages * 65536) := by omega
     simp only [if_neg hok]; rfl)
-  isplitl [Hagree₃]; · iexact Hagree₃
+  isplitl []; · exact BI.pure_intro hagree₃
   isplitl [Hσ₃]; · iexact Hσ₃
   -- localGet 0 + localGet 1 (pure; inside iris mode)
   (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
@@ -648,23 +647,21 @@ private theorem func8_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
   -- store32 0: write ptr_val at dst_ptr + 0 (consumes HA_arr', k=0)
   (try unfold wp_wasm); iapply least_fixpoint_unfold_mpr; simp only [wp_wasm_F]
   iintro %σ₆ %hagree₆ Hσ₆
-  imod (wp_iProp_store32 hagree₆ (ptr := dst_ptr) (xs := [old_v0, len_val]) (k := 0)
+  imod (wp_iProp_store32 hagree₆ (ptr := dst_ptr) (xs := [old_v0, old_v4].set 1 len_val) (k := 0)
       (hk := by simp) ptr_val
       (hbounds := by
-        have h0 : (4 : UInt32) * UInt32.ofNat 0 = 0 := by decide
-        rw [h0, UInt32.add_zero, Mem.write32_pages, UInt32.toNat_add,
-            show (0 : UInt32).toNat = 0 from rfl,
-            Nat.mod_eq_of_lt (by omega)]
+        simp only [show (4:UInt32) * UInt32.ofNat 0 = 0 from by decide,
+                   UInt32.add_zero, Mem.write32_pages]
         omega)
-      (by simp only [Mem.write32_pages]; exact hpg_u32)) $$ [$Hσ₆ $HA_arr'] with ⟨%σ₇, Hagree₇, Hσ₇, HA_final⟩
-  simp only [show (4:UInt32) * UInt32.ofNat 0 = 0 from by decide, UInt32.add_zero] at Hagree₇
+      (by simp only [Mem.write32_pages]; exact hpg_u32)) $$ [$Hσ₆ $HA_arr'] with ⟨%σ₇, %hagree₇, Hσ₇, HA_final⟩
+  simp only [show (4:UInt32) * UInt32.ofNat 0 = 0 from by decide, UInt32.add_zero] at hagree₇
   imodintro; iexists σ₇, _, _
   isplitl []; · exact BI.pure_intro (by
     simp only [execOne.eq_def, show (0:UInt32).toNat = 0 from rfl, Mem.write32_pages,
                UInt32.add_zero]
     have hok : ¬(dst_ptr.toNat + 0 + 4 > st.mem.pages * 65536) := by omega
     simp only [if_neg hok]; rfl)
-  isplitl [Hagree₇]; · iexact Hagree₇
+  isplitl []; · exact BI.pure_intro hagree₇
   isplitl [Hσ₇]; · iexact Hσ₇
   -- .ret: close WP with pure postcondition
   (try unfold wp_wasm)
@@ -677,16 +674,14 @@ private theorem func8_spec (st : Store Unit) (σ : WasmHeapMap (Option UInt8))
                UInt32.add_zero, Mem.read32_write32_same]
   · -- read32 (dst_ptr + 4) = len_val  (first write; second write at dst_ptr is disjoint)
     rw [Mem.read32_write32_of_disjoint _ _ _ ptr_val (Or.inl (by
-      have h0 : (4 : UInt32) * UInt32.ofNat 0 = 0 := by decide
-      have hadd0 : (dst_ptr + 4 * UInt32.ofNat 0).toNat = dst_ptr.toNat := by
-        rw [h0, UInt32.add_zero]
       have hadd4 : (dst_ptr + 4).toNat = dst_ptr.toNat + 4 := by
-        rw [UInt32.toNat_add, show (4:UInt32).toNat = 4 from rfl,
-            Nat.mod_eq_of_lt (by omega)]
+        have : dst_ptr.toNat + 4 < 4294967296 := by omega
+        simp only [UInt32.toNat_add, show (4:UInt32).toNat = 4 from rfl,
+                   Nat.mod_eq_of_lt (by simpa [UInt32.size] using this)]
       omega))]
     exact Mem.read32_write32_same _ _ _
   · simp [Mem.write32_pages]
-  · rfl
+  · trivial
 
 -- ======================================================================
 -- §4  Lomuto partition invariant + func10 spec
@@ -717,58 +712,57 @@ func7 calls func4 which uses scratch at global0−4 = (old_g0−48)−4 = old_g0
 So we need at least 52 bytes of shadow stack before the array.
 -/
 
-/-- Lomuto partition loop invariant (parameterised by the scan state).
+/-- Lomuto partition loop invariant using iProp ownership (arrayAt).
 
     After scanning positions [0..j) with write-head i:
-    (1) ∀ k < i,           arr[k] ≤ pivot   (left region settled)
-    (2) ∀ k, i ≤ k < j,   arr[k] > pivot   (right region identified)
-    (3) arr[len−1] = pivot                  (pivot stays at last position)
-    (4) arr.Perm orig_xs                    (no elements lost/duplicated)
-    (5) 0 ≤ i ≤ j < len                    (index sanity)
-    (6) array in bounds                     (pages constraint)
+    (1) ∀ k < i,           xs'[k] ≤ pivot   (left region settled)
+    (2) ∀ k, i ≤ k < j,   xs'[k] > pivot   (right region identified)
+    (3) xs'[len−1] = pivot                  (pivot stays at last position)
+    (4) xs'.Perm orig_xs                    (no elements lost/duplicated)
+    (5) xs'.length = orig_xs.length         (length preserved)
+    (6) global0 = g0_frame, pages unchanged (Wasm state sanity)
 
-    arr = wordsAt st.mem ptr orig_xs.length,  pivot = orig_xs.getLast! -/
-def partition_inv
-    (ptr     : UInt32)
-    (orig_xs : List UInt32)
-    (i j     : Nat)
-    (st      : Store Unit) : Prop :=
-  let arr   := wordsAt st.mem ptr orig_xs.length
-  let pivot := orig_xs.getLast!
-  0 < orig_xs.length ∧
-  i ≤ j ∧
-  j < orig_xs.length ∧
-  (∀ k < i,              arr[k]! ≤ pivot) ∧
-  (∀ k, i ≤ k → k < j → arr[k]! > pivot) ∧
-  arr.getLast! = pivot ∧
-  arr.Perm orig_xs ∧
-  ptr.toNat + 4 * orig_xs.length ≤ st.mem.pages * 65536
+    Uses arrayAt (iProp ownership) instead of wordsAt (Prop read).
+    xs' is a ghost variable quantified inside the iProp.
+    g0_frame = g0 − 48, pages₀ = st.mem.pages (captured from outer context). -/
+def partition_inv_iProp
+    (ptr      : UInt32)
+    (orig_xs  : List UInt32)
+    (i j      : Nat)
+    (g0_frame : UInt32)
+    (pages₀   : Nat)
+    (st       : Store Unit) : IProp WasmHeapGF :=
+  iprop%
+    ∃ (xs' : List UInt32),
+      arrayAt ptr xs' ∗
+      ⌜xs'.length = orig_xs.length⌝ ∗
+      ⌜xs'.Perm orig_xs⌝ ∗
+      ⌜∀ k, k < i → xs'[k]! ≤ orig_xs.getLast!⌝ ∗
+      ⌜∀ k, i ≤ k → k < j → xs'[k]! > orig_xs.getLast!⌝ ∗
+      ⌜xs'[xs'.length - 1]! = orig_xs.getLast!⌝ ∗
+      ⌜st.globals.globals[0]? = some (.i32 g0_frame)⌝ ∗
+      ⌜st.mem.pages = pages₀⌝
 
-/-!
-NOTE on wp_wasm_prop_to_TerminatesWith:
-  That theorem requires `hresults : f.results.length = 0` (void function).
-  func10Def has `results := [.i32]`, so it CANNOT be converted via this theorem.
-  The skeleton therefore proves func10_spec as a direct TerminatesWith sorry.
-
-  A generalised version would be:
-    wp_wasm_prop_to_TerminatesWith_with_return
-      ... (hresults : f.results.length = k) ...
-      (hwp : wp_wasm_prop m initial locals f.body {} (fun st' vs => P st' vs)) :
-      TerminatesWith {} m id initial args P
-  This handles the .Return branch of wp_wasm_prop (the .Fallthrough branch
-  is impossible for a function with results, so hcompat is vacuous).
--/
-theorem func10_spec (st : Store Unit)
+-- func10_spec: conclusion is wp_wasm_prop (not TerminatesWith directly).
+-- The proof uses wp_wasm_iProp_loop internally, then the caller converts to
+-- TerminatesWith via wp_wasm_prop_to_TerminatesWith_return (from Adequacy.lean).
+-- Parameters σ₀ and hinit_ownership thread the ghost heap into the proof.
+theorem func10_spec
+    (σ₀ : WasmHeapMap (Option UInt8))
+    (st : Store Unit)
     (ptr : UInt32) (xs : List UInt32) (g0 : UInt32)
     (hlen     : 1 ≤ xs.length)
     (hpg      : ptr.toNat + 4 * xs.length ≤ st.mem.pages * 65536)
-    (hptr     : (52 : Nat) ≤ ptr.toNat)      -- ensures g0−52 is non-negative
+    (hptr     : (52 : Nat) ≤ ptr.toNat)
     (hg0      : st.globals.globals[0]? = some (.i32 g0))
-    (hg0_ok   : (52 : Nat) ≤ g0.toNat)       -- func10 (48) + func4 scratch (4) = 52
-    (hframe   : g0.toNat ≤ ptr.toNat)        -- frame [g0−48, g0) strictly below array
-    (hmem     : wordsAt st.mem ptr xs.length = xs) :
-    TerminatesWith {} «module» 10 st
-      [.i32 (UInt32.ofNat xs.length), .i32 ptr]
+    (hg0_ok   : (52 : Nat) ≤ g0.toNat)
+    (hframe   : g0.toNat ≤ ptr.toNat)
+    (hmem     : wordsAt st.mem ptr xs.length = xs)
+    (hinit_ownership : ⊢ genHeapInterp σ₀ ∗ arrayAt ptr xs) :
+    wp_wasm_prop «module» st
+      (func10Def.toLocals
+        ([.i32 (UInt32.ofNat xs.length), .i32 ptr].take func10Def.numParams).reverse)
+      func10Def.body {}
       (fun st' vs =>
         ∃ pivot_idx : UInt32,
           vs = [.i32 pivot_idx] ∧
@@ -781,81 +775,23 @@ theorem func10_spec (st : Store Unit)
             (∀ k, pivot_idx.toNat < k → k < xs.length → arr[k]! > arr[pivot_idx.toNat]!) ∧
             st'.globals = st.globals ∧
             st'.mem.pages = st.mem.pages) := by
+  -- Architecture: PROLOGUE → (exec_cons chain for frame setup + func9 call)
+  --               then apply wp_wasm_iProp_loop for the partition loop.
+  --
+  -- The loop invariant (after prologue state st', locals loc'):
+  --   wp_wasm_iProp_loop
+  --     (measure := xs.length - 1)
+  --     (σ₀ := σ_after_prologue)
+  --     (I := fun n stA locA =>
+  --       partition_inv_iProp ptr xs
+  --         (i_of locA) (xs.length - 1 - n)
+  --         (g0 - 48) st.mem.pages ∗
+  --       ⌜locA.get 6 = some (.i32 (UInt32.ofNat (i_of locA)))⌝)
+  --
+  -- hinit: ghost heap initialization from hinit_ownership
+  -- hstep: partition iteration via iProp loads/stores (wp_iProp_load32, wp_iProp_store32)
+  -- hexit: loop exit + final swap via func7_spec
   sorry
-  -- Strategy:
-  --
-  -- A. PROLOGUE (straight-line exec_cons chain):
-  --    globalGet 0 → g0; const 48; sub; localSet 2 → frame := g0−48
-  --    localGet 2; globalSet 0 → global0 := frame = g0−48
-  --    local3 := xs.length − 1     (= len−1, the last index)
-  --    Bounds check: local3 < local1 (i.e. len−1 < len → always true for len ≥ 1).
-  --    If len = 0: branch not taken (hlen : 1 ≤ xs.length).
-  --    pivot := arr[len−1] = xs.getLast! (loaded from ptr + (len−1)*4, from hmem).
-  --      Use read32_write32_ne / hmem to establish xs.getLast! = st.mem.read32 (ptr+4*(len−1)).
-  --    local6 := 0   (write-head i initialised to 0)
-  --    Call func9(frame+16, 0, len−1):
-  --      func9 sets up a scan iterator in frame[16..32):
-  --        frame[16] = start (= 0), frame[20] = end (= len−1)
-  --      Requires func9_terminates (a helper TerminatesWith sorry'd separately).
-  --
-  -- B. LOOP (apply wp_wasm_prop_loop):
-  --
-  --    I := fun (st_loop : Store Unit) (loc : Locals) =>
-  --           ∃ i j : Nat,
-  --             partition_inv ptr xs i j st_loop ∧
-  --             -- Wasm state encodes i in frame[28] and j via the iterator in frame[8..16)
-  --             loc.get? 6 = some (.i32 (UInt32.ofNat i)) ∧
-  --             j_from_iter loc st_loop = j   -- connect Wasm locals to abstract j
-  --    μ := fun st_loop loc =>
-  --           xs.length − 1 − j   -- j strictly increases each iteration
-  --
-  --    hinit: I holds initially with i = 0, j = 0:
-  --      partition_inv established by partition_inv_init (empty ranges trivially ok).
-  --
-  --    hstep: for each iteration, one of three outcomes:
-  --      (a) Loop exits (j = len−1, iterator exhausted → Fallthrough):
-  --          Inner check: iter exhausted → fire the block exit path.
-  --          Call func7(ptr, len, i, len−1, err_ptr) for the FINAL swap.
-  --            func7_spec with xi := xs_cur[i]!, xj = pivot, i := i, j := len−1.
-  --          After swap: arr[i] = pivot.
-  --          Load local10 := frame[28] = i.
-  --          global0 := frame + 48 (restored).
-  --          Return .i32 i.
-  --          → wp_wasm_prop returns here via .Return st' [.i32 i].
-  --          Postcondition: produce the ∃ pivot_idx = i with all required facts.
-  --
-  --      (b) arr[j] > pivot → BREAK 0 (continue):
-  --          j incremented (via func5 advancing the iterator).
-  --          I maintained: partition_inv with (i, j+1).
-  --          partition_inv_step_gt: extends the right region by one.
-  --          μ decreases: len−1 − (j+1) < len−1 − j.
-  --
-  --      (c) arr[j] ≤ pivot → swap arr[i] ↔ arr[j], BREAK 0:
-  --          Call func7(ptr, len, i, j, err_ptr).
-  --          func7_spec with xi = xs_cur[i]!, xj = xs_cur[j]! ≤ pivot.
-  --          After swap: arr[i] = old arr[j] ≤ pivot; i++ stored in frame[28].
-  --          j incremented (via func5).
-  --          I maintained with (i+1, j+1):
-  --            partition_inv_step_le: extends left region by one.
-  --          μ decreases.
-  --
-  -- C. POSTCONDITION (after loop exits via Fallthrough):
-  --    Derive the ∃ pivot_idx from the final i:
-  --      arr[i] = pivot         (from final swap placing pivot at position i)
-  --      ∀ k < i, arr[k] ≤ pivot = arr[i]  (from partition_inv.left_le)
-  --      ∀ k > i, k < len, arr[k] > pivot = arr[i]  (from partition_inv.right_gt + final)
-  --      arr.Perm xs            (from partition_inv.perm, composed across all swaps)
-  --      st'.globals = st.globals  (global0 restored at exit)
-  --    Package as ∃ pivot_idx = i, ∃ arr = wordsAt st'.mem ptr len, ...
-  --
-  -- Supporting lemmas needed:
-  --   func7_spec
-  --   func5_terminates : TerminatesWith for func5 (advance scan iterator)
-  --   func9_terminates : TerminatesWith for func9 (initialise iterator)
-  --   partition_inv_init, partition_inv_step_gt, partition_inv_step_le
-  --   partition_inv_conclusion (after final swap)
-  --   wordsAt_write32_ne (framing: only [ptr, ptr+4*len) changes)
-  --   Frame accounting: frame [g0−48, g0); func4 scratch at frame−4 = g0−52 < ptr
 
 -- ======================================================================
 -- §4.5  Helpers for func11_spec inductive case
@@ -1274,6 +1210,12 @@ theorem func11_spec (n : Nat) : ∀
       have hg0_lt_pages : g0.toNat ≤ st.mem.pages * 65536 :=
         le_trans hg0_le (by linarith [hpg])
       -- Apply func10_spec to partition the array
+      -- func10_spec now returns wp_wasm_prop (not TerminatesWith directly).
+      -- To get TerminatesWith we need:
+      --   (1) σ₀ : WasmHeapMap (Option UInt8) for the ghost heap over arrayAt ptr xs
+      --   (2) hinit_ownership : ⊢ genHeapInterp σ₀ ∗ arrayAt ptr xs
+      --       obtained from wasm_heap_adequacy_with_mem applied to the outer context
+      --   (3) wp_wasm_prop_to_TerminatesWith_return applied to func10_spec's wp_wasm_prop result
       have hf10 : TerminatesWith {} «module» 10 st_pre
           [.i32 (UInt32.ofNat n), .i32 ptr]
           (fun st' vs =>
@@ -1284,15 +1226,7 @@ theorem func11_spec (n : Nat) : ∀
                 (∀ k < pivot_idx.toNat, arr[k]! ≤ arr[pivot_idx.toNat]!) ∧
                 (∀ k, pivot_idx.toNat < k → k < n → arr[k]! > arr[pivot_idx.toNat]!) ∧
                 st'.globals = st_pre.globals ∧ st'.mem.pages = st.mem.pages) := by
-        have h := func10_spec st_pre ptr xs frame
-          (by rw [hlen]; omega)
-          (by rw [hlen]; exact hpg)
-          (by linarith [hptr, hbase'])
-          hg0_pre
-          (by simp only [frame, h_g016]; sorry)  -- 52 ≤ g0.toNat - 16 (needs g0 ≥ 68)
-          (by simp only [frame, h_g016]; omega)
-          (by rw [hlen]; exact hmem)
-        rwa [hlen] at h
+        sorry  -- func10_spec σ₀ + wp_wasm_prop_to_TerminatesWith_return (next session)
       obtain ⟨N10, hN10⟩ := hf10
       obtain ⟨vs10, st10, hrun10, pivot_idx, hvs10_eq, hpivot_lt, arr,
           harr_len, harr_mem, harr_perm, harr_left, harr_right, hglob10, hpages10⟩ :=
