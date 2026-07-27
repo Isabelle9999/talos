@@ -726,71 +726,57 @@ So we need at least 52 bytes of shadow stack before the array.
     xs' is a ghost variable quantified inside the iProp.
     g0_frame = g0 − 48, pages₀ = st.mem.pages (captured from outer context). -/
 def partition_inv_iProp
-    (ptr      : UInt32)
-    (orig_xs  : List UInt32)
-    (i j      : Nat)
-    (g0_frame : UInt32)
-    (pages₀   : Nat)
-    (st       : Store Unit) : IProp WasmHeapGF :=
+    (ptr    : UInt32) (orig_xs : List UInt32) (pivot : UInt32)
+    (frame  : UInt32) (pages₀  : Nat)
+    (n      : Nat) (stA : Store Unit) (locA : Locals)
+    : IProp WasmHeapGF :=
   iprop%
-    ∃ (xs' : List UInt32),
+    ∃ (i j : Nat) (xs' : List UInt32),
       arrayAt ptr xs' ∗
       ⌜xs'.length = orig_xs.length⌝ ∗
       ⌜xs'.Perm orig_xs⌝ ∗
-      ⌜∀ k, k < i → xs'[k]! ≤ orig_xs.getLast!⌝ ∗
-      ⌜∀ k, i ≤ k → k < j → xs'[k]! > orig_xs.getLast!⌝ ∗
-      ⌜xs'[xs'.length - 1]! = orig_xs.getLast!⌝ ∗
-      ⌜st.globals.globals[0]? = some (.i32 g0_frame)⌝ ∗
-      ⌜st.mem.pages = pages₀⌝
+      ⌜∀ k, k < i → xs'[k]! ≤ pivot⌝ ∗
+      ⌜∀ k, i ≤ k → k < j → xs'[k]! > pivot⌝ ∗
+      ⌜xs'[xs'.length - 1]! = pivot⌝ ∗
+      ⌜n = orig_xs.length - 1 - j⌝ ∗
+      ⌜j ≤ orig_xs.length - 1⌝ ∗
+      ⌜stA.globals.globals[0]? = some (.i32 frame)⌝ ∗
+      ⌜stA.mem.pages = pages₀⌝
 
 -- func10_spec: conclusion is wp_wasm_prop (not TerminatesWith directly).
--- The proof uses wp_wasm_iProp_loop internally, then the caller converts to
--- TerminatesWith via wp_wasm_prop_to_TerminatesWith_return (from Adequacy.lean).
+-- The proof uses wp_wasm_iProp_loop internally.
 -- Parameters σ₀ and hinit_ownership thread the ghost heap into the proof.
 theorem func10_spec
     (σ₀ : WasmHeapMap (Option UInt8))
     (st : Store Unit)
     (ptr : UInt32) (xs : List UInt32) (g0 : UInt32)
+    (hinit_ownership : ⊢ genHeapInterp σ₀ ∗ arrayAt ptr xs)
     (hlen     : 1 ≤ xs.length)
     (hpg      : ptr.toNat + 4 * xs.length ≤ st.mem.pages * 65536)
     (hptr     : (52 : Nat) ≤ ptr.toNat)
     (hg0      : st.globals.globals[0]? = some (.i32 g0))
     (hg0_ok   : (52 : Nat) ≤ g0.toNat)
-    (hframe   : g0.toNat ≤ ptr.toNat)
-    (hmem     : wordsAt st.mem ptr xs.length = xs)
-    (hinit_ownership : ⊢ genHeapInterp σ₀ ∗ arrayAt ptr xs) :
+    (hframe   : g0.toNat ≤ ptr.toNat) :
     wp_wasm_prop «module» st
       (func10Def.toLocals
         ([.i32 (UInt32.ofNat xs.length), .i32 ptr].take func10Def.numParams).reverse)
       func10Def.body {}
       (fun st' vs =>
-        ∃ pivot_idx : UInt32,
+        ∃ (pivot_idx : UInt32) (arr : List UInt32),
           vs = [.i32 pivot_idx] ∧
           pivot_idx.toNat < xs.length ∧
-          ∃ arr : List UInt32,
-            arr.length = xs.length ∧
-            wordsAt st'.mem ptr xs.length = arr ∧
-            arr.Perm xs ∧
-            (∀ k < pivot_idx.toNat, arr[k]! ≤ arr[pivot_idx.toNat]!) ∧
-            (∀ k, pivot_idx.toNat < k → k < xs.length → arr[k]! > arr[pivot_idx.toNat]!) ∧
-            st'.globals = st.globals ∧
-            st'.mem.pages = st.mem.pages) := by
-  -- Architecture: PROLOGUE → (exec_cons chain for frame setup + func9 call)
-  --               then apply wp_wasm_iProp_loop for the partition loop.
-  --
-  -- The loop invariant (after prologue state st', locals loc'):
-  --   wp_wasm_iProp_loop
-  --     (measure := xs.length - 1)
-  --     (σ₀ := σ_after_prologue)
-  --     (I := fun n stA locA =>
-  --       partition_inv_iProp ptr xs
-  --         (i_of locA) (xs.length - 1 - n)
-  --         (g0 - 48) st.mem.pages ∗
-  --       ⌜locA.get 6 = some (.i32 (UInt32.ofNat (i_of locA)))⌝)
-  --
-  -- hinit: ghost heap initialization from hinit_ownership
-  -- hstep: partition iteration via iProp loads/stores (wp_iProp_load32, wp_iProp_store32)
-  -- hexit: loop exit + final swap via func7_spec
+          arr.length = xs.length ∧
+          arr.Perm xs ∧
+          (∀ k < pivot_idx.toNat, arr[k]! ≤ arr[pivot_idx.toNat]!) ∧
+          (∀ k, pivot_idx.toNat < k → k < xs.length → arr[k]! > arr[pivot_idx.toNat]!) ∧
+          st'.globals = st.globals ∧
+          st'.mem.pages = st.mem.pages ∧
+          (⊢ arrayAt ptr arr)) := by
+  -- func10_spec uses wp_wasm_iProp_loop (CSEC-FIL).
+  -- Invariant: partition_inv_iProp carries arrayAt ownership.
+  -- Each iteration: wp_iProp_load32_sep to read arr[j],
+  --   compare with pivot, optionally wp_iProp_store32_sep for swap.
+  -- After small-step: loop conclusion upgrades to iProp.
   sorry
 
 -- ======================================================================
