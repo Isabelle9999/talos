@@ -304,4 +304,114 @@ theorem quicksort_compose
            hleft_cond hright_cond,
          hperm⟩
 
+private theorem segment_take_drop_eq (l : List UInt32) (lo hi : Nat) (hlohi : lo ≤ hi) :
+    segment l lo hi = (l.take hi).drop lo := by
+  induction l generalizing lo hi with
+  | nil => simp [segment]
+  | cons head l ih =>
+    cases lo with
+    | zero => simp [segment]
+    | succ lo =>
+      cases hi with
+      | zero => omega
+      | succ hi =>
+        simp only [segment, List.take_succ_cons, List.drop_succ_cons, Nat.succ_sub_succ_eq_sub]
+        exact ih lo hi (by omega)
+
+private theorem segment_eq_of_take {a b : List UInt32} {lo hi k : Nat}
+    (hlohi : lo ≤ hi) (hhik : hi ≤ k) (htake : a.take k = b.take k) :
+    segment a lo hi = segment b lo hi := by
+  rw [segment_take_drop_eq a lo hi hlohi, segment_take_drop_eq b lo hi hlohi]
+  congr 1
+  rw [show a.take hi = (a.take k).take hi from by
+        rw [List.take_take]; simp [Nat.min_eq_left hhik],
+      show b.take hi = (b.take k).take hi from by
+        rw [List.take_take]; simp [Nat.min_eq_left hhik],
+      htake]
+
+private theorem segment_eq_of_drop {a b : List UInt32} {lo hi k : Nat}
+    (hklo : k ≤ lo) (hdrop : a.drop k = b.drop k) :
+    segment a lo hi = segment b lo hi := by
+  simp only [segment]
+  congr 1
+  have step : ∀ l : List UInt32, l.drop lo = (l.drop k).drop (lo - k) := fun l => by
+    rw [List.drop_drop]; congr 1; omega
+  rw [step a, step b, hdrop]
+
+private theorem getElem!_eq_of_take {a b : List UInt32} {k i : Nat}
+    (hik : i < k) (htake : a.take k = b.take k) :
+    a[i]! = b[i]! := by
+  simp only [List.getElem!_eq_getElem?_getD]
+  rw [show a[i]? = (a.take k)[i]? from by simp [List.getElem?_take, hik],
+      show b[i]? = (b.take k)[i]? from by simp [List.getElem?_take, hik],
+      htake]
+
+private theorem getElem!_eq_of_drop {a b : List UInt32} {k i : Nat}
+    (hki : k ≤ i) (hdrop : a.drop k = b.drop k) :
+    a[i]! = b[i]! := by
+  simp only [List.getElem!_eq_getElem?_getD]
+  have ha : a[i]? = (a.drop k)[i - k]? := by
+    rw [List.getElem?_drop]; congr 1; omega
+  have hb : b[i]? = (b.drop k)[i - k]? := by
+    rw [List.getElem?_drop]; congr 1; omega
+  rw [ha, hb, hdrop]
+
+theorem partitionRange_after_sorts
+    {values output_p out_l out_r : List UInt32} {lo hi pivotIdx : Nat}
+    (hpart : PartitionRange values output_p lo hi pivotIdx)
+    (hlen_l : out_l.length = output_p.length)
+    (htake_l : out_l.take lo = output_p.take lo)
+    (hdrop_l : out_l.drop pivotIdx = output_p.drop pivotIdx)
+    (hperm_l : List.Perm (segment output_p lo pivotIdx) (segment out_l lo pivotIdx))
+    (hlen_r : out_r.length = out_l.length)
+    (htake_r : out_r.take (pivotIdx + 1) = out_l.take (pivotIdx + 1))
+    (hdrop_r : out_r.drop hi = out_l.drop hi)
+    (hperm_r : List.Perm (segment out_l (pivotIdx + 1) hi) (segment out_r (pivotIdx + 1) hi)) :
+    PartitionRange values out_r lo hi pivotIdx := by
+  obtain ⟨hlo, hphi, hhilen, hlen_p, htake_p, hdrop_p, hperm_p, hleft_p, hright_p⟩ := hpart
+  have hhilen_r : hi ≤ out_r.length := by omega
+  -- segment equalities
+  have hseg_r_lo_p : segment out_r lo pivotIdx = segment out_l lo pivotIdx :=
+    segment_eq_of_take (by omega) (by omega) htake_r
+  have hseg_l_p1_hi : segment out_l (pivotIdx + 1) hi = segment output_p (pivotIdx + 1) hi :=
+    segment_eq_of_drop (by omega) hdrop_l
+  -- pivot element equalities
+  have hpiv_l : out_l[pivotIdx]! = output_p[pivotIdx]! :=
+    getElem!_eq_of_drop (le_refl _) hdrop_l
+  have hpiv_r : out_r[pivotIdx]! = out_l[pivotIdx]! :=
+    getElem!_eq_of_take (by omega) htake_r
+  -- perm of whole segment
+  have hperm_op_r : List.Perm (segment output_p lo hi) (segment out_r lo hi) := by
+    have lhs_eq : segment output_p lo hi =
+        segment output_p lo pivotIdx ++ output_p[pivotIdx]! :: segment output_p (pivotIdx + 1) hi := by
+      rw [← segment_cons_pivot hphi (by omega), segment_append hlo (by omega)]
+    have rhs_eq : segment out_r lo hi =
+        segment out_r lo pivotIdx ++ out_r[pivotIdx]! :: segment out_r (pivotIdx + 1) hi := by
+      rw [← segment_cons_pivot hphi hhilen_r, segment_append hlo (by omega)]
+    rw [lhs_eq, rhs_eq, hseg_r_lo_p, hpiv_r, ← hpiv_l, ← hseg_l_p1_hi]
+    exact hperm_l.append (List.Perm.cons _ hperm_r)
+  -- take lo chain
+  have htake_r_lo : out_r.take lo = out_l.take lo := by
+    have := congr_arg (·.take lo) htake_r
+    simp only [List.take_take, Nat.min_eq_left (by omega : lo ≤ pivotIdx + 1)] at this
+    exact this
+  -- drop hi chain
+  have hdrop_l_hi : out_l.drop hi = output_p.drop hi := by
+    have step : ∀ l : List UInt32, l.drop hi = (l.drop pivotIdx).drop (hi - pivotIdx) := fun l => by
+      rw [List.drop_drop]; congr 1; omega
+    rw [step out_l, step output_p, hdrop_l]
+  exact ⟨hlo, hphi, hhilen, by omega,
+    by rw [htake_r_lo, htake_l, htake_p],
+    by rw [hdrop_r, hdrop_l_hi, hdrop_p],
+    hperm_p.trans hperm_op_r,
+    by rw [hseg_r_lo_p, hpiv_r, hpiv_l]
+       intro x hx; exact hleft_p x (hperm_l.symm.subset hx),
+    by intro x hx; rw [hpiv_r, hpiv_l]
+       apply hright_p; rw [← hseg_l_p1_hi]; exact hperm_r.symm.subset hx⟩
+
+theorem segment_sorted_of_take_eq {a b : List UInt32} {lo hi k : Nat}
+    (hlohi : lo ≤ hi) (hhik : hi ≤ k) (htake : a.take k = b.take k)
+    (h : Sorted (segment b lo hi)) : Sorted (segment a lo hi) := by
+  rw [segment_eq_of_take hlohi hhik htake]; exact h
+
 end Wasm.Examples.Quicksort

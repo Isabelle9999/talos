@@ -477,4 +477,295 @@ theorem wp_partition
     List.cons_append]
   iapply Hcont $$ %output %pivotIdx Hruntime %hrange Harray
 
+def quicksortLocals (arr : UInt32) (lo hi : Nat) (pivotIdx : Nat)
+    (stack : List Value := []) : Locals :=
+  ⟨[.i32 arr, .i32 (UInt32.ofNat lo), .i32 (UInt32.ofNat hi)],
+    [.i32 (UInt32.ofNat pivotIdx)],
+    stack⟩
+
+set_option maxHeartbeats 8000000 in
+private theorem wp_quicksortBody_aux
+    [WasmSmallStepGS hlc]
+    {s : Stuckness} {E : CoPset}
+    {Φ : List Value → IProp WasmHeapGF}
+    (runtimeModule : Module) (partitionIdx quicksortIdx : Nat)
+    (himports_p : ¬partitionIdx < runtimeModule.imports.length)
+    (hfunction_p : runtimeModule.funcs[partitionIdx - runtimeModule.imports.length]? =
+        some partitionFunction)
+    (himports_q : ¬quicksortIdx < runtimeModule.imports.length)
+    (hfunction_q : runtimeModule.funcs[quicksortIdx - runtimeModule.imports.length]? =
+        some (quicksortFunction partitionIdx quicksortIdx))
+    (arr : UInt32) (input : List UInt32) (lo hi : Nat)
+    (hlohi : lo ≤ hi)
+    (hhilen : hi ≤ input.length)
+    (hfit : arr.toNat + 4 * input.length ≤ UInt32.size)
+    (n : Nat) (hn : hi - lo ≤ n)
+    {callerLocals : Locals}
+    {code : Program} {arity : Nat} {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame}
+    {stack : List Value} :
+    runtimeModuleOwn runtimeModule ∗
+      arrayAt arr input ∗
+      (∀ (output : List UInt32),
+        runtimeModuleOwn runtimeModule -∗
+        ⌜output.length = input.length ∧ output.take lo = input.take lo ∧
+          output.drop hi = input.drop hi ∧ Sorted (segment output lo hi) ∧
+          List.Perm (segment input lo hi) (segment output lo hi)⌝ -∗
+        arrayAt arr output -∗
+        WP (.running ⟨{ callerLocals with values := stack },
+              code, arity, remainder, controls, calls⟩ : Expr Unit)
+            @ s; E {{ Φ }}) ⊢
+    WP (.running ⟨{ callerLocals with
+          values := .i32 (UInt32.ofNat hi) :: .i32 (UInt32.ofNat lo) :: .i32 arr :: stack },
+        .call quicksortIdx :: code, arity, remainder, controls, calls⟩ : Expr Unit)
+        @ s; E {{ Φ }} := by
+  induction n generalizing input lo hi callerLocals code arity remainder controls calls stack with
+  | zero =>
+    have heq : hi = lo := by omega
+    subst heq
+    iintro ⟨Hruntime, Harray, Hcont⟩
+    ihave HruntimeLater : ▷ runtimeModuleOwn runtimeModule $$ [Hruntime]
+    · inext; iexact Hruntime
+    iapply Wasm.SmallStep.wp_call runtimeModule quicksortIdx
+        (quicksortFunction partitionIdx quicksortIdx)
+        himports_q hfunction_q $$ HruntimeLater
+    inext; iintro Hruntime
+    simp [quicksortFunction, Function.toLocals, Function.numParams, ValueType.zero]
+    simp only [quicksortBody, quicksortBaseCheck, List.append_assoc, List.cons_append,
+      List.nil_append]
+    iapply Wasm.SmallStep.wp_localGet rfl; inext
+    iapply Wasm.SmallStep.wp_localGet rfl; inext
+    iapply Wasm.SmallStep.wp_sub; inext
+    have hloSub : UInt32.ofNat hi - UInt32.ofNat hi = 0 := by simp
+    simp only [hloSub]
+    iapply Wasm.SmallStep.wp_const; inext
+    iapply Wasm.SmallStep.wp_ltU rfl; inext
+    simp only [if_pos (by decide : (0 : UInt32) < 2)]
+    iapply Wasm.SmallStep.wp_iff rfl; inext
+    simp only [if_pos (by decide : (1 : UInt32) ≠ 0)]
+    iapply Wasm.SmallStep.wp_returnFromCallExplicit; inext
+    simp only [List.take_zero, List.nil_append]
+    have hpure0 : input.length = input.length ∧ input.take hi = input.take hi ∧
+        input.drop hi = input.drop hi ∧ Sorted (segment input hi hi) ∧
+        List.Perm (segment input hi hi) (segment input hi hi) :=
+      ⟨rfl, rfl, rfl, quicksort_base input hi hi hhilen (by omega), List.Perm.refl _⟩
+    iapply Hcont $$ %input Hruntime %hpure0 Harray
+  | succ n ih =>
+    iintro ⟨Hruntime, Harray, Hcont⟩
+    have hiSize : hi < UInt32.size := by
+      have : UInt32.size = 4294967296 := rfl; omega
+    have hdiffSize : hi - lo < UInt32.size := Nat.lt_of_le_of_lt (Nat.sub_le hi lo) hiSize
+    have hsubEq : UInt32.ofNat hi - UInt32.ofNat lo = UInt32.ofNat (hi - lo) := by
+      have hloSize : lo < UInt32.size := Nat.lt_of_le_of_lt hlohi hiSize
+      apply UInt32.toNat.inj
+      rw [UInt32.toNat_sub, UInt32.toNat_ofNat_of_lt' hiSize,
+          UInt32.toNat_ofNat_of_lt' hloSize, UInt32.toNat_ofNat_of_lt' hdiffSize]
+      have := (UInt32.ofNat hi).toNat_lt
+      rw [UInt32.toNat_ofNat_of_lt' hiSize] at this
+      omega
+    ihave HruntimeLater : ▷ runtimeModuleOwn runtimeModule $$ [Hruntime]
+    · inext; iexact Hruntime
+    iapply Wasm.SmallStep.wp_call runtimeModule quicksortIdx
+        (quicksortFunction partitionIdx quicksortIdx)
+        himports_q hfunction_q $$ HruntimeLater
+    inext; iintro Hruntime
+    simp [quicksortFunction, Function.toLocals, Function.numParams, ValueType.zero]
+    simp only [quicksortBody, quicksortBaseCheck, quicksortPartitionCall, quicksortLeftCall,
+      quicksortRightCall, List.append_assoc, List.cons_append, List.nil_append]
+    iapply Wasm.SmallStep.wp_localGet rfl; inext
+    iapply Wasm.SmallStep.wp_localGet rfl; inext
+    iapply Wasm.SmallStep.wp_sub; inext
+    simp only [hsubEq]
+    iapply Wasm.SmallStep.wp_const; inext
+    iapply Wasm.SmallStep.wp_ltU rfl; inext
+    by_cases hbase : hi - lo < 2
+    · have h_lt_u32 : UInt32.ofNat (hi - lo) < 2 := by
+        have h2 : (2 : UInt32).toNat = 2 := rfl
+        rw [UInt32.lt_iff_toNat_lt, UInt32.toNat_ofNat_of_lt' hdiffSize, h2]; exact hbase
+      simp only [if_pos h_lt_u32]
+      iapply Wasm.SmallStep.wp_iff rfl; inext
+      simp only [if_pos (by decide : (1 : UInt32) ≠ 0)]
+      iapply Wasm.SmallStep.wp_returnFromCallExplicit; inext
+      simp only [List.take_zero, List.nil_append]
+      have hpure_base : input.length = input.length ∧ input.take lo = input.take lo ∧
+          input.drop hi = input.drop hi ∧ Sorted (segment input lo hi) ∧
+          List.Perm (segment input lo hi) (segment input lo hi) :=
+        ⟨rfl, rfl, rfl, quicksort_base input lo hi hhilen hbase, List.Perm.refl _⟩
+      iapply Hcont $$ %input Hruntime %hpure_base Harray
+    · have h_not_lt : ¬UInt32.ofNat (hi - lo) < 2 := by
+        have h2 : (2 : UInt32).toNat = 2 := rfl
+        rw [UInt32.lt_iff_toNat_lt, UInt32.toNat_ofNat_of_lt' hdiffSize, h2]; omega
+      have hlohi_strict : lo < hi := by omega
+      simp only [if_neg h_not_lt]
+      iapply Wasm.SmallStep.wp_iff rfl; inext
+      simp only [if_neg (by decide : ¬(0 : UInt32) ≠ 0)]
+      iapply Wasm.SmallStep.wp_exitControl rfl; inext
+      simp only [List.take_zero, List.nil_append, List.drop_zero]
+      iapply Wasm.SmallStep.wp_localGet rfl; inext
+      iapply Wasm.SmallStep.wp_localGet rfl; inext
+      iapply Wasm.SmallStep.wp_localGet rfl; inext
+      ihave HruntimeLater_p : ▷ runtimeModuleOwn runtimeModule $$ [Hruntime]
+      · inext; iexact Hruntime
+      iapply Wasm.SmallStep.wp_call runtimeModule partitionIdx partitionFunction himports_p
+          hfunction_p $$ HruntimeLater_p
+      inext; iintro Hruntime_p
+      simp [partitionFunction, Function.toLocals, Function.numParams, ValueType.zero]
+      iapply wp_partitionBody_from
+          (⟨[.i32 arr, .i32 (UInt32.ofNat lo), .i32 (UInt32.ofNat hi)],
+            [.i32 0, .i32 0, .i32 0, .i32 0, .i32 0], []⟩ : Locals)
+          arr input lo hi ⟨hlohi_strict, hhilen⟩ hfit rfl
+      isplitl [Harray]
+      · iexact Harray
+      iintro %output_p %pivotIdx %tmp %hpart Harray_p
+      obtain ⟨hlo, hphi, hhilen_p, hlen_p, htake_p, hdrop_p, hperm_p, hleft_p, hright_p⟩ := hpart
+      iapply Wasm.SmallStep.wp_returnFromCallExplicit; inext
+      simp only [partitionLocals, List.take_succ_cons, List.take_zero, List.nil_append,
+        List.cons_append]
+      have hset_piv :
+          (⟨[.i32 arr, .i32 (UInt32.ofNat lo), .i32 (UInt32.ofNat hi)], [.i32 0],
+            [.i32 (UInt32.ofNat pivotIdx)]⟩ : Locals).set?
+            3 (.i32 (UInt32.ofNat pivotIdx)) =
+          some ⟨[.i32 arr, .i32 (UInt32.ofNat lo), .i32 (UInt32.ofNat hi)],
+                [.i32 (UInt32.ofNat pivotIdx)], [.i32 (UInt32.ofNat pivotIdx)]⟩ := rfl
+      iapply Wasm.SmallStep.wp_localSet hset_piv; inext
+      iapply Wasm.SmallStep.wp_localGet rfl; inext
+      iapply Wasm.SmallStep.wp_localGet rfl; inext
+      iapply Wasm.SmallStep.wp_localGet rfl; inext
+      have hhilen_left : pivotIdx ≤ output_p.length := by omega
+      have hfit_left : arr.toNat + 4 * output_p.length ≤ UInt32.size := by rw [hlen_p]; exact hfit
+      have hn_left : pivotIdx - lo ≤ n := by omega
+      iapply ih output_p lo pivotIdx hlo hhilen_left hfit_left hn_left
+      isplitl [Hruntime_p]
+      · iexact Hruntime_p
+      isplitl [Harray_p]
+      · iexact Harray_p
+      iintro %out_l Hruntime_l %hpure_l Harray_l
+      obtain ⟨hlen_l, htake_l, hdrop_l, hsorted_l, hperm_l⟩ := hpure_l
+      simp only [quicksortLocals]
+      iapply Wasm.SmallStep.wp_localGet rfl; inext
+      iapply Wasm.SmallStep.wp_localGet rfl; inext
+      iapply Wasm.SmallStep.wp_const; inext
+      iapply Wasm.SmallStep.wp_add; inext
+      have hpivSuccSize : pivotIdx + 1 < UInt32.size := by
+        have : UInt32.size = 4294967296 := rfl; omega
+      have hpivValue : 1 + UInt32.ofNat pivotIdx = UInt32.ofNat (pivotIdx + 1) := by
+        rw [UInt32.add_comm, u32_ofNat_succ hpivSuccSize]
+      simp only [hpivValue]
+      iapply Wasm.SmallStep.wp_localGet rfl; inext
+      have hlohi_right : pivotIdx + 1 ≤ hi := by omega
+      have hhilen_right : hi ≤ out_l.length := by omega
+      have hfit_right : arr.toNat + 4 * out_l.length ≤ UInt32.size := by
+        rw [hlen_l, hlen_p]; exact hfit
+      have hn_right : hi - (pivotIdx + 1) ≤ n := by omega
+      iapply (ih (callerLocals := ⟨[.i32 arr, .i32 (UInt32.ofNat lo), .i32 (UInt32.ofNat hi)],
+          [.i32 (UInt32.ofNat pivotIdx)], []⟩)
+        out_l (pivotIdx + 1) hi hlohi_right hhilen_right hfit_right hn_right)
+      isplitl [Hruntime_l]
+      · iexact Hruntime_l
+      isplitl [Harray_l]
+      · iexact Harray_l
+      iintro %out_r Hruntime_r %hpure_r Harray_r
+      obtain ⟨hlen_r, htake_r, hdrop_r, hsorted_r, hperm_r⟩ := hpure_r
+      iapply Wasm.SmallStep.wp_returnFromCallExplicit; inext
+      simp only [List.take_zero, List.nil_append]
+      have hpart_final : PartitionRange input out_r lo hi pivotIdx :=
+        partitionRange_after_sorts
+          ⟨hlo, hphi, hhilen_p, hlen_p, htake_p, hdrop_p, hperm_p, hleft_p, hright_p⟩
+          hlen_l htake_l hdrop_l hperm_l hlen_r htake_r hdrop_r hperm_r
+      have hleft_r : Sorted (segment out_r lo pivotIdx) :=
+        segment_sorted_of_take_eq (by omega) (by omega) htake_r hsorted_l
+      have hcomp := quicksort_compose input out_r lo hi pivotIdx hpart_final hleft_r hsorted_r
+      have htake_r_lo : out_r.take lo = out_l.take lo := by
+        have := congr_arg (·.take lo) htake_r
+        simp only [List.take_take, Nat.min_eq_left (by omega : lo ≤ pivotIdx + 1)] at this
+        exact this
+      have hdrop_l_hi : out_l.drop hi = output_p.drop hi := by
+        rw [show out_l.drop hi = (out_l.drop pivotIdx).drop (hi - pivotIdx) from by
+              rw [List.drop_drop]; congr 1; omega,
+            show output_p.drop hi = (output_p.drop pivotIdx).drop (hi - pivotIdx) from by
+              rw [List.drop_drop]; congr 1; omega,
+            hdrop_l]
+      have hpure_final : out_r.length = input.length ∧ out_r.take lo = input.take lo ∧
+          out_r.drop hi = input.drop hi ∧ Sorted (segment out_r lo hi) ∧
+          List.Perm (segment input lo hi) (segment out_r lo hi) :=
+        ⟨by omega, by rw [htake_r_lo, htake_l, htake_p],
+          by rw [hdrop_r, hdrop_l_hi, hdrop_p], hcomp.1, hcomp.2⟩
+      iapply Hcont $$ %out_r Hruntime_r %hpure_final Harray_r
+
+theorem wp_quicksortBody
+    [WasmSmallStepGS hlc]
+    {s : Stuckness} {E : CoPset}
+    {Φ : List Value → IProp WasmHeapGF}
+    (runtimeModule : Module) (partitionIdx quicksortIdx : Nat)
+    (himports_p : ¬partitionIdx < runtimeModule.imports.length)
+    (hfunction_p : runtimeModule.funcs[partitionIdx - runtimeModule.imports.length]? =
+        some partitionFunction)
+    (himports_q : ¬quicksortIdx < runtimeModule.imports.length)
+    (hfunction_q : runtimeModule.funcs[quicksortIdx - runtimeModule.imports.length]? =
+        some (quicksortFunction partitionIdx quicksortIdx))
+    (arr : UInt32) (input : List UInt32) (lo hi : Nat)
+    (hlohi : lo ≤ hi)
+    (hhilen : hi ≤ input.length)
+    (hfit : arr.toNat + 4 * input.length ≤ UInt32.size)
+    {callerLocals : Locals}
+    {code : Program} {arity : Nat} {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame}
+    {stack : List Value} :
+    runtimeModuleOwn runtimeModule ∗
+      arrayAt arr input ∗
+      (∀ (output : List UInt32),
+        runtimeModuleOwn runtimeModule -∗
+        ⌜output.length = input.length ∧ output.take lo = input.take lo ∧
+          output.drop hi = input.drop hi ∧ Sorted (segment output lo hi) ∧
+          List.Perm (segment input lo hi) (segment output lo hi)⌝ -∗
+        arrayAt arr output -∗
+        WP (.running ⟨{ callerLocals with values := stack },
+              code, arity, remainder, controls, calls⟩ : Expr Unit)
+            @ s; E {{ Φ }}) ⊢
+    WP (.running ⟨{ callerLocals with
+          values := .i32 (UInt32.ofNat hi) :: .i32 (UInt32.ofNat lo) :: .i32 arr :: stack },
+        .call quicksortIdx :: code, arity, remainder, controls, calls⟩ : Expr Unit)
+        @ s; E {{ Φ }} :=
+  wp_quicksortBody_aux runtimeModule partitionIdx quicksortIdx himports_p hfunction_p
+    himports_q hfunction_q arr input lo hi hlohi hhilen hfit input.length
+    (Nat.le_trans (Nat.sub_le hi lo) hhilen)
+
+set_option maxHeartbeats 5000000 in
+theorem wp_quicksort
+    [WasmSmallStepGS hlc]
+    {s : Stuckness} {E : CoPset}
+    {Φ : List Value → IProp WasmHeapGF}
+    (runtimeModule : Module) (partitionIdx quicksortIdx : Nat)
+    (himports_p : ¬partitionIdx < runtimeModule.imports.length)
+    (hfunction_p : runtimeModule.funcs[partitionIdx - runtimeModule.imports.length]? =
+        some partitionFunction)
+    (himports_q : ¬quicksortIdx < runtimeModule.imports.length)
+    (hfunction_q : runtimeModule.funcs[quicksortIdx - runtimeModule.imports.length]? =
+        some (quicksortFunction partitionIdx quicksortIdx))
+    (arr : UInt32) (input : List UInt32) (lo hi : Nat)
+    (hlohi : lo ≤ hi)
+    (hhilen : hi ≤ input.length)
+    (hfit : arr.toNat + 4 * input.length ≤ UInt32.size)
+    {callerLocals : Locals}
+    {code : Program} {arity : Nat} {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame}
+    {stack : List Value} :
+    runtimeModuleOwn runtimeModule ∗
+      arrayAt arr input ∗
+      (∀ (output : List UInt32),
+        runtimeModuleOwn runtimeModule -∗
+        ⌜output.length = input.length ∧ output.take lo = input.take lo ∧
+          output.drop hi = input.drop hi ∧ Sorted (segment output lo hi) ∧
+          List.Perm (segment input lo hi) (segment output lo hi)⌝ -∗
+        arrayAt arr output -∗
+        WP (.running ⟨{ callerLocals with values := stack },
+              code, arity, remainder, controls, calls⟩ : Expr Unit)
+            @ s; E {{ Φ }}) ⊢
+    WP (.running ⟨{ callerLocals with
+          values := .i32 (UInt32.ofNat hi) :: .i32 (UInt32.ofNat lo) :: .i32 arr :: stack },
+        .call quicksortIdx :: code, arity, remainder, controls, calls⟩ : Expr Unit)
+        @ s; E {{ Φ }} :=
+  wp_quicksortBody runtimeModule partitionIdx quicksortIdx himports_p hfunction_p
+    himports_q hfunction_q arr input lo hi hlohi hhilen hfit
+
 end Wasm.Examples.Quicksort
