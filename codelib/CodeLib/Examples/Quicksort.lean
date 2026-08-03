@@ -1,4 +1,5 @@
 import CodeLib.SepLogic.SmallStepAdequacy
+import Interpreter.Wasm.Decoder.Wat
 import Mathlib.Data.List.Sort
 
 /-!
@@ -617,5 +618,159 @@ theorem arrayAt_readWordArray [WasmSmallStepGS hlc]
     ipureintro
     unfold readWordArray
     rw [hfacts.1, hread]
+
+/-! ## WAT decoder agreement -/
+
+-- keep in sync with quicksort.wat
+private def quicksortWat : String := "
+(module
+  (memory 1)
+  (func (param i32 i32 i32) (result i32) (local i32 i32 i32 i32 i32)
+    local.get 2
+    i32.const 1
+    i32.sub
+    local.set 6
+    local.get 0
+    local.get 6
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load
+    local.set 3
+    local.get 1
+    local.set 4
+    local.get 1
+    local.set 5
+    block
+      loop
+        local.get 5
+        local.get 6
+        i32.lt_u
+        i32.eqz
+        br_if 1
+        local.get 3
+        local.get 0
+        local.get 5
+        i32.const 4
+        i32.mul
+        i32.add
+        i32.load
+        i32.lt_u
+        if
+        else
+          local.get 0
+          local.get 4
+          i32.const 4
+          i32.mul
+          i32.add
+          i32.load
+          local.set 7
+          local.get 0
+          local.get 4
+          i32.const 4
+          i32.mul
+          i32.add
+          local.get 0
+          local.get 5
+          i32.const 4
+          i32.mul
+          i32.add
+          i32.load
+          i32.store
+          local.get 0
+          local.get 5
+          i32.const 4
+          i32.mul
+          i32.add
+          local.get 7
+          i32.store
+          local.get 4
+          i32.const 1
+          i32.add
+          local.set 4
+        end
+        local.get 5
+        i32.const 1
+        i32.add
+        local.set 5
+        br 0
+      end
+    end
+    local.get 0
+    local.get 4
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load
+    local.set 7
+    local.get 0
+    local.get 4
+    i32.const 4
+    i32.mul
+    i32.add
+    local.get 0
+    local.get 6
+    i32.const 4
+    i32.mul
+    i32.add
+    i32.load
+    i32.store
+    local.get 0
+    local.get 6
+    i32.const 4
+    i32.mul
+    i32.add
+    local.get 7
+    i32.store
+    local.get 4
+    return)
+  (func (param i32 i32 i32) (local i32)
+    local.get 2
+    local.get 1
+    i32.sub
+    i32.const 2
+    i32.lt_u
+    if
+      return
+    end
+    local.get 0
+    local.get 1
+    local.get 2
+    call 0
+    local.set 3
+    local.get 0
+    local.get 1
+    local.get 3
+    call 1
+    local.get 0
+    local.get 3
+    i32.const 1
+    i32.add
+    local.get 2
+    call 1
+    return))
+"
+
+private def quicksortModuleDecoded : Module :=
+  match Wasm.Decoder.Wat.decode quicksortWat with
+  | .ok m => m
+  | .error _ => default
+
+def runQuicksortDecoded (fuel : Nat) (arr : UInt32) (input : List UInt32) :
+    Option (List UInt32) :=
+  match SmallStep.initConfig
+      { module := quicksortModuleDecoded, host := {} } 1
+      (quicksortExampleStore arr input)
+      (quicksortArguments arr input.length []) with
+  | .error _ => none
+  | .ok config =>
+      match (SmallStep.runSteps fuel config).result with
+      | .success _ store => some (readWordArray store.wasm.mem arr input.length)
+      | _ => none
+
+theorem quicksort_decoded_agrees :
+    runQuicksortDecoded 15000 0 [5, 1, 4, 2, 3] =
+    runQuicksortExample 15000 0 [5, 1, 4, 2, 3] := by
+  native_decide
 
 end Wasm.Examples.Quicksort
