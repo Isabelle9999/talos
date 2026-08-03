@@ -9,7 +9,7 @@ This file connects the pure list invariants to the small-step Wasm WP rules.
 namespace Wasm.Examples.Quicksort
 
 open Wasm
-open Iris Iris.ProgramLogic Language.Notation
+open Iris Iris.ProgramLogic Language.Notation Std
 open Wasm.SepLogic
 open Wasm.SmallStep
 
@@ -767,5 +767,57 @@ theorem wp_quicksort
         @ s; E {{ Φ }} :=
   wp_quicksortBody runtimeModule partitionIdx quicksortIdx himports_p hfunction_p
     himports_q hfunction_q arr input lo hi hlohi hhilen hfit
+
+theorem quicksort_partiallyMeets (arr : UInt32) (input : List UInt32)
+    (hfit : arr.toNat + 4 * input.length ≤ UInt32.size)
+    (hmem : arr.toNat + 4 * input.length ≤ 65536) :
+    PartiallyMeets (quicksortConfig arr input)
+      (fun values store =>
+        values = [] ∧ ∃ output : List UInt32,
+          output.length = input.length ∧ Sorted output ∧
+          List.Perm input output ∧
+          readWordArray store.wasm.mem arr input.length = output) := by
+  apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets.{0}
+    (α := Unit) (σ := quicksortHeap arr input) (globalσ := ∅)
+  · exact quicksortHeap_agrees arr input hfit
+  · exact quicksortHeap_inBounds arr input hfit hmem
+  · intro index value hget; simp [get?_empty] at hget
+  · intro gs
+    simp only [BI.BigSepM.bigSepM_empty.to_eq]
+    iintro ⟨Hbytes, _Hemp, Hruntime⟩
+    have hfitStrict : arr.toNat + 4 * input.length < UInt32.size := by
+      simp only [UInt32.size]; omega
+    ihave Harray := quicksortHeap_pointsTo arr input hfitStrict $$ Hbytes
+    simp only [quicksortConfig]
+    iapply wp_quicksort quicksortModule 0 1
+      (himports_p := by decide) (hfunction_p := rfl)
+      (himports_q := by decide) (hfunction_q := rfl)
+      (arr := arr) (input := input) (lo := 0) (hi := input.length)
+      (hlohi := Nat.zero_le _) (hhilen := Nat.le_refl _) (hfit := hfit)
+      (callerLocals := ⟨[], [], []⟩) (stack := []) (code := [])
+      (arity := 0) (remainder := []) (controls := []) (calls := [])
+    isplitl [Hruntime]
+    · iexact Hruntime
+    isplitl [Harray]
+    · iexact Harray
+    iintro %output Hruntime_out %hpure Harray_out
+    iapply wp_finish
+    inext
+    iapply wp_value'
+    iintro %store %_obs Hstate
+    imod arrayAt_readWordArray store 0 [] 0 arr output
+      (by rw [hpure.1]; exact hfit) $$
+        [$Hstate $Harray_out] with ⟨_Hstate, _Harray_out, %hread⟩
+    ipureintro
+    have hseq_out : segment output 0 input.length = output := by
+      simp only [segment, List.drop_zero, Nat.sub_zero]
+      rw [← hpure.1]; exact List.take_length (l := output)
+    have hseq_in : segment input 0 input.length = input := by
+      simp only [segment, List.drop_zero, Nat.sub_zero]
+      exact List.take_length (l := input)
+    exact ⟨rfl, output, hpure.1,
+      hseq_out ▸ hpure.2.2.2.1,
+      hseq_in ▸ hseq_out ▸ hpure.2.2.2.2,
+      by rw [← hpure.1]; exact hread⟩
 
 end Wasm.Examples.Quicksort
