@@ -38,6 +38,7 @@ import CodeLib.SepLogic.SmallStepLanguage
 import CodeLib.SepLogic.SmallStepState
 import CodeLib.SepLogic.SmallStepLifting
 import CodeLib.SepLogic.SmallStepAdequacy
+import CodeLib.SepLogic.HostCallExample
 
 /-!
 # CodeLib — umbrella import for downstream code

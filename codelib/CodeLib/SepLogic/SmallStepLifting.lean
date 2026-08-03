@@ -13,7 +13,7 @@ namespace Wasm.SmallStep
 open Iris Iris.ProgramLogic Language.Notation
 open Wasm.SepLogic
 
-variable [WasmSmallStepGS hlc]
+variable [WasmSmallStepGS hlc] [WasmHostGS α]
 local instance instWasmIrisGS :
     IrisGS_gen hlc (Expr α) WasmHeapGF :=
   instIrisGS
@@ -1216,6 +1216,226 @@ theorem wp_call
   · iapply Hwp
     iexact Hruntime
   · itrivial
+
+/-- Execute an imported (host) function call.
+`runtimeModule` and `hhostFn` tie the proof-time host function to the
+physical store seen by `PrimStep`. `P` is a ghost resource consumed by the
+host, and `QRet`/`QTrap`/`QThrow` are the resources delivered to each
+continuation. The three transfer lemmas are `==∗` proofs that shuttle
+`P ∗ stateInterp` through the host's store update for each outcome. -/
+theorem wp_callHost
+    (runtimeModule : Module) (functionIndex : Nat) (imp : ImportDecl)
+    (hostFn : HostFn α)
+    (himports : functionIndex < runtimeModule.imports.length)
+    (himp : runtimeModule.imports[functionIndex] = imp)
+    (hostEnv : HostEnv α)
+    (hhostFn : WasmHostGS.knownHostEnv (α := α) = some hostEnv)
+    (hfuncs : hostEnv.funcs[functionIndex]? = some hostFn)
+    {params localValues values : List Value}
+    {code : Program} {arity : Nat} {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame}
+    (P : IProp WasmHeapGF)
+    (QRet : List Value → IProp WasmHeapGF)
+    (QTrap : IProp WasmHeapGF)
+    (QThrow : IProp WasmHeapGF)
+    (hRetTransfer : ∀ (store : MachineStore α) (ns : Nat)
+        (obs : List StepKind) (nt : Nat),
+        store.runtime.module = runtimeModule →
+        ∀ results postWasm,
+        hostFn.invoke store.wasm (values.take imp.params.length).reverse =
+          .Return results postWasm →
+        P ∗ stateInterp (GF := WasmHeapGF) store ns obs nt ==∗
+        QRet results ∗
+        stateInterp (GF := WasmHeapGF) { store with wasm := postWasm } ns obs nt)
+    (hTrapTransfer : ∀ (store : MachineStore α) (ns : Nat)
+        (obs : List StepKind) (nt : Nat),
+        store.runtime.module = runtimeModule →
+        ∀ postWasm msg,
+        hostFn.invoke store.wasm (values.take imp.params.length).reverse =
+          .Trap postWasm msg →
+        P ∗ stateInterp (GF := WasmHeapGF) store ns obs nt ==∗
+        QTrap ∗
+        stateInterp (GF := WasmHeapGF) { store with wasm := postWasm } ns obs nt)
+    (hThrowTransfer : ∀ (store : MachineStore α) (ns : Nat)
+        (obs : List StepKind) (nt : Nat),
+        store.runtime.module = runtimeModule →
+        ∀ postWasm tag xs,
+        hostFn.invoke store.wasm (values.take imp.params.length).reverse =
+          .Throw postWasm tag xs →
+        P ∗ stateInterp (GF := WasmHeapGF) store ns obs nt ==∗
+        QThrow ∗
+        stateInterp (GF := WasmHeapGF) { store with wasm := postWasm } ns obs nt) :
+    let current : ThreadState α :=
+      ⟨⟨params, localValues, values⟩, .call functionIndex :: code,
+        arity, remainder, controls, calls⟩
+    P -∗
+    ▷ runtimeModuleOwn runtimeModule -∗
+    ▷ (∀ preWasm results postWasm
+          (_h : hostFn.invoke preWasm (values.take imp.params.length).reverse =
+            .Return results postWasm),
+        QRet results -∗
+        WP (Expr.running
+            ⟨⟨params, localValues,
+                results.take imp.results.length ++
+                  values.drop imp.params.length⟩,
+              code, arity, remainder, controls, calls⟩ : Expr α)
+          @ s; E {{ Φ }}) -∗
+    ▷ (∀ preWasm postWasm msg
+          (_h : hostFn.invoke preWasm (values.take imp.params.length).reverse =
+            .Trap postWasm msg),
+        QTrap -∗
+        WP (Expr.trapped (.host msg) : Expr α) @ s; E {{ Φ }}) -∗
+    ▷ (∀ preWasm postWasm tag xs
+          (h : hostFn.invoke preWasm (values.take imp.params.length).reverse =
+            .Throw postWasm tag xs),
+        QThrow -∗
+        WP (Expr.running
+            ⟨⟨params, localValues, values.drop imp.params.length⟩,
+              [], arity, remainder,
+              [{ kind := .throwing tag xs
+                 paramArity := 0
+                 resultArity := 0
+                 body := []
+                 continuation := []
+                 belowStack := [] }] ++ controls,
+              calls⟩ : Expr α)
+          @ s; E {{ Φ }}) -∗
+    WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
+  dsimp only
+  iintro HP >Hruntime HwpRet HwpTrap HwpThrow
+  iapply wp_lift_step rfl
+  iintro %store %ns %obs %obs' %nt Hσ
+  ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$
+      [Hσ Hruntime]
+  · imod stateInterp_runtimeModule_agree store ns (obs ++ obs') nt
+      runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+    ipureintro
+    exact Hmodule
+  have himports' : functionIndex < store.runtime.module.imports.length := by
+    simpa only [Hmodule] using himports
+  have himp' : store.runtime.module.imports[functionIndex] = imp := by
+    simpa only [Hmodule] using himp
+  ihave %Hhost : ⌜store.runtime.host = hostEnv⌝ $$ [Hσ]
+  · imod stateInterp_hostEnv store ns (obs ++ obs') nt
+        hostEnv hhostFn $$ [$Hσ] with %Hhost
+    ipureintro
+    exact Hhost
+  have hhost' : store.runtime.host.funcs[functionIndex]? = some hostFn := by
+    rw [Hhost]; exact hfuncs
+  match h : hostFn.invoke store.wasm (values.take imp.params.length).reverse with
+  | .Return results newWasm =>
+    iapply fupd_mask_intro Std.LawfulSet.empty_subset
+    iintro Hclose
+    isplitr
+    · ipureintro
+      cases s <;> simp only [Stuckness.MaybeReducible]
+      exact ⟨[.host functionIndex],
+        .running ⟨⟨params, localValues,
+            results.take imp.results.length ++
+              values.drop imp.params.length⟩,
+          code, arity, remainder, controls, calls⟩,
+        { store with wasm := newWasm }, [],
+        ⟨rfl, _, rfl, Step.callHostReturn himports' himp' hhost' h⟩⟩
+    iintro !> %e₂ %store₂ %forks %Hstep Hcredit
+    rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+    change forks = [] at hforks
+    subst forks
+    subst obs
+    obtain ⟨rfl, hconfig⟩ :=
+      step_deterministic (Step.callHostReturn (α := α) himports' himp' hhost' h) wasmStep
+    have parts := Config.mk.inj hconfig
+    have hexpr := parts.1
+    have hstore := parts.2
+    simp only at hexpr hstore
+    subst e₂
+    subst store₂
+    simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
+    imod hRetTransfer store ns obs' nt Hmodule results newWasm h $$ [$HP $Hσ] with ⟨HQ, Hσ⟩
+    imod Hclose
+    imodintro
+    isplitl [Hσ]
+    · iexact Hσ
+    ispecialize HwpRet $$ %(store.wasm) %results %newWasm %h
+    isplitl [HwpRet HQ]
+    · iapply HwpRet
+      iexact HQ
+    · itrivial
+  | .Trap newWasm msg =>
+    iapply fupd_mask_intro Std.LawfulSet.empty_subset
+    iintro Hclose
+    isplitr
+    · ipureintro
+      cases s <;> simp only [Stuckness.MaybeReducible]
+      exact ⟨[.host functionIndex],
+        .trapped (.host msg),
+        { store with wasm := newWasm }, [],
+        ⟨rfl, _, rfl, Step.callHostTrap himports' himp' hhost' h⟩⟩
+    iintro !> %e₂ %store₂ %forks %Hstep Hcredit
+    rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+    change forks = [] at hforks
+    subst forks
+    subst obs
+    obtain ⟨rfl, hconfig⟩ :=
+      step_deterministic (Step.callHostTrap (α := α) himports' himp' hhost' h) wasmStep
+    have parts := Config.mk.inj hconfig
+    have hexpr := parts.1
+    have hstore := parts.2
+    simp only at hexpr hstore
+    subst e₂
+    subst store₂
+    simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
+    imod hTrapTransfer store ns obs' nt Hmodule newWasm msg h $$ [$HP $Hσ] with ⟨HQ, Hσ⟩
+    imod Hclose
+    imodintro
+    isplitl [Hσ]
+    · iexact Hσ
+    ispecialize HwpTrap $$ %(store.wasm) %newWasm %msg %h
+    isplitl [HwpTrap HQ]
+    · iapply HwpTrap
+      iexact HQ
+    · itrivial
+  | .Throw newWasm tag xs =>
+    iapply fupd_mask_intro Std.LawfulSet.empty_subset
+    iintro Hclose
+    isplitr
+    · ipureintro
+      cases s <;> simp only [Stuckness.MaybeReducible]
+      exact ⟨[.host functionIndex],
+        .running ⟨⟨params, localValues, values.drop imp.params.length⟩,
+          [], arity, remainder,
+          [{ kind := .throwing tag xs
+             paramArity := 0
+             resultArity := 0
+             body := []
+             continuation := []
+             belowStack := [] }] ++ controls,
+          calls⟩,
+        { store with wasm := newWasm }, [],
+        ⟨rfl, _, rfl, Step.callHostThrow himports' himp' hhost' h⟩⟩
+    iintro !> %e₂ %store₂ %forks %Hstep Hcredit
+    rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+    change forks = [] at hforks
+    subst forks
+    subst obs
+    obtain ⟨rfl, hconfig⟩ :=
+      step_deterministic (Step.callHostThrow (α := α) himports' himp' hhost' h) wasmStep
+    have parts := Config.mk.inj hconfig
+    have hexpr := parts.1
+    have hstore := parts.2
+    simp only at hexpr hstore
+    subst e₂
+    subst store₂
+    simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
+    imod hThrowTransfer store ns obs' nt Hmodule newWasm tag xs h $$ [$HP $Hσ] with ⟨HQ, Hσ⟩
+    imod Hclose
+    imodintro
+    isplitl [Hσ]
+    · iexact Hσ
+    ispecialize HwpThrow $$ %(store.wasm) %newWasm %tag %xs %h
+    isplitl [HwpThrow HQ]
+    · iapply HwpThrow
+      iexact HQ
+    · itrivial
 
 /-- Resume a suspended caller after an explicit callee return. -/
 theorem wp_returnFromCallExplicit

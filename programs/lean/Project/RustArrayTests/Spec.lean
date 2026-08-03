@@ -91,7 +91,7 @@ def EmptyPlusThreeSpec : Prop := ∀ (ptr len : UInt32),
 @[proves Project.RustArrayTests.Spec.EmptyPlusThreeSpec]
 theorem empty_plus_three_correct : EmptyPlusThreeSpec := by
   intro ptr len
-  apply SmallStep.wasm_smallStep_runtime_partiallyMeets.{0} (α := Unit)
+  apply SmallStep.wasm_smallStep_runtime_partiallyMeets.{0} (α := Unit) (hhost := trivial)
   intro gs
   simp only [bodyConfig, func4]
   iintro Hruntime
@@ -147,7 +147,7 @@ def EmptyXorFlagSpec : Prop := ∀ (ptr len flag : UInt32),
 @[proves Project.RustArrayTests.Spec.EmptyXorFlagSpec]
 theorem empty_xor_flag_correct : EmptyXorFlagSpec := by
   intro ptr len flag
-  apply SmallStep.wasm_smallStep_runtime_partiallyMeets.{0} (α := Unit)
+  apply SmallStep.wasm_smallStep_runtime_partiallyMeets.{0} (α := Unit) (hhost := trivial)
   intro gs
   simp only [bodyConfig, func2]
   iintro Hruntime

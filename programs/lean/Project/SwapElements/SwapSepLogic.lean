@@ -1109,7 +1109,7 @@ theorem func4_distinct_store_partiallyMeets
     simpa using UInt32.add_ofNat_toNat_noWrap addressJ 7 (by omega) (by omega)
   apply
     Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_store_partiallyMeets.{0}
-      (α := Unit) (σ := σ) (globalσ := globalσ)
+      (α := Unit) (σ := σ) (globalσ := globalσ) (hhost := trivial)
   · exact hagree
   · exact hinBounds
   · exact hglobals
@@ -1199,7 +1199,7 @@ theorem func4_alias_store_partiallyMeets
     simpa using UInt32.add_ofNat_toNat_noWrap address 7 (by omega) (by omega)
   apply
     Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_store_partiallyMeets.{0}
-      (α := Unit) (σ := σ) (globalσ := globalσ)
+      (α := Unit) (σ := σ) (globalσ := globalσ) (hhost := trivial)
   · exact hagree
   · exact hinBounds
   · exact hglobals
@@ -1499,7 +1499,7 @@ theorem func4Example_store_smallStep :
   apply
     Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_store_partiallyMeets.{0}
       (α := Unit) (σ := func4ExampleHeap)
-      (globalσ := func4ExampleGlobals)
+      (globalσ := func4ExampleGlobals) (hhost := trivial)
   · exact func4ExampleHeap_agrees
   · exact func4ExampleHeap_inBounds
   · exact func4ExampleGlobals_agree
@@ -1675,7 +1675,7 @@ theorem func4Alias_store_smallStep :
   apply
     Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_store_partiallyMeets.{0}
       (α := Unit) (σ := func4AliasHeap)
-      (globalσ := func4ExampleGlobals)
+      (globalσ := func4ExampleGlobals) (hhost := trivial)
   · exact func4AliasHeap_agrees
   · exact func4AliasHeap_inBounds
   · exact func4ExampleGlobals_agree

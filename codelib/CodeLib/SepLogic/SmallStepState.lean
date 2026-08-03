@@ -33,6 +33,17 @@ attribute [reducible, instance] WasmSmallStepGS.table
 attribute [reducible, instance] WasmSmallStepGS.elementSegment
 attribute [reducible, instance] WasmSmallStepGS.runtime
 
+/-- Optional witness of the host environment for the Iris state interpretation.
+The default instance provides `none`, giving `True` as the host agreement fact.
+Override with a specific instance to witness the physical host env in proofs. -/
+class WasmHostGS (α : Type) where
+  knownHostEnv : Option (HostEnv α) := none
+
+instance instDefaultWasmHostGS : WasmHostGS α where
+  knownHostEnv := none
+
+variable [WasmHostGS α]
+
 instance instStateInterp [WasmSmallStepGS hlc] :
     StateInterp (MachineStore α) StepKind WasmHeapGF where
   stateInterp store _ _ _ := iprop%
@@ -59,7 +70,10 @@ instance instStateInterp [WasmSmallStepGS hlc] :
         dataSegmentHeapAgrees dataSegmentσ store.wasm.dataSegments ∧
         tableHeapAgrees tableσ store.wasm.tables ∧
         elementSegmentHeapAgrees elementSegmentσ
-          store.wasm.elementSegments⌝
+          store.wasm.elementSegments ∧
+        match WasmHostGS.knownHostEnv (α := α) with
+        | some h => store.runtime.host = h
+        | none => True⌝
 
 theorem stateInterp_eq [WasmSmallStepGS hlc]
     (store : MachineStore α) (steps : Nat)
@@ -88,7 +102,10 @@ theorem stateInterp_eq [WasmSmallStepGS hlc]
           dataSegmentHeapAgrees dataSegmentσ store.wasm.dataSegments ∧
           tableHeapAgrees tableσ store.wasm.tables ∧
           elementSegmentHeapAgrees elementSegmentσ
-            store.wasm.elementSegments⌝) :=
+            store.wasm.elementSegments ∧
+          match WasmHostGS.knownHostEnv (α := α) with
+          | some h => store.runtime.host = h
+          | none => True⌝) :=
   .rfl
 
 theorem stateInterp_pointsTo_read8 [WasmSmallStepGS hlc]
@@ -311,7 +328,7 @@ theorem stateInterp_elementSegment_facts_frame [WasmSmallStepGS hlc]
   · isplitl [Hsegment]
     · iexact Hsegment
     · ipureintro
-      exact Hfacts.2.2.2.2.2 index value hlookup
+      exact Hfacts.2.2.2.2.2.1 index value hlookup
 
 /-- `elem.drop` changes the physical segment status and authoritative ghost
 entry to `none` without renumbering any segment. -/
@@ -359,7 +376,8 @@ theorem stateInterp_elementSegment_drop [WasmSmallStepGS hlc]
       ⟨Hfacts.2.2.2.2.1,
         elementSegment_store_sound elementSegmentσ
           store.wasm.elementSegments index oldValue none
-          Hfacts.2.2.2.2.2 hlookup⟩⟩
+          Hfacts.2.2.2.2.2.1 hlookup,
+        Hfacts.2.2.2.2.2.2⟩⟩
   · iexact Hsegment
 
 /-- Owning a table fragment identifies the complete physical instantiated
@@ -942,6 +960,64 @@ theorem stateInterp_memoryGrow [WasmSmallStepGS hlc]
     grow_inBounds σ store.wasm.mem memory delta
       store.runtime.module.memoryCap previousPages hgrow Hfacts.2.1,
     Hfacts.2.2⟩
+
+/-- After a host-call `.Return`, the store's `wasm` field is replaced by the
+host-returned store. `runtime` is unchanged, so all ghost authorities are
+preserved; agreement must be re-established by the caller for each component
+that the host may have modified. -/
+theorem stateInterp_hostCallReturn [WasmSmallStepGS hlc]
+    (store : MachineStore α) (newWasm : Store α)
+    (steps : Nat) (observations : List StepKind) (threads : Nat) :
+    (∀ σ, heapAgreesWithMem σ store.wasm.mem →
+          heapAgreesWithMem σ newWasm.mem) →
+    (∀ σ, heapAddressesInBounds σ store.wasm.mem →
+          heapAddressesInBounds σ newWasm.mem) →
+    (∀ σ, globalHeapAgrees σ store.wasm.globals →
+          globalHeapAgrees σ newWasm.globals) →
+    (∀ σ, dataSegmentHeapAgrees σ store.wasm.dataSegments →
+          dataSegmentHeapAgrees σ newWasm.dataSegments) →
+    (∀ σ, tableHeapAgrees σ store.wasm.tables →
+          tableHeapAgrees σ newWasm.tables) →
+    (∀ σ, elementSegmentHeapAgrees σ store.wasm.elementSegments →
+          elementSegmentHeapAgrees σ newWasm.elementSegments) →
+    stateInterp (GF := WasmHeapGF) store steps observations threads ⊢
+      stateInterp (GF := WasmHeapGF) { store with wasm := newWasm }
+        steps observations threads := by
+  intro hMem hBounds hGlobals hData hTables hElems
+  iintro Hstate
+  icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
+    ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+  iapply (stateInterp_eq
+    { store with wasm := newWasm }
+    steps observations threads).mpr
+  iexists σ
+  iexists globalσ
+  iexists dataSegmentσ
+  iexists tableσ
+  iexists elementSegmentσ
+  iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime
+  ipureintro
+  exact ⟨hMem σ Hfacts.1, hBounds σ Hfacts.2.1, hGlobals globalσ Hfacts.2.2.1,
+    hData dataSegmentσ Hfacts.2.2.2.1, hTables tableσ Hfacts.2.2.2.2.1,
+    hElems elementSegmentσ Hfacts.2.2.2.2.2.1, Hfacts.2.2.2.2.2.2⟩
+
+/-- Extract the host env agreement from stateInterp when a specific host env is known. -/
+theorem stateInterp_hostEnv [WasmSmallStepGS hlc]
+    (store : MachineStore α) (steps : Nat)
+    (observations : List StepKind) (threads : Nat)
+    (hostEnv : HostEnv α)
+    (h : WasmHostGS.knownHostEnv (α := α) = some hostEnv) :
+    stateInterp (GF := WasmHeapGF) store steps observations threads ==∗
+      ⌜store.runtime.host = hostEnv⌝ := by
+  iintro Hstate
+  icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
+    ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+  ipureintro
+  have hhost := Hfacts.2.2.2.2.2.2
+  simp only [h] at hhost
+  exact hhost
 
 /-- Four-byte fill update used by the manual memory example. Ownership of the
 whole affected range is required and is updated atomically. -/

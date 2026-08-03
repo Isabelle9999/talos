@@ -211,7 +211,7 @@ theorem wasm_smallStep_adequacy
       heapAddressesInBounds_empty _,
       globalHeapAgrees_empty _,
       dataSegmentHeapAgrees_empty _,
-      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _⟩⟩
+      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _, trivial⟩⟩
   · exact hwp
 
 /-- Public relational partial-correctness form of closed small-step adequacy.
@@ -231,8 +231,11 @@ theorem wasm_smallStep_partiallyMeets
 /-- Closed adequacy with persistent knowledge of the concrete runtime module.
 This is the call-capable counterpart of `wasm_smallStep_adequacy`. -/
 theorem wasm_smallStep_runtime_adequacy
-    [WasmSmallStepGpreS]
+    [WasmSmallStepGpreS] [WasmHostGS α]
     (config : Config α) (φ : List Value → Prop)
+    (hhost : match WasmHostGS.knownHostEnv (α := α) with
+      | some h => config.store.runtime.host = h
+      | none => True)
     (hwp : ∀ [WasmSmallStepGS .hasLC],
       runtimeModuleOwn config.store.runtime.module ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
@@ -329,22 +332,25 @@ theorem wasm_smallStep_runtime_adequacy
       heapAddressesInBounds_empty _,
       globalHeapAgrees_empty _,
       dataSegmentHeapAgrees_empty _,
-      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _⟩⟩
+      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _, hhost⟩⟩
   · iapply hwp
     unfold runtimeModuleOwn
     iexact HruntimeWP
 
 /-- Relational partial-correctness form of call-capable runtime adequacy. -/
 theorem wasm_smallStep_runtime_partiallyMeets
-    [WasmSmallStepGpreS]
+    [WasmSmallStepGpreS] [WasmHostGS α]
     (config : Config α) (φ : List Value → Prop)
+    (hhost : match WasmHostGS.knownHostEnv (α := α) with
+      | some h => config.store.runtime.host = h
+      | none => True)
     (hwp : ∀ [WasmSmallStepGS .hasLC],
       runtimeModuleOwn config.store.runtime.module ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values, ⌜φ values⌝ }}) :
     PartiallyMeets config (fun values _store => φ values) :=
   adequate_to_partiallyMeets config (fun values _store => φ values)
-    (wasm_smallStep_runtime_adequacy config φ hwp)
+    (wasm_smallStep_runtime_adequacy config φ hhost hwp)
 
 /-- Adequacy with an explicit authoritative byte footprint. `genHeap_init`
 allocates both the authoritative map used by `StateInterp` and the matching
@@ -446,7 +452,7 @@ theorem wasm_smallStep_heap_adequacy
     exact ⟨hagree, hinBounds,
       globalHeapAgrees_empty _,
       dataSegmentHeapAgrees_empty _,
-      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _⟩⟩
+      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _, trivial⟩⟩
   · iapply hwp
     iexact Hpoints
 
@@ -563,7 +569,7 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
     ipureintro
     exact ⟨hagree, hinBounds, hglobals,
       dataSegmentHeapAgrees_empty _,
-      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _⟩⟩
+      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _, trivial⟩⟩
   · iapply hwp
     isplitl [Hpoints]
     · iexact Hpoints
@@ -578,7 +584,7 @@ wrapper above, the WP post receives the final physical state interpretation
 and may use its returned byte/global ownership to prove a predicate about the
 actual reached `MachineStore`. -/
 theorem wasm_smallStep_heap_globals_runtime_store_adequacy
-    [WasmSmallStepGpreS]
+    [WasmSmallStepGpreS] [WasmHostGS α]
     (config : Config α)
     (σ : WasmHeapMap (Option UInt8))
     (globalσ : WasmGlobalMap Value)
@@ -586,6 +592,9 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
+    (hhost : match WasmHostGS.knownHostEnv (α := α) with
+      | some h => config.store.runtime.host = h
+      | none => True)
     (hwp : ∀ [WasmSmallStepGS .hasLC],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
@@ -689,7 +698,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
     ipureintro
     exact ⟨hagree, hinBounds, hglobals,
       dataSegmentHeapAgrees_empty _,
-      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _⟩⟩
+      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _, hhost⟩⟩
   · iapply hwp
     isplitl [Hpoints]
     · iexact Hpoints
@@ -702,7 +711,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
 /-- Relational partial-correctness form of state-sensitive authoritative
 adequacy. -/
 theorem wasm_smallStep_heap_globals_runtime_store_partiallyMeets
-    [WasmSmallStepGpreS]
+    [WasmSmallStepGpreS] [WasmHostGS α]
     (config : Config α)
     (σ : WasmHeapMap (Option UInt8))
     (globalσ : WasmGlobalMap Value)
@@ -710,6 +719,9 @@ theorem wasm_smallStep_heap_globals_runtime_store_partiallyMeets
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
+    (hhost : match WasmHostGS.knownHostEnv (α := α) with
+      | some h => config.store.runtime.host = h
+      | none => True)
     (hwp : ∀ [WasmSmallStepGS .hasLC],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
@@ -725,7 +737,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_partiallyMeets
     PartiallyMeets config post :=
   adequate_to_partiallyMeets config post
     (wasm_smallStep_heap_globals_runtime_store_adequacy
-      config σ globalσ post hagree hinBounds hglobals hwp)
+      config σ globalσ post hagree hinBounds hglobals hhost hwp)
 
 /-- State-sensitive adequacy with explicit authoritative ownership of passive
 data-segment status in addition to memory, globals, and the runtime module. -/
@@ -846,7 +858,7 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
     iframe
     ipureintro
     exact ⟨hagree, hinBounds, hglobals, hsegments,
-      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _⟩⟩
+      ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _, trivial⟩⟩
   · iapply hwp
     isplitl [Hpoints]
     · iexact Hpoints
@@ -1026,7 +1038,7 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
     iframe
     ipureintro
     exact ⟨hagree, hinBounds, hglobals, hsegments,
-      ⟨htables, helementSegments⟩⟩
+      ⟨htables, helementSegments, trivial⟩⟩
   · iapply hwp
     isplitl [Hpoints]
     · iexact Hpoints
@@ -1280,7 +1292,7 @@ theorem noopCall_adequate :
     adequate Stuckness.NotStuck noopCallConfig.expr noopCallConfig.store
       (fun values _ => values = []) := by
   apply wasm_smallStep_runtime_adequacy.{0} (α := Unit)
-    (φ := fun values => values = [])
+    (φ := fun values => values = []) (hhost := trivial)
   intro gs
   simp only [noopCallConfig]
   iintro Hruntime
@@ -1423,6 +1435,7 @@ theorem wordRoundtrip_store_partiallyMeets (oldWord : UInt32) :
     (α := Unit)
     (σ := word16Heap oldWord)
     (globalσ := (∅ : WasmGlobalMap Value))
+    (hhost := trivial)
   · unfold word16Heap
     apply store32_sound
       (σ := (∅ : WasmHeapMap (Option UInt8)))
@@ -1599,6 +1612,7 @@ theorem swapWords_store_partiallyMeets :
     (α := Unit)
     (σ := swapWordsHeap)
     (globalσ := (∅ : WasmGlobalMap Value))
+    (hhost := trivial)
   · apply swapWordsHeap_agrees
   · apply swapWordsHeap_inBounds
     native_decide
@@ -1728,6 +1742,7 @@ theorem reverseThreeWords_store_partiallyMeets :
     (α := Unit)
     (σ := reverseThreeWordsHeap)
     (globalσ := (∅ : WasmGlobalMap Value))
+    (hhost := trivial)
   · apply reverseThreeWordsHeap_agrees
   · apply reverseThreeWordsHeap_inBounds
     native_decide
@@ -1893,6 +1908,7 @@ theorem partitionThreeWords_store_partiallyMeets :
     (α := Unit)
     (σ := partitionThreeWordsHeap)
     (globalσ := (∅ : WasmGlobalMap Value))
+    (hhost := trivial)
   · apply partitionThreeWordsHeap_agrees
   · apply partitionThreeWordsHeap_inBounds
     native_decide
@@ -2046,6 +2062,7 @@ theorem mergeTwoWords_store_partiallyMeets :
     (α := Unit)
     (σ := mergeTwoWordsHeap)
     (globalσ := (∅ : WasmGlobalMap Value))
+    (hhost := trivial)
   · apply mergeTwoWordsHeap_agrees
   · apply mergeTwoWordsHeap_inBounds
     native_decide
@@ -2198,6 +2215,7 @@ theorem fillFourBytes_store_partiallyMeets (oldWord : UInt32) :
     (α := Unit)
     (σ := fillFourBytesHeap oldWord)
     (globalσ := (∅ : WasmGlobalMap Value))
+    (hhost := trivial)
   · apply fillFourBytesHeap_agrees
   · apply fillFourBytesHeap_inBounds
     native_decide
@@ -2336,6 +2354,7 @@ theorem copyWord_store_partiallyMeets (oldDestination : UInt32) :
     (α := Unit)
     (σ := copyWordHeap oldDestination)
     (globalσ := (∅ : WasmGlobalMap Value))
+    (hhost := trivial)
   · apply copyWordHeap_agrees
   · apply copyWordHeap_inBounds
     native_decide
@@ -2444,6 +2463,7 @@ theorem copyOverlapWord_store_partiallyMeets :
     (α := Unit)
     (σ := copyOverlapWordHeap)
     (globalσ := (∅ : WasmGlobalMap Value))
+    (hhost := trivial)
   · apply copyOverlapWordHeap_agrees
   · apply copyOverlapWordHeap_inBounds
     native_decide

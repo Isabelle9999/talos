@@ -148,7 +148,7 @@ theorem func9_smallStep_wp
 theorem func9_smallStep (x : UInt32) :
     PartiallyMeets (func9Config x)
       (fun rs _store => rs = [.f32 (2147483647 &&& x)]) := by
-  apply wasm_smallStep_runtime_partiallyMeets.{0} (α := Unit)
+  apply wasm_smallStep_runtime_partiallyMeets.{0} (α := Unit) (hhost := trivial)
   intro gs
   simp only [func9Config]
   iapply func9_smallStep_wp
@@ -231,7 +231,7 @@ theorem func4_smallStep_wp
 theorem func4_smallStep (x y : UInt32) :
     PartiallyMeets (func4Config x y)
       (fun rs _store => rs = [.f32 (func4Result x y)]) := by
-  apply wasm_smallStep_runtime_partiallyMeets.{0} (α := Unit)
+  apply wasm_smallStep_runtime_partiallyMeets.{0} (α := Unit) (hhost := trivial)
   intro gs
   simp only [func4Config]
   iapply func4_smallStep_wp
