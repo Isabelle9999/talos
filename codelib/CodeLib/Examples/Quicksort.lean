@@ -326,6 +326,70 @@ theorem quicksort_mutation_index :
     runQuicksortMutated2 15000 0 [5, 1, 4, 2, 3] ≠ some [1, 2, 3, 4, 5] := by
   native_decide
 
+private def quicksortFunctionMutated3 : Function :=
+  { params := [.i32, .i32, .i32]
+    locals := [.i32]
+    body :=
+      [.localGet 2, .localGet 1, .sub, .const 3, .ltU,
+       .iff 0 0 [.ret] []] ++
+      quicksortPartitionCall 0 ++
+      quicksortLeftCall 1 ++
+      quicksortRightCall 1 ++
+      [.ret] }
+
+private def quicksortModuleMutated3 : Module :=
+  { funcs := [partitionFunction, quicksortFunctionMutated3]
+    memory := some { pagesMin := 1 } }
+
+def runQuicksortMutated3 (fuel : Nat) (arr : UInt32) (input : List UInt32) :
+    Option (List UInt32) :=
+  match SmallStep.initConfig
+      { module := quicksortModuleMutated3, host := {} } 1
+      (quicksortExampleStore arr input)
+      (quicksortArguments arr input.length []) with
+  | .error _ => none
+  | .ok config =>
+      match (SmallStep.runSteps fuel config).result with
+      | .success _ store => some (readWordArray store.wasm.mem arr input.length)
+      | _ => none
+
+theorem quicksort_mutation_bound :
+    runQuicksortMutated3 15000 0 [5, 1, 4, 2, 3] ≠ some [1, 2, 3, 4, 5] := by
+  native_decide
+
+private def partitionFunctionMutated4 : Function :=
+  { params := [.i32, .i32, .i32]
+    locals := [.i32, .i32, .i32, .i32, .i32]
+    results := [.i32]
+    body :=
+      partitionInit ++
+      whileDo partitionScanCondition
+        ([.localGet 3] ++ loadAt 0 5 ++ [.ltU,
+          .iff 0 0 [] (storeAt 0 4 [.const 0] ++ increment 4)] ++
+         increment 5) ++
+      partitionPlacePivot ++
+      [.ret] }
+
+private def quicksortModuleMutated4 : Module :=
+  { funcs := [partitionFunctionMutated4, quicksortFunction 0 1]
+    memory := some { pagesMin := 1 } }
+
+def runQuicksortMutated4 (fuel : Nat) (arr : UInt32) (input : List UInt32) :
+    Option (List UInt32) :=
+  match SmallStep.initConfig
+      { module := quicksortModuleMutated4, host := {} } 1
+      (quicksortExampleStore arr input)
+      (quicksortArguments arr input.length []) with
+  | .error _ => none
+  | .ok config =>
+      match (SmallStep.runSteps fuel config).result with
+      | .success _ store => some (readWordArray store.wasm.mem arr input.length)
+      | _ => none
+
+theorem quicksort_mutation_store :
+    runQuicksortMutated4 15000 0 [5, 1, 4, 2, 3] ≠ some [1, 2, 3, 4, 5] := by
+  native_decide
+
 /-! ## Oracle agreement -/
 
 theorem quicksort_oracle_empty :

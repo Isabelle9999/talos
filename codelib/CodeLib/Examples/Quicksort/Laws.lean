@@ -466,4 +466,15 @@ theorem wp_loop_löb_family_from
   subst initialLocals
   exact wp_loop_löb_family locals I initial hbelow body_closes
 
+theorem u32_ofNat_sub_eq {a b : Nat} (hle : b ≤ a) (ha : a < UInt32.size) :
+    UInt32.ofNat a - UInt32.ofNat b = UInt32.ofNat (a - b) := by
+  have hb : b < UInt32.size := Nat.lt_of_le_of_lt hle ha
+  have hab : a - b < UInt32.size := Nat.lt_of_le_of_lt (Nat.sub_le a b) ha
+  apply UInt32.toNat.inj
+  rw [UInt32.toNat_sub, UInt32.toNat_ofNat_of_lt' ha, UInt32.toNat_ofNat_of_lt' hb,
+      UInt32.toNat_ofNat_of_lt' hab]
+  have := (UInt32.ofNat a).toNat_lt
+  rw [UInt32.toNat_ofNat_of_lt' ha] at this
+  omega
+
 end Wasm.Examples.Quicksort
