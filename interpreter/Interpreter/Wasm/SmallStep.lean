@@ -83,12 +83,38 @@ inductive StepKind where
   | host (functionIndex : Nat)
 deriving Repr
 
+structure ModuleInstanceId where
+  id : Nat
+deriving DecidableEq, Ord, Repr, BEq
+
+structure ModuleInstance (α : Type) where
+  module : Module
+  host : HostEnv α
+deriving Inhabited
+
 /-- Immutable execution metadata.  Keeping the host parameter on the runtime
 environment makes the eventual Iris language instance available uniformly for
 each fixed host-state type `α`. -/
 structure RuntimeEnv (α : Type) where
-  module : Module
-  host : HostEnv α
+  instances : Array (ModuleInstance α)
+  entry : ModuleInstanceId
+
+@[reducible] def RuntimeEnv.currentInstance (re : RuntimeEnv α) : ModuleInstance α :=
+  re.instances[re.entry.id]!
+
+@[reducible] def RuntimeEnv.currentModule (re : RuntimeEnv α) : Module :=
+  re.currentInstance.module
+
+@[reducible] def RuntimeEnv.currentHost (re : RuntimeEnv α) : HostEnv α :=
+  re.currentInstance.host
+
+@[simp] theorem RuntimeEnv.currentModule_mk1 (inst : ModuleInstance α) :
+    ({ instances := #[inst], entry := ⟨0⟩ } : RuntimeEnv α).currentModule = inst.module := by
+  simp [RuntimeEnv.currentModule, RuntimeEnv.currentInstance]
+
+@[simp] theorem RuntimeEnv.currentHost_mk1 (inst : ModuleInstance α) :
+    ({ instances := #[inst], entry := ⟨0⟩ } : RuntimeEnv α).currentHost = inst.host := by
+  simp [RuntimeEnv.currentHost, RuntimeEnv.currentInstance]
 
 /-- Reserved funcref address range for function instances owned by another
 module. Local Wasm function indices are far below this boundary. -/
@@ -274,15 +300,16 @@ private def setMemoryAt
 private def enterIndexedMemory?
     (store : MachineStore α) (index : Nat) : Option (MachineStore α) :=
   match memoryAt? store index,
-      store.runtime.module.extraMemories[index - 1]? with
+      store.runtime.currentModule.extraMemories[index - 1]? with
   | some memory, some declaration =>
-      let selectedCap := store.wasm.memoryCap store.runtime.module index
+      let selectedCap := store.wasm.memoryCap store.runtime.currentModule index
       let selectedId := store.wasm.memoryIds[index]?
       some
         { runtime :=
             { store.runtime with
-              module :=
-                { store.runtime.module with memory := some declaration } }
+              instances := store.runtime.instances.modify
+                store.runtime.entry.id
+                (fun inst => { inst with module := { inst.module with memory := some declaration } }) }
           wasm :=
             { store.wasm with
               mem := memory
@@ -340,7 +367,7 @@ def elementSegmentValues (store : MachineStore α) (elementIndex : Nat)
   match segmentState with
   | none => []
   | some _ =>
-    (store.runtime.module.elements[elementIndex]?.map
+    (store.runtime.currentModule.elements[elementIndex]?.map
       ElementSegment.values).getD []
 
 private def rotateLeft32 (value count : UInt32) : UInt32 :=
@@ -774,7 +801,7 @@ private def stepPlainChecked?
             { thread with code := body, control := frame :: thread.control },
             store⟩))
       | .throwI tagIndex =>
-        match store.runtime.module.tags[tagIndex]? with
+        match store.runtime.currentModule.tags[tagIndex]? with
         | some tagType =>
           let count := tagType.params.length
           if thread.locals.values.length < count then
@@ -873,9 +900,9 @@ private def stepPlainChecked?
           | none => .error ⟨s!"branch depth {depth} is invalid"⟩
         | _ => .error ⟨"br_table requires one i32 selector operand"⟩
       | .call functionIndex =>
-        if functionIndex < store.runtime.module.imports.length then
-          match store.runtime.module.imports[functionIndex]?,
-              store.runtime.host.funcs[functionIndex]? with
+        if functionIndex < store.runtime.currentModule.imports.length then
+          match store.runtime.currentModule.imports[functionIndex]?,
+              store.runtime.currentHost.funcs[functionIndex]? with
           | some imp, some hostFunction =>
             let hostArgs :=
               (thread.locals.values.take imp.params.length).reverse
@@ -910,8 +937,8 @@ private def stepPlainChecked?
                   { store with wasm }⟩))
           | _, _ => .error ⟨s!"unresolved host function: index {functionIndex}"⟩
         else
-          match store.runtime.module.funcs[
-              functionIndex - store.runtime.module.imports.length]? with
+          match store.runtime.currentModule.funcs[
+              functionIndex - store.runtime.currentModule.imports.length]? with
           | none => .error ⟨s!"function index {functionIndex} is invalid"⟩
           | some fn =>
             let caller : CallFrame :=
@@ -935,9 +962,9 @@ private def stepPlainChecked?
                   calls := caller :: thread.calls },
                 store⟩))
       | .returnCall functionIndex =>
-        if functionIndex < store.runtime.module.imports.length then
-          match store.runtime.module.imports[functionIndex]?,
-              store.runtime.host.funcs[functionIndex]? with
+        if functionIndex < store.runtime.currentModule.imports.length then
+          match store.runtime.currentModule.imports[functionIndex]?,
+              store.runtime.currentHost.funcs[functionIndex]? with
           | some imp, some hostFunction =>
             let hostArgs :=
               (thread.locals.values.take imp.params.length).reverse
@@ -972,8 +999,8 @@ private def stepPlainChecked?
                   { store with wasm }⟩))
           | _, _ => .error ⟨s!"unresolved host function: index {functionIndex}"⟩
         else
-          match store.runtime.module.funcs[
-              functionIndex - store.runtime.module.imports.length]? with
+          match store.runtime.currentModule.funcs[
+              functionIndex - store.runtime.currentModule.imports.length]? with
           | none => .error ⟨s!"function index {functionIndex} is invalid"⟩
           | some fn =>
             let calleeLocals :=
@@ -1002,10 +1029,10 @@ private def stepPlainChecked?
                 ⟨.trapped (.uninitializedElement elementIndex), store⟩))
             | some (.funcref (some functionIndex)) =>
               if isForeignFunctionIndex
-                  store.runtime.module.imports.length functionIndex then
+                  store.runtime.currentModule.imports.length functionIndex then
                 let address := functionIndex - foreignFunctionBase
-                match store.runtime.host.foreignFuncs[address]?,
-                    store.runtime.module.types[typeIndex]? with
+                match store.runtime.currentHost.foreignFuncs[address]?,
+                    store.runtime.currentModule.types[typeIndex]? with
                 | some hostFunction, some expected =>
                   if hostFunction.params == expected.params &&
                       hostFunction.results == expected.results then
@@ -1047,13 +1074,13 @@ private def stepPlainChecked?
                       ⟨.trapped .indirectCallTypeMismatch, store⟩))
                 | _, _ =>
                   .error ⟨"foreign indirect call has an invalid function or type index"⟩
-              else if functionIndex < store.runtime.module.imports.length then
-                match store.runtime.module.imports[functionIndex]?,
-                    store.runtime.host.funcs[functionIndex]?,
-                    store.runtime.module.funcSig? functionIndex,
-                    store.runtime.module.types[typeIndex]? with
+              else if functionIndex < store.runtime.currentModule.imports.length then
+                match store.runtime.currentModule.imports[functionIndex]?,
+                    store.runtime.currentHost.funcs[functionIndex]?,
+                    store.runtime.currentModule.funcSig? functionIndex,
+                    store.runtime.currentModule.types[typeIndex]? with
                 | some imp, some hostFunction, some signature, some expected =>
-                  if store.runtime.module.indirectCallTypeOk
+                  if store.runtime.currentModule.indirectCallTypeOk
                       functionIndex typeIndex signature expected = true then
                     let hostArgs := (values.take imp.params.length).reverse
                     let remaining := values.drop imp.params.length
@@ -1092,12 +1119,12 @@ private def stepPlainChecked?
                 | _, _, _, _ =>
                   .error ⟨"indirect host call has an invalid function or type index"⟩
               else
-                match store.runtime.module.funcs[
-                    functionIndex - store.runtime.module.imports.length]?,
-                    store.runtime.module.funcSig? functionIndex,
-                    store.runtime.module.types[typeIndex]? with
+                match store.runtime.currentModule.funcs[
+                    functionIndex - store.runtime.currentModule.imports.length]?,
+                    store.runtime.currentModule.funcSig? functionIndex,
+                    store.runtime.currentModule.types[typeIndex]? with
                 | some fn, some signature, some expected =>
-                  if store.runtime.module.indirectCallTypeOk
+                  if store.runtime.currentModule.indirectCallTypeOk
                       functionIndex typeIndex signature expected = true then
                     let caller : CallFrame :=
                       { locals :=
@@ -1140,13 +1167,13 @@ private def stepPlainChecked?
               .ok (some (.instruction instr,
                 ⟨.trapped (.uninitializedElement elementIndex), store⟩))
             | some (.funcref (some functionIndex)) =>
-              if functionIndex < store.runtime.module.imports.length then
-                match store.runtime.module.imports[functionIndex]?,
-                    store.runtime.host.funcs[functionIndex]?,
-                    store.runtime.module.funcSig? functionIndex,
-                    store.runtime.module.types[typeIndex]? with
+              if functionIndex < store.runtime.currentModule.imports.length then
+                match store.runtime.currentModule.imports[functionIndex]?,
+                    store.runtime.currentHost.funcs[functionIndex]?,
+                    store.runtime.currentModule.funcSig? functionIndex,
+                    store.runtime.currentModule.types[typeIndex]? with
                 | some imp, some hostFunction, some signature, some expected =>
-                  if store.runtime.module.indirectCallTypeOk
+                  if store.runtime.currentModule.indirectCallTypeOk
                       functionIndex typeIndex signature expected = true then
                     let hostArgs := (values.take imp.params.length).reverse
                     match hostFunction.invoke store.wasm hostArgs with
@@ -1184,12 +1211,12 @@ private def stepPlainChecked?
                 | _, _, _, _ =>
                   .error ⟨"indirect host tail call has an invalid function or type index"⟩
               else
-                match store.runtime.module.funcs[
-                    functionIndex - store.runtime.module.imports.length]?,
-                    store.runtime.module.funcSig? functionIndex,
-                    store.runtime.module.types[typeIndex]? with
+                match store.runtime.currentModule.funcs[
+                    functionIndex - store.runtime.currentModule.imports.length]?,
+                    store.runtime.currentModule.funcSig? functionIndex,
+                    store.runtime.currentModule.types[typeIndex]? with
                 | some fn, some signature, some expected =>
-                  if store.runtime.module.indirectCallTypeOk
+                  if store.runtime.currentModule.indirectCallTypeOk
                       functionIndex typeIndex signature expected = true then
                     .ok (some (.instruction instr,
                       ⟨.running
@@ -1229,9 +1256,9 @@ private def stepPlainChecked?
           .ok (some (.instruction instr,
             ⟨.trapped .nullFunctionReference, store⟩))
         | .funcref (some functionIndex) :: values =>
-          if functionIndex < store.runtime.module.imports.length then
-            match store.runtime.module.imports[functionIndex]?,
-                store.runtime.host.funcs[functionIndex]? with
+          if functionIndex < store.runtime.currentModule.imports.length then
+            match store.runtime.currentModule.imports[functionIndex]?,
+                store.runtime.currentHost.funcs[functionIndex]? with
             | some imp, some hostFunction =>
               let hostArgs := (values.take imp.params.length).reverse
               let remaining := values.drop imp.params.length
@@ -1266,8 +1293,8 @@ private def stepPlainChecked?
             | _, _ =>
               .error ⟨s!"unresolved host function: index {functionIndex}"⟩
           else
-            match store.runtime.module.funcs[
-                functionIndex - store.runtime.module.imports.length]? with
+            match store.runtime.currentModule.funcs[
+                functionIndex - store.runtime.currentModule.imports.length]? with
             | some fn =>
               let caller : CallFrame :=
                 { locals :=
@@ -1295,9 +1322,9 @@ private def stepPlainChecked?
           .ok (some (.instruction instr,
             ⟨.trapped .nullFunctionReference, store⟩))
         | .funcref (some functionIndex) :: values =>
-          if functionIndex < store.runtime.module.imports.length then
-            match store.runtime.module.imports[functionIndex]?,
-                store.runtime.host.funcs[functionIndex]? with
+          if functionIndex < store.runtime.currentModule.imports.length then
+            match store.runtime.currentModule.imports[functionIndex]?,
+                store.runtime.currentHost.funcs[functionIndex]? with
             | some imp, some hostFunction =>
               let hostArgs := (values.take imp.params.length).reverse
               match hostFunction.invoke store.wasm hostArgs with
@@ -1332,8 +1359,8 @@ private def stepPlainChecked?
             | _, _ =>
               .error ⟨s!"unresolved host function: index {functionIndex}"⟩
           else
-            match store.runtime.module.funcs[
-                functionIndex - store.runtime.module.imports.length]? with
+            match store.runtime.currentModule.funcs[
+                functionIndex - store.runtime.currentModule.imports.length]? with
             | some fn =>
               .ok (some (.instruction instr,
                 ⟨.running
@@ -1421,7 +1448,7 @@ private def stepPlainChecked?
         | some table =>
           next { thread.locals with
             values :=
-              sizeValue (store.runtime.module.tableIs64 tableIndex)
+              sizeValue (store.runtime.currentModule.tableIs64 tableIndex)
                 table.length :: thread.locals.values }
         | none => .error ⟨s!"table index {tableIndex} is invalid"⟩
       | .tableSet tableIndex =>
@@ -1446,7 +1473,7 @@ private def stepPlainChecked?
           match store.wasm.tables[tableIndex]? with
           | some table =>
             if table.length + delta.toNat ≤
-                store.runtime.module.tableCap tableIndex then
+                store.runtime.currentModule.tableCap tableIndex then
               next { thread.locals with
                 values := .i32 table.length.toUInt32 :: values }
                 (setTables store
@@ -1460,7 +1487,7 @@ private def stepPlainChecked?
           match store.wasm.tables[tableIndex]? with
           | some table =>
             if table.length + delta.toNat ≤
-                store.runtime.module.tableCap tableIndex then
+                store.runtime.currentModule.tableCap tableIndex then
               next { thread.locals with
                 values := .i64 table.length.toUInt64 :: values }
                 (setTables store
@@ -2604,13 +2631,13 @@ private def stepPlainChecked?
       | .memorySize =>
         next { thread.locals with
           values :=
-            sizeValue store.runtime.module.memIs64 store.wasm.mem.pages ::
+            sizeValue store.runtime.currentModule.memIs64 store.wasm.mem.pages ::
               thread.locals.values }
       | .memoryGrow =>
         match thread.locals.values with
         | .i32 delta :: values =>
           match store.wasm.mem.grow delta
-              (store.wasm.memoryCap store.runtime.module 0) with
+              (store.wasm.memoryCap store.runtime.currentModule 0) with
           | some (memory, previousPages) =>
             next { thread.locals with
               values := .i32 previousPages.toUInt32 :: values }
@@ -2624,7 +2651,7 @@ private def stepPlainChecked?
               values := .i64 (0xFFFFFFFFFFFFFFFF : UInt64) :: values }
           else
             match store.wasm.mem.grow delta.toUInt32
-                (store.wasm.memoryCap store.runtime.module 0) with
+                (store.wasm.memoryCap store.runtime.currentModule 0) with
             | some (memory, previousPages) =>
               next { thread.locals with
                 values := .i64 previousPages.toUInt64 :: values }
@@ -2766,7 +2793,7 @@ private def stepPlainChecked?
         | _ =>
           .error ⟨"memory.copy requires destination, source, and length operands"⟩
       | .gc operation =>
-        match execGcOp store.runtime.module store.wasm thread.locals operation with
+        match execGcOp store.runtime.currentModule store.wasm thread.locals operation with
         | .Fallthrough wasm locals =>
           next locals { store with wasm }
         | .Trap wasm message =>
@@ -3088,7 +3115,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
               continuation := code,
               belowStack := values.drop paramArity } :: controls, calls⟩, store⟩
   | throwI
-      (htag : store.runtime.module.tags[tagIndex]? = some tagType)
+      (htag : store.runtime.currentModule.tags[tagIndex]? = some tagType)
       (hargs : tagType.params.length ≤ values.length) :
       Step ⟨.running
           ⟨⟨params, localValues, values⟩, .throwI tagIndex :: code,
@@ -3189,9 +3216,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
           ⟨⟨params, localValues, targetValues⟩, targetCode,
             arity, remainder, targetControl, calls⟩, store⟩
   | callHostReturn
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse = .Return results wasm) :
@@ -3205,9 +3232,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
           code, arity, remainder, controls, calls⟩,
           { store with wasm }⟩
   | callHostTrap
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse = .Trap wasm message) :
@@ -3217,9 +3244,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
         (.host functionIndex)
         ⟨.trapped (.host message), { store with wasm }⟩
   | callHostThrow
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse =
@@ -3240,9 +3267,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
             calls⟩,
           { store with wasm }⟩
   | call
-      (himports : ¬functionIndex < store.runtime.module.imports.length)
-      (hfn : store.runtime.module.funcs[
-          functionIndex - store.runtime.module.imports.length]? = some fn) :
+      (himports : ¬functionIndex < store.runtime.currentModule.imports.length)
+      (hfn : store.runtime.currentModule.funcs[
+          functionIndex - store.runtime.currentModule.imports.length]? = some fn) :
       Step ⟨.running
           ⟨⟨params, localValues, values⟩, .call functionIndex :: code,
             arity, remainder, controls, calls⟩, store⟩
@@ -3257,9 +3284,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
               control := controls } :: calls⟩,
           store⟩
   | returnCallHostReturn
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse = .Return results wasm) :
@@ -3272,9 +3299,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
           [], arity, remainder, [], calls⟩,
           { store with wasm }⟩
   | returnCallHostTrap
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse = .Trap wasm message) :
@@ -3284,9 +3311,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
         (.host functionIndex)
         ⟨.trapped (.host message), { store with wasm }⟩
   | returnCallHostThrow
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse =
@@ -3307,9 +3334,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
             calls⟩,
           { store with wasm }⟩
   | returnCall
-      (himports : ¬functionIndex < store.runtime.module.imports.length)
-      (hfn : store.runtime.module.funcs[
-          functionIndex - store.runtime.module.imports.length]? = some fn) :
+      (himports : ¬functionIndex < store.runtime.currentModule.imports.length)
+      (hfn : store.runtime.currentModule.funcs[
+          functionIndex - store.runtime.currentModule.imports.length]? = some fn) :
       Step ⟨.running
           ⟨⟨params, localValues, values⟩, .returnCall functionIndex :: code,
             arity, remainder, controls, calls⟩, store⟩
@@ -3341,10 +3368,10 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
       (hforeign : isForeignFunctionIndex
-        store.runtime.module.imports.length functionIndex = true)
-      (hhost : store.runtime.host.foreignFuncs[
+        store.runtime.currentModule.imports.length functionIndex = true)
+      (hhost : store.runtime.currentHost.foreignFuncs[
         functionIndex - foreignFunctionBase]? = some hostFunction)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
       (htype : (hostFunction.params == expected.params &&
         hostFunction.results == expected.results) = false) :
       Step ⟨.running ⟨⟨params, localValues, selector :: values⟩,
@@ -3357,10 +3384,10 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
       (hforeign : isForeignFunctionIndex
-        store.runtime.module.imports.length functionIndex = true)
-      (hhost : store.runtime.host.foreignFuncs[
+        store.runtime.currentModule.imports.length functionIndex = true)
+      (hhost : store.runtime.currentHost.foreignFuncs[
         functionIndex - foreignFunctionBase]? = some hostFunction)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
       (htype : (hostFunction.params == expected.params &&
         hostFunction.results == expected.results) = true)
       (hinvoke : hostFunction.invoke store.wasm
@@ -3380,10 +3407,10 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
       (hforeign : isForeignFunctionIndex
-        store.runtime.module.imports.length functionIndex = true)
-      (hhost : store.runtime.host.foreignFuncs[
+        store.runtime.currentModule.imports.length functionIndex = true)
+      (hhost : store.runtime.currentHost.foreignFuncs[
         functionIndex - foreignFunctionBase]? = some hostFunction)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
       (htype : (hostFunction.params == expected.params &&
         hostFunction.results == expected.results) = true)
       (hinvoke : hostFunction.invoke store.wasm
@@ -3399,10 +3426,10 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
       (hforeign : isForeignFunctionIndex
-        store.runtime.module.imports.length functionIndex = true)
-      (hhost : store.runtime.host.foreignFuncs[
+        store.runtime.currentModule.imports.length functionIndex = true)
+      (hhost : store.runtime.currentHost.foreignFuncs[
         functionIndex - foreignFunctionBase]? = some hostFunction)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
       (htype : (hostFunction.params == expected.params &&
         hostFunction.results == expected.results) = true)
       (hinvoke : hostFunction.invoke store.wasm
@@ -3427,12 +3454,12 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = false) :
       Step ⟨.running ⟨⟨params, localValues, selector :: values⟩,
           .callIndirect typeIndex tableIndex :: code,
@@ -3443,12 +3470,12 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = true)
       (hinvoke :
         hostFunction.invoke store.wasm
@@ -3465,12 +3492,12 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = true)
       (hinvoke :
         hostFunction.invoke store.wasm
@@ -3484,12 +3511,12 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = true)
       (hinvoke :
         hostFunction.invoke store.wasm
@@ -3514,14 +3541,14 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : ¬functionIndex < store.runtime.module.imports.length)
+      (himports : ¬functionIndex < store.runtime.currentModule.imports.length)
       (hnotforeign : isForeignFunctionIndex
-        store.runtime.module.imports.length functionIndex = false)
-      (hfn : store.runtime.module.funcs[
-        functionIndex - store.runtime.module.imports.length]? = some fn)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+        store.runtime.currentModule.imports.length functionIndex = false)
+      (hfn : store.runtime.currentModule.funcs[
+        functionIndex - store.runtime.currentModule.imports.length]? = some fn)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = false) :
       Step ⟨.running ⟨⟨params, localValues, selector :: values⟩,
           .callIndirect typeIndex tableIndex :: code,
@@ -3532,14 +3559,14 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : ¬functionIndex < store.runtime.module.imports.length)
+      (himports : ¬functionIndex < store.runtime.currentModule.imports.length)
       (hnotforeign : isForeignFunctionIndex
-        store.runtime.module.imports.length functionIndex = false)
-      (hfn : store.runtime.module.funcs[
-        functionIndex - store.runtime.module.imports.length]? = some fn)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+        store.runtime.currentModule.imports.length functionIndex = false)
+      (hfn : store.runtime.currentModule.funcs[
+        functionIndex - store.runtime.currentModule.imports.length]? = some fn)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = true) :
       Step ⟨.running ⟨⟨params, localValues, selector :: values⟩,
           .callIndirect typeIndex tableIndex :: code,
@@ -3576,12 +3603,12 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = false) :
       Step ⟨.running ⟨⟨params, localValues, selector :: values⟩,
           .returnCallIndirect typeIndex tableIndex :: code,
@@ -3592,12 +3619,12 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = true)
       (hinvoke :
         hostFunction.invoke store.wasm
@@ -3614,12 +3641,12 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = true)
       (hinvoke :
         hostFunction.invoke store.wasm
@@ -3633,12 +3660,12 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = true)
       (hinvoke :
         hostFunction.invoke store.wasm
@@ -3663,12 +3690,12 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : ¬functionIndex < store.runtime.module.imports.length)
-      (hfn : store.runtime.module.funcs[
-        functionIndex - store.runtime.module.imports.length]? = some fn)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+      (himports : ¬functionIndex < store.runtime.currentModule.imports.length)
+      (hfn : store.runtime.currentModule.funcs[
+        functionIndex - store.runtime.currentModule.imports.length]? = some fn)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = false) :
       Step ⟨.running ⟨⟨params, localValues, selector :: values⟩,
           .returnCallIndirect typeIndex tableIndex :: code,
@@ -3679,12 +3706,12 @@ inductive Step : Config α → StepKind → Config α → Prop where
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
       (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
-      (himports : ¬functionIndex < store.runtime.module.imports.length)
-      (hfn : store.runtime.module.funcs[
-        functionIndex - store.runtime.module.imports.length]? = some fn)
-      (hsignature : store.runtime.module.funcSig? functionIndex = some signature)
-      (hexpected : store.runtime.module.types[typeIndex]? = some expected)
-      (htype : store.runtime.module.indirectCallTypeOk
+      (himports : ¬functionIndex < store.runtime.currentModule.imports.length)
+      (hfn : store.runtime.currentModule.funcs[
+        functionIndex - store.runtime.currentModule.imports.length]? = some fn)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (htype : store.runtime.currentModule.indirectCallTypeOk
         functionIndex typeIndex signature expected = true) :
       Step ⟨.running ⟨⟨params, localValues, selector :: values⟩,
           .returnCallIndirect typeIndex tableIndex :: code,
@@ -3727,9 +3754,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
         (.instruction (.callRef typeIndex))
         ⟨.trapped .nullFunctionReference, store⟩
   | callRefHostReturn
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse = .Return results wasm) :
@@ -3742,9 +3769,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
           code, arity, remainder, controls, calls⟩,
           { store with wasm }⟩
   | callRefHostTrap
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse = .Trap wasm message) :
@@ -3754,9 +3781,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
         (.host functionIndex)
         ⟨.trapped (.host message), { store with wasm }⟩
   | callRefHostThrow
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse =
@@ -3777,9 +3804,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
             calls⟩,
           { store with wasm }⟩
   | callRef
-      (himports : ¬functionIndex < store.runtime.module.imports.length)
-      (hfn : store.runtime.module.funcs[
-        functionIndex - store.runtime.module.imports.length]? = some fn) :
+      (himports : ¬functionIndex < store.runtime.currentModule.imports.length)
+      (hfn : store.runtime.currentModule.funcs[
+        functionIndex - store.runtime.currentModule.imports.length]? = some fn) :
       Step ⟨.running ⟨⟨params, localValues,
           .funcref (some functionIndex) :: values⟩,
           .callRef typeIndex :: code, arity, remainder, controls, calls⟩, store⟩
@@ -3800,9 +3827,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
         (.instruction (.returnCallRef typeIndex))
         ⟨.trapped .nullFunctionReference, store⟩
   | returnCallRefHostReturn
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse = .Return results wasm) :
@@ -3816,9 +3843,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
           [], arity, remainder, [], calls⟩,
           { store with wasm }⟩
   | returnCallRefHostTrap
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse = .Trap wasm message) :
@@ -3829,9 +3856,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
         (.host functionIndex)
         ⟨.trapped (.host message), { store with wasm }⟩
   | returnCallRefHostThrow
-      (himports : functionIndex < store.runtime.module.imports.length)
-      (himport : store.runtime.module.imports[functionIndex] = imp)
-      (hhost : store.runtime.host.funcs[functionIndex]? = some hostFunction)
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
       (hinvoke :
         hostFunction.invoke store.wasm
           (values.take imp.params.length).reverse =
@@ -3853,9 +3880,9 @@ inductive Step : Config α → StepKind → Config α → Prop where
             calls⟩,
           { store with wasm }⟩
   | returnCallRef
-      (himports : ¬functionIndex < store.runtime.module.imports.length)
-      (hfn : store.runtime.module.funcs[
-        functionIndex - store.runtime.module.imports.length]? = some fn) :
+      (himports : ¬functionIndex < store.runtime.currentModule.imports.length)
+      (hfn : store.runtime.currentModule.funcs[
+        functionIndex - store.runtime.currentModule.imports.length]? = some fn) :
       Step ⟨.running ⟨⟨params, localValues,
           .funcref (some functionIndex) :: values⟩,
           .returnCallRef typeIndex :: code,
@@ -3949,7 +3976,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
           .tableSize tableIndex :: code, arity, remainder, controls, calls⟩, store⟩
         (.instruction (.tableSize tableIndex))
         ⟨.running ⟨⟨params, localValues,
-            sizeValue (store.runtime.module.tableIs64 tableIndex)
+            sizeValue (store.runtime.currentModule.tableIs64 tableIndex)
               table.length :: values⟩,
           code, arity, remainder, controls, calls⟩, store⟩
   | tableSetTrap
@@ -3975,7 +4002,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | tableGrow32
       (htable : store.wasm.tables[tableIndex]? = some table)
       (hbound : table.length + delta.toNat ≤
-        store.runtime.module.tableCap tableIndex) :
+        store.runtime.currentModule.tableCap tableIndex) :
       Step ⟨.running ⟨⟨params, localValues,
           .i32 delta :: initial :: values⟩,
           .tableGrow tableIndex :: code, arity, remainder, controls, calls⟩, store⟩
@@ -3989,7 +4016,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | tableGrow32Failure
       (htable : store.wasm.tables[tableIndex]? = some table)
       (hbound : ¬table.length + delta.toNat ≤
-        store.runtime.module.tableCap tableIndex) :
+        store.runtime.currentModule.tableCap tableIndex) :
       Step ⟨.running ⟨⟨params, localValues,
           .i32 delta :: initial :: values⟩,
           .tableGrow tableIndex :: code, arity, remainder, controls, calls⟩, store⟩
@@ -4000,7 +4027,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | tableGrow64
       (htable : store.wasm.tables[tableIndex]? = some table)
       (hbound : table.length + delta.toNat ≤
-        store.runtime.module.tableCap tableIndex) :
+        store.runtime.currentModule.tableCap tableIndex) :
       Step ⟨.running ⟨⟨params, localValues,
           .i64 delta :: initial :: values⟩,
           .tableGrow tableIndex :: code, arity, remainder, controls, calls⟩, store⟩
@@ -4014,7 +4041,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | tableGrow64Failure
       (htable : store.wasm.tables[tableIndex]? = some table)
       (hbound : ¬table.length + delta.toNat ≤
-        store.runtime.module.tableCap tableIndex) :
+        store.runtime.currentModule.tableCap tableIndex) :
       Step ⟨.running ⟨⟨params, localValues,
           .i64 delta :: initial :: values⟩,
           .tableGrow tableIndex :: code, arity, remainder, controls, calls⟩, store⟩
@@ -5493,11 +5520,11 @@ inductive Step : Config α → StepKind → Config α → Prop where
           .memorySize :: code, arity, remainder, controls, calls⟩, store⟩
         (.instruction .memorySize)
         ⟨.running ⟨⟨params, localValues,
-          sizeValue store.runtime.module.memIs64 store.wasm.mem.pages :: values⟩,
+          sizeValue store.runtime.currentModule.memIs64 store.wasm.mem.pages :: values⟩,
           code, arity, remainder, controls, calls⟩, store⟩
   | memoryGrowSuccess
       (h : store.wasm.mem.grow delta
-        (store.wasm.memoryCap store.runtime.module 0) =
+        (store.wasm.memoryCap store.runtime.currentModule 0) =
         some (memory, previousPages)) :
       Step ⟨.running ⟨⟨params, localValues, .i32 delta :: values⟩,
           .memoryGrow :: code, arity, remainder, controls, calls⟩, store⟩
@@ -5508,7 +5535,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
           setMemory store memory⟩
   | memoryGrowFailure
       (h : store.wasm.mem.grow delta
-        (store.wasm.memoryCap store.runtime.module 0) = none) :
+        (store.wasm.memoryCap store.runtime.currentModule 0) = none) :
       Step ⟨.running ⟨⟨params, localValues, .i32 delta :: values⟩,
           .memoryGrow :: code, arity, remainder, controls, calls⟩, store⟩
         (.instruction .memoryGrow)
@@ -5526,7 +5553,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | memoryGrow64Success
       (hsmall : delta.toNat < 2 ^ 32)
       (h : store.wasm.mem.grow delta.toUInt32
-        (store.wasm.memoryCap store.runtime.module 0) =
+        (store.wasm.memoryCap store.runtime.currentModule 0) =
           some (memory, previousPages)) :
       Step ⟨.running ⟨⟨params, localValues, .i64 delta :: values⟩,
           .memoryGrow :: code, arity, remainder, controls, calls⟩, store⟩
@@ -5538,7 +5565,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | memoryGrow64Failure
       (hsmall : delta.toNat < 2 ^ 32)
       (h : store.wasm.mem.grow delta.toUInt32
-        (store.wasm.memoryCap store.runtime.module 0) = none) :
+        (store.wasm.memoryCap store.runtime.currentModule 0) = none) :
       Step ⟨.running ⟨⟨params, localValues, .i64 delta :: values⟩,
           .memoryGrow :: code, arity, remainder, controls, calls⟩, store⟩
         (.instruction .memoryGrow)
@@ -5737,7 +5764,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
             (store.wasm.dataSegments.set segmentIndex none)⟩
   | gcFallthrough
       (heval :
-        execGcOp store.runtime.module store.wasm locals operation =
+        execGcOp store.runtime.currentModule store.wasm locals operation =
           .Fallthrough wasm locals') :
       Step
         ⟨.running ⟨locals, .gc operation :: code,
@@ -5747,7 +5774,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
           { store with wasm }⟩
   | gcTrap
       (heval :
-        execGcOp store.runtime.module store.wasm locals operation =
+        execGcOp store.runtime.currentModule store.wasm locals operation =
           .Trap wasm message) :
       Step
         ⟨.running ⟨locals, .gc operation :: code,
@@ -5756,7 +5783,7 @@ inductive Step : Config α → StepKind → Config α → Prop where
         ⟨.trapped (gcTrapReasonOfMessage message), { store with wasm }⟩
   | gcBranch
       (heval :
-        execGcOp store.runtime.module store.wasm locals operation =
+        execGcOp store.runtime.currentModule store.wasm locals operation =
           .Break depth wasm locals')
       (htarget :
         branchTarget? arity depth controls locals'.values =
@@ -6779,10 +6806,11 @@ theorem TerminatesWith.of_termination_and_partial
   obtain ⟨trace, values, store, execution, _⟩ := termination
   exact ⟨trace, values, store, execution, correctness trace values store execution⟩
 
-def initConfig (runtime : RuntimeEnv α) (entry : Nat) (initial : Store α)
+def initConfig (instance_ : ModuleInstance α) (entry : Nat) (initial : Store α)
     (params : List Value) : Except InternalError (Config α) :=
-  if entry < runtime.module.imports.length then
-    match runtime.module.imports[entry]?, runtime.host.funcs[entry]? with
+  let runtime : RuntimeEnv α := { instances := #[instance_], entry := ⟨0⟩ }
+  if entry < instance_.module.imports.length then
+    match instance_.module.imports[entry]?, instance_.host.funcs[entry]? with
     | some imp, some _ =>
       let callerRemainder := params.drop imp.params.length
       .ok ⟨.running
@@ -6793,7 +6821,7 @@ def initConfig (runtime : RuntimeEnv α) (entry : Nat) (initial : Store α)
         { runtime, wasm := initial }⟩
     | _, _ => .error ⟨s!"unresolved host function: index {entry}"⟩
   else
-    match runtime.module.funcs[entry - runtime.module.imports.length]? with
+    match instance_.module.funcs[entry - instance_.module.imports.length]? with
     | none => .error ⟨s!"function index {entry} is invalid"⟩
     | some fn =>
       let callerRemainder := params.drop fn.numParams

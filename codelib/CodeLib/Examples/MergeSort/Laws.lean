@@ -246,8 +246,8 @@ theorem wp_loadAt_cell
     (h1 : (address + 1).toNat = address.toNat + 1)
     (h2 : (address + 2).toNat = address.toNat + 2)
     (h3 : (address + 3).toNat = address.toNat + 3) :
-    pointsTo_u32 address word ∗
-      (pointsTo_u32 address word -∗
+    pointsTo_u32 0 address word ∗
+      (pointsTo_u32 0 address word -∗
         WP (.running
           ⟨⟨params, localValues, .i32 word :: stack⟩,
             code, arity, remainder, controls, calls⟩ : Expr α)
@@ -269,7 +269,7 @@ theorem wp_loadAt_cell
   iapply wp_address hbase helement
   inext
   rw [haddress]
-  ihave HwordLater : ▷ pointsTo_u32 (address + 0) word $$ [Hword]
+  ihave HwordLater : ▷ pointsTo_u32 0 (address + 0) word $$ [Hword]
   · inext
     rw [UInt32.add_zero]
     iexact Hword
@@ -297,8 +297,8 @@ theorem wp_loadAt
       some (.i32 base))
     (helement : (⟨params, localValues, stack⟩ : Locals).get elementIndex =
       some (.i32 (UInt32.ofNat k))) :
-    arrayAt base input ∗
-      (arrayAt base input -∗
+    arrayAt 0 base input ∗
+      (arrayAt 0 base input -∗
         WP (.running
           ⟨⟨params, localValues, .i32 input[k] :: stack⟩,
             code, arity, remainder, controls, calls⟩ : Expr α)
@@ -330,7 +330,7 @@ theorem wp_loadAt
     simpa using UInt32.add_ofNat_toNat_noWrap
       (base + 4 * UInt32.ofNat k) 3 (by decide) (by omega)
   iintro ⟨Harray, Hcont⟩
-  ihave Hfocus := arrayAt_get base input k hk $$ Harray
+  ihave Hfocus := arrayAt_get 0 base input k hk $$ Harray
   icases Hfocus with ⟨Hword, Hclose⟩
   iapply wp_loadAt_cell hbase helement
     (by rw [UInt32.add_comm])
@@ -353,8 +353,8 @@ theorem wp_store32_cell
     (h1 : (address + 1).toNat = address.toNat + 1)
     (h2 : (address + 2).toNat = address.toNat + 2)
     (h3 : (address + 3).toNat = address.toNat + 3) :
-    pointsTo_u32 address oldWord ∗
-      (pointsTo_u32 address newWord -∗
+    pointsTo_u32 0 address oldWord ∗
+      (pointsTo_u32 0 address newWord -∗
         WP (.running
           ⟨⟨params, localValues, stack⟩,
             code, arity, remainder, controls, calls⟩ : Expr α)
@@ -370,7 +370,7 @@ theorem wp_store32_cell
   have h3' : ((address + 0) + 3).toNat = (address + 0).toNat + 3 := by
     simpa using h3
   iintro ⟨Hword, Hcont⟩
-  ihave HwordLater : ▷ pointsTo_u32 (address + 0) oldWord $$ [Hword]
+  ihave HwordLater : ▷ pointsTo_u32 0 (address + 0) oldWord $$ [Hword]
   · inext
     rw [UInt32.add_zero]
     iexact Hword
@@ -379,7 +379,7 @@ theorem wp_store32_cell
     (by simp) h1' h2' h3' $$ HwordLater
   inext
   iintro Hword
-  ihave Hword' : pointsTo_u32 address newWord $$ [Hword]
+  ihave Hword' : pointsTo_u32 0 address newWord $$ [Hword]
   · rw [UInt32.add_zero]
     iexact Hword
   iapply Hcont
@@ -412,9 +412,9 @@ theorem wp_copyAt
     (htemporaryElement :
       (⟨params, localValues, stack⟩ : Locals).get temporaryElement =
         some (.i32 (UInt32.ofNat k))) :
-    arrayAt source input ∗ arrayAt temporary scratch ∗
-      (arrayAt source input ∗
-        arrayAt temporary (scratch.set k input[i]) -∗
+    arrayAt 0 source input ∗ arrayAt 0 temporary scratch ∗
+      (arrayAt 0 source input ∗
+        arrayAt 0 temporary (scratch.set k input[i]) -∗
         WP (.running
           ⟨⟨params, localValues, stack⟩,
             code, arity, remainder, controls, calls⟩ : Expr α)
@@ -463,10 +463,10 @@ theorem wp_copyAt
   isplitl [Hsource]
   · iexact Hsource
   iintro Hsource
-  ihave Hfocus := arrayAt_set temporary scratch k input[i] hk $$ Htemporary
+  ihave Hfocus := arrayAt_set 0 temporary scratch k input[i] hk $$ Htemporary
   icases Hfocus with ⟨Hcell, Hclose⟩
   simp only [List.cons_append, List.nil_append]
-  ihave Hcell' : pointsTo_u32 destination scratch[k] $$ [Hcell]
+  ihave Hcell' : pointsTo_u32 0 destination scratch[k] $$ [Hcell]
   · dsimp [destination]
     rw [UInt32.add_comm]
     iexact Hcell
@@ -480,7 +480,7 @@ theorem wp_copyAt
   iapply Hclose
   ihave Hcell' :
       pointsTo_u32
-        (temporary + 4 * UInt32.ofNat k) input[i] $$ [Hcell]
+        0 (temporary + 4 * UInt32.ofNat k) input[i] $$ [Hcell]
   · dsimp [destination]
     rw [UInt32.add_comm]
     iexact Hcell

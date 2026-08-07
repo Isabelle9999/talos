@@ -78,18 +78,18 @@ theorem wp_mergeMainStep
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    arrayAt source input ∗ arrayAt temporary scratch ∗
+    arrayAt 0 source input ∗ arrayAt 0 temporary scratch ∗
       ((⌜input[i]'hiLen < input[j]'hjLen⌝ ∗
-          arrayAt source input ∗
-          arrayAt temporary (scratch.set k (input[i]'hiLen)) -∗
+          arrayAt 0 source input ∗
+          arrayAt 0 temporary (scratch.set k (input[i]'hiLen)) -∗
           WP (.running
             ⟨mergeLocals source temporary left mid right
                 (i + 1) j (k + 1) stack,
               code, arity, remainder, controls, calls⟩ : Expr Unit)
             @ s; E {{ Φ }}) ∧
        (⌜¬input[i]'hiLen < input[j]'hjLen⌝ ∗
-          arrayAt source input ∗
-          arrayAt temporary (scratch.set k (input[j]'hjLen)) -∗
+          arrayAt 0 source input ∗
+          arrayAt 0 temporary (scratch.set k (input[j]'hjLen)) -∗
           WP (.running
             ⟨mergeLocals source temporary left mid right
                 i (j + 1) (k + 1) stack,
@@ -244,13 +244,13 @@ theorem wp_mergeMainLoop
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    arrayAt source input ∗ arrayAt temporary scratch ∗
+    arrayAt 0 source input ∗ arrayAt 0 temporary scratch ∗
       (∀ (scratch' : List UInt32) (i' j' k' : Nat)
           (emitted' : List UInt32),
         ⌜MergeLoopInvariant input scratch' left mid right
           i' j' k' emitted'⌝ -∗
         ⌜i' = mid ∨ j' = right⌝ -∗
-        arrayAt source input -∗ arrayAt temporary scratch' -∗
+        arrayAt 0 source input -∗ arrayAt 0 temporary scratch' -∗
         WP (.running
           ⟨mergeLocals source temporary left mid right
               i' j' k' stack,
@@ -267,7 +267,7 @@ theorem wp_mergeMainLoop
       ⌜MergeLoopInvariant input scratch' left mid right
         i' j' k' emitted'⌝ -∗
       ⌜i' = mid ∨ j' = right⌝ -∗
-      arrayAt source input -∗ arrayAt temporary scratch' -∗
+      arrayAt 0 source input -∗ arrayAt 0 temporary scratch' -∗
       WP (.running
         ⟨mergeLocals source temporary left mid right
             i' j' k' stack,
@@ -276,7 +276,7 @@ theorem wp_mergeMainLoop
   let Inv : MergeLoopState → IProp (WasmHeapGF Unit) := fun state => iprop%
     ⌜MergeLoopInvariant input state.scratch left mid right
       state.i state.j state.k state.emitted⌝ ∗
-    arrayAt source input ∗ arrayAt temporary state.scratch ∗ Finish
+    arrayAt 0 source input ∗ arrayAt 0 temporary state.scratch ∗ Finish
   let blockFrame : ControlFrame :=
     { kind := .block
       paramArity := 0
@@ -438,13 +438,13 @@ theorem wp_mergeMainLoop_from
         mergeLocals source temporary left mid right i j k stack)
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame} :
-    arrayAt source input ∗ arrayAt temporary scratch ∗
+    arrayAt 0 source input ∗ arrayAt 0 temporary scratch ∗
       (∀ (scratch' : List UInt32) (i' j' k' : Nat)
           (emitted' : List UInt32),
         ⌜MergeLoopInvariant input scratch' left mid right
           i' j' k' emitted'⌝ -∗
         ⌜i' = mid ∨ j' = right⌝ -∗
-        arrayAt source input -∗ arrayAt temporary scratch' -∗
+        arrayAt 0 source input -∗ arrayAt 0 temporary scratch' -∗
         WP (.running
           ⟨mergeLocals source temporary left mid right
               i' j' k' stack,
@@ -471,9 +471,9 @@ theorem wp_mergeLeftStep
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    arrayAt source input ∗ arrayAt temporary scratch ∗
-      (arrayAt source input ∗
-        arrayAt temporary (scratch.set k input[i]) -∗
+    arrayAt 0 source input ∗ arrayAt 0 temporary scratch ∗
+      (arrayAt 0 source input ∗
+        arrayAt 0 temporary (scratch.set k input[i]) -∗
         WP (.running
           ⟨mergeLocals source temporary left mid right
               (i + 1) j (k + 1) stack,
@@ -548,9 +548,9 @@ theorem wp_mergeRightStep
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    arrayAt source input ∗ arrayAt temporary scratch ∗
-      (arrayAt source input ∗
-        arrayAt temporary (scratch.set k input[j]) -∗
+    arrayAt 0 source input ∗ arrayAt 0 temporary scratch ∗
+      (arrayAt 0 source input ∗
+        arrayAt 0 temporary (scratch.set k input[j]) -∗
         WP (.running
           ⟨mergeLocals source temporary left mid right
               i (j + 1) (k + 1) stack,
@@ -625,12 +625,12 @@ theorem wp_mergeLeftLoop
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    arrayAt source input ∗ arrayAt temporary scratch ∗
+    arrayAt 0 source input ∗ arrayAt 0 temporary scratch ∗
       (∀ (scratch' : List UInt32) (j' k' : Nat)
           (emitted' : List UInt32),
         ⌜MergeLoopInvariant input scratch' left mid right
           mid j' k' emitted'⌝ -∗
-        arrayAt source input -∗ arrayAt temporary scratch' -∗
+        arrayAt 0 source input -∗ arrayAt 0 temporary scratch' -∗
         WP (.running
           ⟨mergeLocals source temporary left mid right
               mid j' k' stack,
@@ -646,7 +646,7 @@ theorem wp_mergeLeftLoop
         (emitted' : List UInt32),
       ⌜MergeLoopInvariant input scratch' left mid right
         mid j' k' emitted'⌝ -∗
-      arrayAt source input -∗ arrayAt temporary scratch' -∗
+      arrayAt 0 source input -∗ arrayAt 0 temporary scratch' -∗
       WP (.running
         ⟨mergeLocals source temporary left mid right
             mid j' k' stack,
@@ -656,7 +656,7 @@ theorem wp_mergeLeftLoop
     ⌜MergeLoopInvariant input state.scratch left mid right
       state.i state.j state.k state.emitted⌝ ∗
     ⌜state.i = mid ∨ state.j = right⌝ ∗
-    arrayAt source input ∗ arrayAt temporary state.scratch ∗ Finish
+    arrayAt 0 source input ∗ arrayAt 0 temporary state.scratch ∗ Finish
   iintro ⟨Hsource, Htemporary, Hfinish⟩
   simp only [whileDo, List.cons_append, List.nil_append]
   iapply Wasm.SmallStep.wp_block
@@ -775,12 +775,12 @@ theorem wp_mergeRightLoop
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    arrayAt source input ∗ arrayAt temporary scratch ∗
+    arrayAt 0 source input ∗ arrayAt 0 temporary scratch ∗
       (∀ (scratch' : List UInt32) (k' : Nat)
           (emitted' : List UInt32),
         ⌜MergeLoopInvariant input scratch' left mid right
           mid right k' emitted'⌝ -∗
-        arrayAt source input -∗ arrayAt temporary scratch' -∗
+        arrayAt 0 source input -∗ arrayAt 0 temporary scratch' -∗
         WP (.running
           ⟨mergeLocals source temporary left mid right
               mid right k' stack,
@@ -796,7 +796,7 @@ theorem wp_mergeRightLoop
         (emitted' : List UInt32),
       ⌜MergeLoopInvariant input scratch' left mid right
         mid right k' emitted'⌝ -∗
-      arrayAt source input -∗ arrayAt temporary scratch' -∗
+      arrayAt 0 source input -∗ arrayAt 0 temporary scratch' -∗
       WP (.running
         ⟨mergeLocals source temporary left mid right
             mid right k' stack,
@@ -805,7 +805,7 @@ theorem wp_mergeRightLoop
   let Inv : MergeLoopState → IProp (WasmHeapGF Unit) := fun state => iprop%
     ⌜MergeLoopInvariant input state.scratch left mid right
       mid state.j state.k state.emitted⌝ ∗
-    arrayAt source input ∗ arrayAt temporary state.scratch ∗ Finish
+    arrayAt 0 source input ∗ arrayAt 0 temporary state.scratch ∗ Finish
   iintro ⟨Hsource, Htemporary, Hfinish⟩
   simp only [whileDo, List.cons_append, List.nil_append]
   iapply Wasm.SmallStep.wp_block
@@ -909,9 +909,9 @@ theorem wp_mergeCopyStep
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    arrayAt source current ∗ arrayAt temporary scratch ∗
-      (arrayAt source (current.set k scratch[k]) ∗
-        arrayAt temporary scratch -∗
+    arrayAt 0 source current ∗ arrayAt 0 temporary scratch ∗
+      (arrayAt 0 source (current.set k scratch[k]) ∗
+        arrayAt 0 temporary scratch -∗
         WP (.running
           ⟨mergeLocals source temporary left mid right
               mid right (k + 1) stack,
@@ -973,10 +973,10 @@ theorem wp_mergeCopyLoop
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    arrayAt source current ∗ arrayAt temporary scratch ∗
+    arrayAt 0 source current ∗ arrayAt 0 temporary scratch ∗
       (∀ output : List UInt32,
         ⌜CopyLoopInvariant input output left right right merged⌝ -∗
-        arrayAt source output -∗ arrayAt temporary scratch -∗
+        arrayAt 0 source output -∗ arrayAt 0 temporary scratch -∗
         WP (.running
           ⟨mergeLocals source temporary left mid right
               mid right right stack,
@@ -990,7 +990,7 @@ theorem wp_mergeCopyLoop
   let Finish : IProp (WasmHeapGF Unit) := iprop%
     ∀ output : List UInt32,
       ⌜CopyLoopInvariant input output left right right merged⌝ -∗
-      arrayAt source output -∗ arrayAt temporary scratch -∗
+      arrayAt 0 source output -∗ arrayAt 0 temporary scratch -∗
       WP (.running
         ⟨mergeLocals source temporary left mid right
             mid right right stack,
@@ -1000,7 +1000,7 @@ theorem wp_mergeCopyLoop
     ⌜CopyLoopInvariant input state.current left right
       state.k state.copied⌝ ∗
     ⌜state.copied = merged.take (state.k - left)⌝ ∗
-    arrayAt source state.current ∗ arrayAt temporary scratch ∗ Finish
+    arrayAt 0 source state.current ∗ arrayAt 0 temporary scratch ∗ Finish
   iintro ⟨Hsource, Htemporary, Hfinish⟩
   simp only [whileDo, List.cons_append, List.nil_append]
   iapply Wasm.SmallStep.wp_block
@@ -1141,10 +1141,10 @@ theorem wp_mergeCopyLoop_from
         mergeLocals source temporary left mid right mid right k stack)
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame} :
-    arrayAt source current ∗ arrayAt temporary scratch ∗
+    arrayAt 0 source current ∗ arrayAt 0 temporary scratch ∗
       (∀ output : List UInt32,
         ⌜CopyLoopInvariant input output left right right merged⌝ -∗
-        arrayAt source output -∗ arrayAt temporary scratch -∗
+        arrayAt 0 source output -∗ arrayAt 0 temporary scratch -∗
         WP (.running
           ⟨mergeLocals source temporary left mid right
               mid right right stack,
@@ -1171,7 +1171,7 @@ theorem wp_mergeBody
       (∀ (output scratch' : List UInt32),
         ⌜MergeRange input output left mid right⌝ -∗
         ⌜scratch'.length = input.length⌝ -∗
-        arrayAt source output -∗ arrayAt temporary scratch' -∗
+        arrayAt 0 source output -∗ arrayAt 0 temporary scratch' -∗
         WP (.running
           ⟨mergeLocals source temporary left mid right
               mid right right [],
@@ -1286,7 +1286,7 @@ theorem wp_mergeBody_from
       (∀ (output scratch' : List UInt32),
         ⌜MergeRange input output left mid right⌝ -∗
         ⌜scratch'.length = input.length⌝ -∗
-        arrayAt source output -∗ arrayAt temporary scratch' -∗
+        arrayAt 0 source output -∗ arrayAt 0 temporary scratch' -∗
         WP (.running
           ⟨mergeLocals source temporary left mid right
               mid right right [],
@@ -1371,7 +1371,7 @@ theorem mergePost_elim
       (iprop% ∃ output scratch : List UInt32,
         ⌜MergeRange input output left mid right⌝ ∗
         ⌜scratch.length = input.length⌝ ∗
-        arrayAt source output ∗ arrayAt temporary scratch) := by
+        arrayAt 0 source output ∗ arrayAt 0 temporary scratch) := by
   unfold mergePost
   iintro Hpost
   iexact Hpost
@@ -1381,7 +1381,7 @@ theorem mergeSortPre_elim
     (source temporary : UInt32)
     (input scratch : List UInt32) :
     mergeSortPre source temporary input scratch ⊢
-      (iprop% arrayAt source input ∗ arrayAt temporary scratch ∗
+      (iprop% arrayAt 0 source input ∗ arrayAt 0 temporary scratch ∗
         ⌜scratch.length = input.length⌝ ∗
         ⌜ValidLayout source temporary input.length⌝) := by
   unfold mergeSortPre
@@ -1749,14 +1749,14 @@ theorem wp_mergeSortInnerLoop
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
     runtimeModuleOwn runtimeModule ∗
-      arrayAt source current ∗ arrayAt temporary scratch ∗
+      arrayAt 0 source current ∗ arrayAt 0 temporary scratch ∗
       (∀ (output scratch' : List UInt32) (pass' mid' right' : Nat),
         ⌜MergePassInvariant original output width pass'⌝ -∗
         ⌜output.length = count⌝ -∗
         ⌜scratch'.length = count⌝ -∗
         ⌜count ≤ pass' * (2 * width)⌝ -∗
         runtimeModuleOwn runtimeModule -∗
-        arrayAt source output -∗ arrayAt temporary scratch' -∗
+        arrayAt 0 source output -∗ arrayAt 0 temporary scratch' -∗
         WP (.running
           ⟨sortLocals source temporary count width
               (pass' * (2 * width)) mid' right' stack,
@@ -1776,7 +1776,7 @@ theorem wp_mergeSortInnerLoop
       ⌜scratch'.length = count⌝ -∗
       ⌜count ≤ pass' * (2 * width)⌝ -∗
       runtimeModuleOwn runtimeModule -∗
-      arrayAt source output -∗ arrayAt temporary scratch' -∗
+      arrayAt 0 source output -∗ arrayAt 0 temporary scratch' -∗
       WP (.running
         ⟨sortLocals source temporary count width
             (pass' * (2 * width)) mid' right' stack,
@@ -1788,7 +1788,7 @@ theorem wp_mergeSortInnerLoop
     ⌜state.scratch.length = count⌝ ∗
     ⌜state.pass * (2 * width) < UInt32.size⌝ ∗
     runtimeModuleOwn runtimeModule ∗
-    arrayAt source state.current ∗ arrayAt temporary state.scratch ∗ Finish
+    arrayAt 0 source state.current ∗ arrayAt 0 temporary state.scratch ∗ Finish
   let blockFrame : ControlFrame :=
     { kind := .block
       paramArity := 0
@@ -2001,7 +2001,7 @@ theorem wp_mergeSortOuterLoop
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
     runtimeModuleOwn runtimeModule ∗
-      arrayAt source current ∗ arrayAt temporary scratch ∗
+      arrayAt 0 source current ∗ arrayAt 0 temporary scratch ∗
       (∀ (output scratch' : List UInt32)
           (width' left' mid' right' : Nat),
         ⌜SortedRuns output width'⌝ -∗
@@ -2010,7 +2010,7 @@ theorem wp_mergeSortOuterLoop
         ⌜scratch'.length = count⌝ -∗
         ⌜count ≤ width'⌝ -∗
         runtimeModuleOwn runtimeModule -∗
-        arrayAt source output -∗ arrayAt temporary scratch' -∗
+        arrayAt 0 source output -∗ arrayAt 0 temporary scratch' -∗
         WP (.running
           ⟨sortLocals source temporary count width'
               left' mid' right' stack,
@@ -2031,7 +2031,7 @@ theorem wp_mergeSortOuterLoop
       ⌜scratch'.length = count⌝ -∗
       ⌜count ≤ width'⌝ -∗
       runtimeModuleOwn runtimeModule -∗
-      arrayAt source output -∗ arrayAt temporary scratch' -∗
+      arrayAt 0 source output -∗ arrayAt 0 temporary scratch' -∗
       WP (.running
         ⟨sortLocals source temporary count width'
             left' mid' right' stack,
@@ -2045,7 +2045,7 @@ theorem wp_mergeSortOuterLoop
     ⌜0 < state.width⌝ ∗
     ⌜state.width < UInt32.size⌝ ∗
     runtimeModuleOwn runtimeModule ∗
-    arrayAt source state.current ∗ arrayAt temporary state.scratch ∗ Finish
+    arrayAt 0 source state.current ∗ arrayAt 0 temporary state.scratch ∗ Finish
   let blockFrame : ControlFrame :=
     { kind := .block
       paramArity := 0

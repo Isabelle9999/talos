@@ -67,7 +67,7 @@ def incrConfig (st : Store Unit) (n : UInt32) : Config Unit :=
         resultArity := 1
         callerRemainder := [] }
     store :=
-      { runtime := { module := callIndirectModule, host := {} }
+      { runtime := { instances := #[{ module := callIndirectModule, host := {} }], entry := ⟨0⟩ }
         wasm := st } }
 
 def dispatchConfig (n : UInt32) : Config Unit :=
@@ -77,7 +77,7 @@ def dispatchConfig (n : UInt32) : Config Unit :=
         resultArity := 1
         callerRemainder := [] }
     store :=
-      { runtime := { module := callIndirectModule, host := {} }
+      { runtime := { instances := #[{ module := callIndirectModule, host := {} }], entry := ⟨0⟩ }
         wasm := callIndirectModule.initialStore } }
 
 theorem incr_steps (st : Store Unit) (n : UInt32) :

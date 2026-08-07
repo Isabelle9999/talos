@@ -19,7 +19,7 @@ def totalVariationConfig (a b c : UInt64) : Config Unit :=
       ⟨⟨[.i64 a, .i64 b, .i64 c], [], []⟩,
         func1, 1, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := {} }
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm := { initial with mem := initial.mem.write64 1048568 0 } } }
 
 @[spec_of "rust-exported" "total_variation::total_variation"]
@@ -48,10 +48,11 @@ theorem total_variation_correct : TotalVariationSpec := by
   · simpa [totalVariationConfig, absDiffBodyConfig] using
       absDiffBodyGlobals_agree «module» «module».initialStore a b 0 rfl
   · intro gs
+    simp only [totalVariationConfig, RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hscratch := absDiffHeap_pointsTo 0 $$ Hbytes
     ihave Hglobal := absDiffGlobals_pointsTo $$ Hglobals
-    simp only [totalVariationConfig, func1]
+    simp only [func1]
     iapply wp_localGet rfl
     inext
     iapply wp_localGet rfl

@@ -48,7 +48,7 @@ def evenOddModule : Module :=
       { params := [.i32], body := IsOddRec, results := [.i32] }] }
 
 private def parityStore : MachineStore Unit :=
-  { runtime := { module := evenOddModule, host := {} }
+  { runtime := { instances := #[{ module := evenOddModule, host := {} }], entry := ⟨0⟩ }
     wasm := evenOddModule.initialStore }
 
 private def evenValue (n : UInt32) : UInt32 :=

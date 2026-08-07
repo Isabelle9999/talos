@@ -22,9 +22,9 @@ def writeByteModule : Module where
   funcs   := []
   imports := [writeByteImp]
 
-def writeByteRuntime : RuntimeEnv Unit where
-  module := writeByteModule
-  host   := { funcs := [writeByteHost] }
+def writeByteRuntime : RuntimeEnv Unit :=
+  { instances := #[{ module := writeByteModule, host := { funcs := [writeByteHost] } }]
+    entry := ⟨0⟩ }
 
 def writeByteInitStore : Store Unit where
   globals := { globals := [] }
@@ -42,36 +42,37 @@ def writeByteConfig : Config Unit :=
 theorem writeByte_partiallyMeets :
     PartiallyMeets writeByteConfig (fun values (store : MachineStore Unit) =>
         values = [] ∧ store.wasm.mem.read8 0 = 42) := by
-  letI : WasmHostGS Unit := { knownHostEnv := some writeByteRuntime.host }
+  letI : WasmHostGS Unit := { knownHostEnv := some writeByteRuntime.currentHost }
   apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets.{0}
     (α := Unit)
-    (σ := insert ∅ 0 (some (0 : UInt8)))
+    (σ := insert ∅ ⟨0, 0⟩ (some (0 : UInt8)))
     (globalσ := (∅ : WasmGlobalMap Value))
     (hhost := rfl)
   · intro addr v hget
-    by_cases h : addr = 0
+    by_cases h : addr = ⟨0, 0⟩
     · subst h
       rw [get?_insert_eq rfl] at hget
       have hv := Option.some.inj (Option.some.inj hget)
       subst hv
-      decide
+      exact ⟨_, rfl, by decide⟩
     · rw [get?_insert_ne (Ne.symm h), get?_empty] at hget
       contradiction
-  · intro addr v hget
-    by_cases h : addr = 0
-    · subst h; decide
+  · intro addr hget
+    by_cases h : addr = ⟨0, 0⟩
+    · subst h
+      exact ⟨_, rfl, by decide⟩
     · rw [get?_insert_ne (Ne.symm h), get?_empty] at hget
       contradiction
   · exact globalHeapAgrees_empty _
   · intro gs
-    simp only [(BI.BigSepM.bigSepM_insert (get?_empty (0 : UInt32))).to_eq,
+    simp only [(BI.BigSepM.bigSepM_insert (get?_empty (⟨0, 0⟩ : MemoryKey))).to_eq,
                BI.BigSepM.bigSepM_empty.to_eq, BI.sep_emp.to_eq]
     iintro ⟨Hpt, _Hglobals, Hruntime⟩
-    simp only [writeByteConfig, writeByteRuntime]
+    simp only [writeByteConfig, writeByteRuntime, RuntimeEnv.currentModule_mk1]
     have hpost : ∀ values : List Value,
         (iprop% ⌜values = []⌝ ∗
           pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
-            0 (DFrac.own 1) (some (42 : UInt8))) ⊢
+            ⟨0, 0⟩ (DFrac.own 1) (some (42 : UInt8))) ⊢
         (iprop% ∀ (store : MachineStore Unit)
             (_observations : List StepKind),
           stateInterp (GF := WasmHeapGF) store 0 [] 0 -∗
@@ -84,11 +85,11 @@ theorem writeByte_partiallyMeets :
       exact ⟨hvalues, hread⟩
     iapply (wp_mono hpost)
     iapply wp_callHost writeByteModule 0 writeByteImp writeByteHost
-        (by simp [writeByteModule]) rfl writeByteRuntime.host rfl rfl
+        (by simp [writeByteModule]) rfl writeByteRuntime.currentHost rfl rfl
         (iprop(pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
-          0 (DFrac.own 1) (some (0 : UInt8))))
+          ⟨0, 0⟩ (DFrac.own 1) (some (0 : UInt8))))
         (fun _ => iprop(pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
-          0 (DFrac.own 1) (some (42 : UInt8))))
+          ⟨0, 0⟩ (DFrac.own 1) (some (42 : UInt8))))
         (iprop(False))
         (iprop(False))
         -- ghost write: pointsTo 0 (some 0) ∗ stateInterp ==∗ pointsTo 0 (some 42) ∗ stateInterp'

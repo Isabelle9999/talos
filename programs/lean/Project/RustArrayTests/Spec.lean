@@ -9,6 +9,7 @@ namespace Project.RustArrayTests.Spec
 open Wasm Wasm.RustStd Wasm.RustStd.Array
 open Iris Iris.ProgramLogic Language.Notation
 open Wasm.SepLogic
+open Wasm.SmallStep
 
 -- The export proofs below unfold the 9-function module deep enough to need a
 -- raised recursion limit; set it once for the file.
@@ -22,14 +23,14 @@ private def bodyConfig (body : Program) (params : List Value) :
     SmallStep.Config Unit :=
   { expr := .running ⟨⟨params, [], []⟩, body, 1, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := {} }
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm := «module».initialStore } }
 
 private def exportConfig (env : HostEnv Unit) (st : Store Unit)
     (body : Program) (params : List Value) : SmallStep.Config Unit :=
   { expr := .running ⟨⟨params, [], []⟩, body, 1, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := env }
+      { runtime := { instances := #[{ module := «module», host := env }], entry := ⟨0⟩ }
         wasm := st } }
 
 @[spec_of "rust-internal" "rust_array_tests::len_plus_one"]
@@ -93,7 +94,7 @@ theorem empty_plus_three_correct : EmptyPlusThreeSpec := by
   intro ptr len
   apply SmallStep.wasm_smallStep_runtime_partiallyMeets (α := Unit)
   intro gs
-  simp only [bodyConfig, func4]
+  simp only [bodyConfig, func4, SmallStep.RuntimeEnv.currentModule_mk1]
   iintro Hruntime
   iapply SmallStep.wp_localGet rfl
   inext
@@ -149,7 +150,7 @@ theorem empty_xor_flag_correct : EmptyXorFlagSpec := by
   intro ptr len flag
   apply SmallStep.wasm_smallStep_runtime_partiallyMeets (α := Unit)
   intro gs
-  simp only [bodyConfig, func2]
+  simp only [bodyConfig, func2, SmallStep.RuntimeEnv.currentModule_mk1]
   iintro Hruntime
   iapply SmallStep.wp_localGet rfl
   inext
@@ -218,17 +219,18 @@ theorem len_plus_one_export_correct : LenPlusOneExportSpec := by
   apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 (len + 1)])
-  · exact fatPtrHeap_agrees hfat
-  · exact fatPtrHeap_inBounds hfat
+  · exact fatPtrHeap_agrees _ (by simp [storeResolve, exportConfig]) hfat
+  · exact fatPtrHeap_inBounds _ (by simp [storeResolve, exportConfig]) hfat
   · intro gs
+    simp only [exportConfig, SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hruntime⟩
     ihave Hfat := fatPtrHeap_pointsTo p dataPtr len hfat.noWrap $$ Hbytes
     icases Hfat with ⟨Hdata, Hlen⟩
-    simp only [exportConfig, func8]
-    ihave HdataLater : ▷ pointsTo_u32 p dataPtr $$ [Hdata]
+    simp only [func8]
+    ihave HdataLater : ▷ pointsTo_u32 0 p dataPtr $$ [Hdata]
     · inext
       iexact Hdata
-    ihave HlenLater : ▷ pointsTo_u32 (p + 4) len $$ [Hlen]
+    ihave HlenLater : ▷ pointsTo_u32 0 (p + 4) len $$ [Hlen]
     · inext
       iexact Hlen
     iapply wp_loadFatPtr 0 p dataPtr len rfl hfat.noWrap $$
@@ -270,17 +272,18 @@ theorem len_plus_arg_export_correct : LenPlusArgExportSpec := by
   apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 (len + n)])
-  · exact fatPtrHeap_agrees hfat
-  · exact fatPtrHeap_inBounds hfat
+  · exact fatPtrHeap_agrees _ (by simp [storeResolve, exportConfig]) hfat
+  · exact fatPtrHeap_inBounds _ (by simp [storeResolve, exportConfig]) hfat
   · intro gs
+    simp only [exportConfig, SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hruntime⟩
     ihave Hfat := fatPtrHeap_pointsTo p dataPtr len hfat.noWrap $$ Hbytes
     icases Hfat with ⟨Hdata, Hlen⟩
-    simp only [exportConfig, func7]
-    ihave HdataLater : ▷ pointsTo_u32 p dataPtr $$ [Hdata]
+    simp only [func7]
+    ihave HdataLater : ▷ pointsTo_u32 0 p dataPtr $$ [Hdata]
     · inext
       iexact Hdata
-    ihave HlenLater : ▷ pointsTo_u32 (p + 4) len $$ [Hlen]
+    ihave HlenLater : ▷ pointsTo_u32 0 (p + 4) len $$ [Hlen]
     · inext
       iexact Hlen
     iapply wp_loadFatPtr 0 p dataPtr len rfl hfat.noWrap $$
@@ -324,17 +327,18 @@ theorem empty_plus_three_export_correct : EmptyPlusThreeExportSpec := by
   apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 (isEmptyValue len + 3)])
-  · exact fatPtrHeap_agrees hfat
-  · exact fatPtrHeap_inBounds hfat
+  · exact fatPtrHeap_agrees _ (by simp [storeResolve, exportConfig]) hfat
+  · exact fatPtrHeap_inBounds _ (by simp [storeResolve, exportConfig]) hfat
   · intro gs
+    simp only [exportConfig, SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hruntime⟩
     ihave Hfat := fatPtrHeap_pointsTo p dataPtr len hfat.noWrap $$ Hbytes
     icases Hfat with ⟨Hdata, Hlen⟩
-    simp only [exportConfig, func5]
-    ihave HdataLater : ▷ pointsTo_u32 p dataPtr $$ [Hdata]
+    simp only [func5]
+    ihave HdataLater : ▷ pointsTo_u32 0 p dataPtr $$ [Hdata]
     · inext
       iexact Hdata
-    ihave HlenLater : ▷ pointsTo_u32 (p + 4) len $$ [Hlen]
+    ihave HlenLater : ▷ pointsTo_u32 0 (p + 4) len $$ [Hlen]
     · inext
       iexact Hlen
     iapply wp_loadFatPtr 0 p dataPtr len rfl hfat.noWrap $$
@@ -406,17 +410,18 @@ theorem empty_xor_flag_export_correct : EmptyXorFlagExportSpec := by
   apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 (isEmptyValue len ^^^ flag)])
-  · exact fatPtrHeap_agrees hfat
-  · exact fatPtrHeap_inBounds hfat
+  · exact fatPtrHeap_agrees _ (by simp [storeResolve, exportConfig]) hfat
+  · exact fatPtrHeap_inBounds _ (by simp [storeResolve, exportConfig]) hfat
   · intro gs
+    simp only [exportConfig, SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hruntime⟩
     ihave Hfat := fatPtrHeap_pointsTo p dataPtr len hfat.noWrap $$ Hbytes
     icases Hfat with ⟨Hdata, Hlen⟩
-    simp only [exportConfig, func6]
-    ihave HdataLater : ▷ pointsTo_u32 p dataPtr $$ [Hdata]
+    simp only [func6]
+    ihave HdataLater : ▷ pointsTo_u32 0 p dataPtr $$ [Hdata]
     · inext
       iexact Hdata
-    ihave HlenLater : ▷ pointsTo_u32 (p + 4) len $$ [Hlen]
+    ihave HlenLater : ▷ pointsTo_u32 0 (p + 4) len $$ [Hlen]
     · inext
       iexact Hlen
     iapply wp_loadFatPtr 0 p dataPtr len rfl hfat.noWrap $$
