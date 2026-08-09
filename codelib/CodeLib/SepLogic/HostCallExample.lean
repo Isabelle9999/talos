@@ -42,12 +42,10 @@ def writeByteConfig : Config Unit :=
 theorem writeByte_partiallyMeets :
     PartiallyMeets writeByteConfig (fun values (store : MachineStore Unit) =>
         values = [] ∧ store.wasm.mem.read8 0 = 42) := by
-  letI : WasmHostGS Unit := { knownHostEnv := some writeByteRuntime.currentHost }
-  apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets.{0}
+  apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets
     (α := Unit)
     (σ := insert ∅ ⟨0, 0⟩ (some (0 : UInt8)))
     (globalσ := (∅ : WasmGlobalMap Value))
-    (hhost := rfl)
   · intro addr v hget
     by_cases h : addr = ⟨0, 0⟩
     · subst h
@@ -67,15 +65,16 @@ theorem writeByte_partiallyMeets :
   · intro gs
     simp only [(BI.BigSepM.bigSepM_insert (get?_empty (⟨0, 0⟩ : MemoryKey))).to_eq,
                BI.BigSepM.bigSepM_empty.to_eq, BI.sep_emp.to_eq]
-    iintro ⟨Hpt, _Hglobals, Hruntime⟩
-    simp only [writeByteConfig, writeByteRuntime, RuntimeEnv.currentModule_mk1]
+    iintro ⟨Hpt, _Hglobals, Hruntime, Henv⟩
+    simp only [writeByteConfig, writeByteRuntime, RuntimeEnv.currentModule_mk1,
+               RuntimeEnv.currentHost_mk1]
     have hpost : ∀ values : List Value,
         (iprop% ⌜values = []⌝ ∗
-          pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
             ⟨0, 0⟩ (DFrac.own 1) (some (42 : UInt8))) ⊢
         (iprop% ∀ (store : MachineStore Unit)
             (_observations : List StepKind),
-          stateInterp (GF := WasmHeapGF) store 0 [] 0 -∗
+          stateInterp (GF := WasmHeapGF Unit) store 0 [] 0 -∗
           ⌜values = [] ∧ store.wasm.mem.read8 0 = 42⌝) := by
       intro values
       iintro ⟨%hvalues, Hbyte⟩ %store %_observations Hstate
@@ -85,10 +84,10 @@ theorem writeByte_partiallyMeets :
       exact ⟨hvalues, hread⟩
     iapply (wp_mono hpost)
     iapply wp_callHost writeByteModule 0 writeByteImp writeByteHost
-        (by simp [writeByteModule]) rfl writeByteRuntime.currentHost rfl rfl
-        (iprop(pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        (by simp [writeByteModule]) rfl { funcs := [writeByteHost] } rfl
+        (iprop(pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           ⟨0, 0⟩ (DFrac.own 1) (some (0 : UInt8))))
-        (fun _ => iprop(pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        (fun _ => iprop(pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           ⟨0, 0⟩ (DFrac.own 1) (some (42 : UInt8))))
         (iprop(False))
         (iprop(False))
@@ -117,7 +116,7 @@ theorem writeByte_partiallyMeets :
         (s := Stuckness.NotStuck) (E := ⊤)
         (params := []) (localValues := []) (values := [.i32 42, .i32 0])
         (code := []) (arity := 0) (remainder := []) (controls := []) (calls := [])
-        $$ [$Hpt] Hruntime
+        $$ [$Hpt] Hruntime Henv
     -- return: QRet [] = pointsTo 0 (some 42); close Φ_simple
     · inext
       iintro %preWasm %results %postWasm %h HQ

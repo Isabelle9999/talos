@@ -159,14 +159,16 @@ private def evenCaller (n : UInt32) : CallFrame :=
     continuation := [.eqz, .localSet 0]
     resultArity := 1
     callerRemainder := []
-    control := [evenBlockFrame] }
+    control := [evenBlockFrame]
+    returningInstance := ⟨0⟩ }
 
 private def oddCaller (n : UInt32) : CallFrame :=
   { locals := { params := [.i32 n] }
     continuation := [.localSet 0]
     resultArity := 1
     callerRemainder := []
-    control := [oddBlockFrame] }
+    control := [oddBlockFrame]
+    returningInstance := ⟨0⟩ }
 
 private theorem even_zero_prefix (calls : List CallFrame) :
     ∃ trace,

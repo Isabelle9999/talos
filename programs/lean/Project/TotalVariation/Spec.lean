@@ -60,7 +60,7 @@ theorem total_variation_correct : TotalVariationSpec := by
     iapply wp_call «module» 0 func0Def (by simp [«module»]) (by simp [«module»]) $$
       Hruntime
     inext
-    iintro Hruntime
+    iintro %_ri Hruntime
     simp [func0Def, Function.toLocals, Function.numParams, ValueType.zero]
     rw [show func0 = absDiffBody by rfl]
     iapply absDiff_smallStep_wp_to_return
@@ -76,7 +76,7 @@ theorem total_variation_correct : TotalVariationSpec := by
       iapply wp_call «module» 0 func0Def (by simp [«module»]) (by simp [«module»]) $$
         Hruntime
       inext
-      iintro Hruntime
+      iintro %_ri Hruntime
       simp [func0Def, Function.toLocals, Function.numParams, ValueType.zero]
       rw [show func0 = absDiffBody by rfl]
       iapply absDiff_smallStep_wp_to_return

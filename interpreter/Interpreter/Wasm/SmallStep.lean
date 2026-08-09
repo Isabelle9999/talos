@@ -161,6 +161,7 @@ structure CallFrame where
   resultArity : Nat
   callerRemainder : List Value
   control : List ControlFrame
+  returningInstance : ModuleInstanceId
 deriving Repr
 
 /-- Per-invocation state. Control and call frames belong to the thread rather
@@ -948,7 +949,8 @@ private def stepPlainChecked?
                 continuation := rest
                 resultArity := thread.resultArity
                 callerRemainder := thread.callerRemainder
-                control := thread.control }
+                control := thread.control
+                returningInstance := store.runtime.entry }
             let calleeLocals :=
               fn.toLocals
                 (thread.locals.values.take fn.numParams).reverse
@@ -1133,7 +1135,8 @@ private def stepPlainChecked?
                         continuation := rest
                         resultArity := thread.resultArity
                         callerRemainder := thread.callerRemainder
-                        control := thread.control }
+                        control := thread.control
+                        returningInstance := store.runtime.entry }
                     .ok (some (.instruction instr,
                       ⟨.running
                         { locals :=
@@ -1303,7 +1306,8 @@ private def stepPlainChecked?
                   continuation := rest
                   resultArity := thread.resultArity
                   callerRemainder := thread.callerRemainder
-                  control := thread.control }
+                  control := thread.control
+                  returningInstance := store.runtime.entry }
               .ok (some (.instruction instr,
                 ⟨.running
                   { locals :=
@@ -3281,7 +3285,8 @@ inductive Step : Config α → StepKind → Config α → Prop where
               continuation := code
               resultArity := arity
               callerRemainder := remainder
-              control := controls } :: calls⟩,
+              control := controls
+              returningInstance := store.runtime.entry } :: calls⟩,
           store⟩
   | returnCallHostReturn
       (himports : functionIndex < store.runtime.currentModule.imports.length)
@@ -3579,7 +3584,8 @@ inductive Step : Config α → StepKind → Config α → Prop where
               continuation := code
               resultArity := arity
               callerRemainder := remainder
-              control := controls } :: calls⟩,
+              control := controls
+              returningInstance := store.runtime.entry } :: calls⟩,
           store⟩
   | returnCallIndirectUndefined
       (hselector : selector.addrNat? = some elementIndex)
@@ -3818,7 +3824,8 @@ inductive Step : Config α → StepKind → Config α → Prop where
               continuation := code
               resultArity := arity
               callerRemainder := remainder
-              control := controls } :: calls⟩,
+              control := controls
+              returningInstance := store.runtime.entry } :: calls⟩,
           store⟩
   | returnCallRefNull :
       Step ⟨.running ⟨⟨params, localValues, .funcref none :: values⟩,

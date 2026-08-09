@@ -266,7 +266,7 @@ theorem opt3_func0_distinct_store_partiallyMeets
   · exact hinBounds
   · exact hglobals
   · intro gs
-    iintro ⟨Hheap, Hglobals, Hruntime⟩
+    iintro ⟨Hheap, Hglobals, Hruntime, _Henv⟩
     ihave Hwords := hresources $$ Hheap
     icases Hwords with ⟨HA, HB⟩
     have hpost : ∀ values : List Value,

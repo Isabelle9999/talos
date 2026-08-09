@@ -103,7 +103,7 @@ theorem empty_plus_three_correct : EmptyPlusThreeSpec := by
   iapply SmallStep.wp_call «module» 3 func3Def
     (by simp [«module»]) (by simp [«module»]) $$ Hruntime
   inext
-  iintro Hruntime
+  iintro %_ri Hruntime
   simp [func3Def, Function.toLocals, Function.numParams, func3]
   iapply SmallStep.wp_localGet rfl
   inext
@@ -159,7 +159,7 @@ theorem empty_xor_flag_correct : EmptyXorFlagSpec := by
   iapply SmallStep.wp_call «module» 3 func3Def
     (by simp [«module»]) (by simp [«module»]) $$ Hruntime
   inext
-  iintro Hruntime
+  iintro %_ri Hruntime
   simp [func3Def, Function.toLocals, Function.numParams, func3]
   iapply SmallStep.wp_localGet rfl
   inext
@@ -239,7 +239,7 @@ theorem len_plus_one_export_correct : LenPlusOneExportSpec := by
     iapply SmallStep.wp_call «module» 1 func1Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro Hruntime
+    iintro %_ri Hruntime
     simp [func1Def, Function.toLocals, Function.numParams, func1]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -294,7 +294,7 @@ theorem len_plus_arg_export_correct : LenPlusArgExportSpec := by
     iapply SmallStep.wp_call «module» 0 func0Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro Hruntime
+    iintro %_ri Hruntime
     simp [func0Def, Function.toLocals, Function.numParams, func0]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -347,7 +347,7 @@ theorem empty_plus_three_export_correct : EmptyPlusThreeExportSpec := by
     iapply SmallStep.wp_call «module» 4 func4Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro Hruntime
+    iintro %_ri Hruntime
     simp [func4Def, Function.toLocals, Function.numParams, func4]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -356,7 +356,7 @@ theorem empty_plus_three_export_correct : EmptyPlusThreeExportSpec := by
     iapply SmallStep.wp_call «module» 3 func3Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro Hruntime
+    iintro %_ri Hruntime
     simp [func3Def, Function.toLocals, Function.numParams, func3]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -432,7 +432,7 @@ theorem empty_xor_flag_export_correct : EmptyXorFlagExportSpec := by
     iapply SmallStep.wp_call «module» 2 func2Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro Hruntime
+    iintro %_ri Hruntime
     simp [func2Def, Function.toLocals, Function.numParams, func2]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -441,7 +441,7 @@ theorem empty_xor_flag_export_correct : EmptyXorFlagExportSpec := by
     iapply SmallStep.wp_call «module» 3 func3Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro Hruntime
+    iintro %_ri Hruntime
     simp [func3Def, Function.toLocals, Function.numParams, func3]
     iapply SmallStep.wp_localGet rfl
     inext

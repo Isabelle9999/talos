@@ -145,7 +145,7 @@ theorem len_export_correct : LenExportSpec := by
     iapply SmallStep.wp_call «module» 0 func0Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro Hruntime
+    iintro %_ri Hruntime
     simp [func0Def, Function.toLocals, Function.numParams, func0]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -205,7 +205,7 @@ theorem is_empty_export_correct : IsEmptyExportSpec := by
     iapply SmallStep.wp_call «module» 1 func1Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro Hruntime
+    iintro %_ri Hruntime
     simp [func1Def, Function.toLocals, Function.numParams, func1]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -214,7 +214,7 @@ theorem is_empty_export_correct : IsEmptyExportSpec := by
     iapply SmallStep.wp_call «module» 2 func2Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro Hruntime
+    iintro %_ri Hruntime
     simp [func2Def, Function.toLocals, Function.numParams, func2]
     iapply SmallStep.wp_localGet rfl
     inext

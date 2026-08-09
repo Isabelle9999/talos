@@ -1,8 +1,10 @@
 import Iris.ProofMode
 import Iris.Instances.Lib.FUpd
 import Iris.BI.Lib.GenHeap
+import Iris.Algebra.Lib.ExclAuth
 import Interpreter.Wasm.Mem
 import Interpreter.Wasm.Syntax
+import Interpreter.Wasm.Host
 import Std.Tactic.BVDecide
 /-! # Wasm Memory as an Iris GenHeap
 Instantiates iris-lean's GenHeap for Wasm byte-level memory.
@@ -261,7 +263,7 @@ abbrev WasmGlobalMap := fun V => ExtTreeMap GlobalKey V compare
 abbrev WasmDataSegmentMap := fun V => ExtTreeMap DataSegmentKey V compare
 abbrev WasmTableMap := fun V => ExtTreeMap TableKey V compare
 abbrev WasmElementSegmentMap := fun V => ExtTreeMap ElementSegmentKey V compare
-abbrev WasmHeapGF : BundledGFunctors
+abbrev WasmHeapGF (α : Type 0) : BundledGFunctors
   | 0 => ⟨InvMapF, by infer_instance⟩
   | 1 => ⟨constOF (DisjointLeibnizSet CoPset), by infer_instance⟩
   | 2 => ⟨constOF (DisjointLeibnizSet PosSet), by infer_instance⟩
@@ -281,19 +283,24 @@ abbrev WasmHeapGF : BundledGFunctors
   | 11 => ⟨constOF
       (HeapView ElementSegmentKey (Agree (DiscreteO (Option (List (Option Nat)))))
         WasmElementSegmentMap), by infer_instance⟩
+  | 12 => ⟨constOF (Agree (DiscreteO (HostEnv α))), by infer_instance⟩
+  | 13 => ⟨Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α)))), by infer_instance⟩
   | _ => ⟨constOF Unit, by infer_instance⟩
 -- Wire genHeapPreS (following HeapLang's instHeapLangGS_HeapLangS)
-instance instWasmHeapPreS : genHeapPreS MemoryKey (Option UInt8) WasmHeapGF WasmHeapMap where
+instance instWasmHeapPreS (α : Type) :
+    genHeapPreS MemoryKey (Option UInt8) (WasmHeapGF.{0} α) WasmHeapMap where
   heap := by constructor; exists 4
   metaInfo := by constructor; exists 5
   metaData := by exists 6
 -- The full genHeap instance with ghost names
-class WasmHeapGS extends genHeapGS MemoryKey (Option UInt8) WasmHeapGF WasmHeapMap
+class WasmHeapGS (α : outParam Type) extends
+    genHeapGS MemoryKey (Option UInt8) (WasmHeapGF.{0} α) WasmHeapMap
 
 /-- Globals use a directly named ghost map instead of a second `genHeapGS`.
 All identifying parameters of `genHeapGS` are output parameters, so two
 simultaneous GenHeap instances are ambiguous to typeclass search. -/
-class WasmGlobalGS extends GhostMapG WasmHeapGF GlobalKey Value WasmGlobalMap where
+class WasmGlobalGS (α : outParam Type) extends
+    GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap where
   globalName : GName
 
 attribute [instance] WasmGlobalGS.toGhostMapG
@@ -302,8 +309,8 @@ attribute [instance] WasmGlobalGS.toGhostMapG
 entry remains present after `data.drop`, but its value changes from
 `some bytes` to `none`, mirroring the instantiated store exactly at every
 owned segment index. -/
-class WasmDataSegmentGS extends
-    GhostMapG WasmHeapGF DataSegmentKey (Option (List UInt8)) WasmDataSegmentMap where
+class WasmDataSegmentGS (α : outParam Type) extends
+    GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8)) WasmDataSegmentMap where
   dataSegmentName : GName
 
 attribute [instance] WasmDataSegmentGS.toGhostMapG
@@ -311,8 +318,8 @@ attribute [instance] WasmDataSegmentGS.toGhostMapG
 /-- Instantiated tables use stable table indices as authoritative ghost-map
 keys.  A fragment owns one complete table; element-level rules preserve or
 update that fragment together with the physical table. -/
-class WasmTableGS extends
-    GhostMapG WasmHeapGF TableKey TableInst WasmTableMap where
+class WasmTableGS (α : outParam Type) extends
+    GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap where
   tableName : GName
 
 attribute [instance] WasmTableGS.toGhostMapG
@@ -320,37 +327,51 @@ attribute [instance] WasmTableGS.toGhostMapG
 /-- Instantiated element segments retain stable indices after `elem.drop`.
 Their optional payload is authoritative so `table.init` reads the physical
 live segment and `elem.drop` changes both views to `none`. -/
-class WasmElementSegmentGS extends
-    GhostMapG WasmHeapGF ElementSegmentKey (Option (List (Option Nat)))
+class WasmElementSegmentGS (α : outParam Type) extends
+    GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
       WasmElementSegmentMap where
   elementSegmentName : GName
 
 attribute [instance] WasmElementSegmentGS.toGhostMapG
 
-class WasmRuntimeModuleGS where
+class WasmRuntimeModuleGS (α : outParam Type) where
   runtimeElem :
-    ElemG WasmHeapGF.{0} (constOF (Agree (DiscreteO Module)))
+    ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO Module)))
   runtimeName : GName
 
 attribute [reducible, instance] WasmRuntimeModuleGS.runtimeElem
 
-def globalPointsTo [gs : WasmGlobalGS] (key : GlobalKey) (value : Value) :
-    IProp WasmHeapGF :=
+class WasmHostEnvGS (α : outParam Type) where
+  hostEnvElem :
+    ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (HostEnv α))))
+  hostEnvName : GName
+
+attribute [reducible, instance] WasmHostEnvGS.hostEnvElem
+
+class WasmHostStateGS (α : outParam Type) where
+  hostStateElem :
+    ElemG (WasmHeapGF.{0} α) (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α)))))
+  hostStateName : GName
+
+attribute [reducible, instance] WasmHostStateGS.hostStateElem
+
+def globalPointsTo {α : Type} [gs : WasmGlobalGS α] (key : GlobalKey) (value : Value) :
+    IProp (WasmHeapGF.{0} α) :=
   ghost_map_elem gs.globalName (DFrac.own 1) key value
 
-def globalPointsToAt [gs : WasmGlobalGS] (instanceId : Nat) (index : Nat)
-    (value : Value) : IProp WasmHeapGF :=
+def globalPointsToAt {α : Type} [gs : WasmGlobalGS α] (instanceId : Nat) (index : Nat)
+    (value : Value) : IProp (WasmHeapGF.{0} α) :=
   globalPointsTo ⟨instanceId, index⟩ value
 
-theorem globalPointsToAt_eq [WasmGlobalGS] (i j : Nat) (v : Value) :
+theorem globalPointsToAt_eq {α : Type} [WasmGlobalGS α] (i j : Nat) (v : Value) :
     globalPointsToAt i j v = globalPointsTo ⟨i, j⟩ v := rfl
 
-instance [WasmGlobalGS] (key : GlobalKey) (value : Value) :
+instance {α : Type} [WasmGlobalGS α] (key : GlobalKey) (value : Value) :
     BI.Timeless (globalPointsTo key value) := by
   unfold globalPointsTo
   infer_instance
 
-theorem globalPointsTo_lookup [gs : WasmGlobalGS]
+theorem globalPointsTo_lookup {α : Type} [gs : WasmGlobalGS α]
     (σ : WasmGlobalMap Value) (key : GlobalKey) (value : Value) :
     ghost_map_auth gs.globalName (DFrac.own 1) σ -∗
       globalPointsTo key value -∗
@@ -359,7 +380,7 @@ theorem globalPointsTo_lookup [gs : WasmGlobalGS]
   iapply ghost_map_lookup
 
 /-- Authoritative update for one owned global entry. -/
-theorem globalPointsTo_update [gs : WasmGlobalGS]
+theorem globalPointsTo_update {α : Type} [gs : WasmGlobalGS α]
     (σ : WasmGlobalMap Value) (key : GlobalKey)
     (oldValue newValue : Value) :
     ghost_map_auth gs.globalName (DFrac.own 1) σ -∗
@@ -370,25 +391,25 @@ theorem globalPointsTo_update [gs : WasmGlobalGS]
   unfold globalPointsTo
   iapply ghost_map_update
 
-def dataSegmentPointsTo [gs : WasmDataSegmentGS]
-    (key : DataSegmentKey) (value : Option (List UInt8)) : IProp WasmHeapGF :=
+def dataSegmentPointsTo {α : Type} [gs : WasmDataSegmentGS α]
+    (key : DataSegmentKey) (value : Option (List UInt8)) : IProp (WasmHeapGF.{0} α) :=
   ghost_map_elem gs.dataSegmentName (DFrac.own 1) key value
 
-def dataSegmentPointsToAt [gs : WasmDataSegmentGS]
+def dataSegmentPointsToAt {α : Type} [gs : WasmDataSegmentGS α]
     (instanceId : Nat) (index : Nat) (value : Option (List UInt8)) :
-    IProp WasmHeapGF :=
+    IProp (WasmHeapGF.{0} α) :=
   dataSegmentPointsTo ⟨instanceId, index⟩ value
 
-theorem dataSegmentPointsToAt_eq [WasmDataSegmentGS] (i j : Nat) (v : Option (List UInt8)) :
+theorem dataSegmentPointsToAt_eq {α : Type} [WasmDataSegmentGS α] (i j : Nat) (v : Option (List UInt8)) :
     dataSegmentPointsToAt i j v = dataSegmentPointsTo ⟨i, j⟩ v := rfl
 
-instance [WasmDataSegmentGS] (key : DataSegmentKey)
+instance {α : Type} [WasmDataSegmentGS α] (key : DataSegmentKey)
     (value : Option (List UInt8)) :
     BI.Timeless (dataSegmentPointsTo key value) := by
   unfold dataSegmentPointsTo
   infer_instance
 
-theorem dataSegmentPointsTo_lookup [gs : WasmDataSegmentGS]
+theorem dataSegmentPointsTo_lookup {α : Type} [gs : WasmDataSegmentGS α]
     (σ : WasmDataSegmentMap (Option (List UInt8)))
     (key : DataSegmentKey) (value : Option (List UInt8)) :
     ghost_map_auth gs.dataSegmentName (DFrac.own 1) σ -∗
@@ -397,7 +418,7 @@ theorem dataSegmentPointsTo_lookup [gs : WasmDataSegmentGS]
   unfold dataSegmentPointsTo
   iapply ghost_map_lookup
 
-theorem dataSegmentPointsTo_update [gs : WasmDataSegmentGS]
+theorem dataSegmentPointsTo_update {α : Type} [gs : WasmDataSegmentGS α]
     (σ : WasmDataSegmentMap (Option (List UInt8)))
     (key : DataSegmentKey) (oldValue newValue : Option (List UInt8)) :
     ghost_map_auth gs.dataSegmentName (DFrac.own 1) σ -∗
@@ -408,24 +429,24 @@ theorem dataSegmentPointsTo_update [gs : WasmDataSegmentGS]
   unfold dataSegmentPointsTo
   iapply ghost_map_update
 
-def tablePointsTo [gs : WasmTableGS]
-    (key : TableKey) (table : TableInst) : IProp WasmHeapGF :=
+def tablePointsTo {α : Type} [gs : WasmTableGS α]
+    (key : TableKey) (table : TableInst) : IProp (WasmHeapGF.{0} α) :=
   ghost_map_elem gs.tableName (DFrac.own 1) key table
 
-def tablePointsToAt [gs : WasmTableGS]
+def tablePointsToAt {α : Type} [gs : WasmTableGS α]
     (instanceId : Nat) (index : Nat) (table : TableInst) :
-    IProp WasmHeapGF :=
+    IProp (WasmHeapGF.{0} α) :=
   tablePointsTo ⟨instanceId, index⟩ table
 
-theorem tablePointsToAt_eq [WasmTableGS] (i j : Nat) (t : TableInst) :
+theorem tablePointsToAt_eq {α : Type} [WasmTableGS α] (i j : Nat) (t : TableInst) :
     tablePointsToAt i j t = tablePointsTo ⟨i, j⟩ t := rfl
 
-instance [WasmTableGS] (key : TableKey) (table : TableInst) :
+instance {α : Type} [WasmTableGS α] (key : TableKey) (table : TableInst) :
     BI.Timeless (tablePointsTo key table) := by
   unfold tablePointsTo
   infer_instance
 
-theorem tablePointsTo_lookup [gs : WasmTableGS]
+theorem tablePointsTo_lookup {α : Type} [gs : WasmTableGS α]
     (σ : WasmTableMap TableInst) (key : TableKey) (table : TableInst) :
     ghost_map_auth gs.tableName (DFrac.own 1) σ -∗
       tablePointsTo key table -∗
@@ -433,7 +454,7 @@ theorem tablePointsTo_lookup [gs : WasmTableGS]
   unfold tablePointsTo
   iapply ghost_map_lookup
 
-theorem tablePointsTo_update [gs : WasmTableGS]
+theorem tablePointsTo_update {α : Type} [gs : WasmTableGS α]
     (σ : WasmTableMap TableInst) (key : TableKey)
     (oldTable newTable : TableInst) :
     ghost_map_auth gs.tableName (DFrac.own 1) σ -∗
@@ -444,27 +465,27 @@ theorem tablePointsTo_update [gs : WasmTableGS]
   unfold tablePointsTo
   iapply ghost_map_update
 
-def elementSegmentPointsTo [gs : WasmElementSegmentGS]
+def elementSegmentPointsTo {α : Type} [gs : WasmElementSegmentGS α]
     (key : ElementSegmentKey) (value : Option (List (Option Nat))) :
-    IProp WasmHeapGF :=
+    IProp (WasmHeapGF.{0} α) :=
   ghost_map_elem gs.elementSegmentName (DFrac.own 1) key value
 
-def elementSegmentPointsToAt [gs : WasmElementSegmentGS]
+def elementSegmentPointsToAt {α : Type} [gs : WasmElementSegmentGS α]
     (instanceId : Nat) (index : Nat) (value : Option (List (Option Nat))) :
-    IProp WasmHeapGF :=
+    IProp (WasmHeapGF.{0} α) :=
   elementSegmentPointsTo ⟨instanceId, index⟩ value
 
-theorem elementSegmentPointsToAt_eq [WasmElementSegmentGS] (i j : Nat)
+theorem elementSegmentPointsToAt_eq {α : Type} [WasmElementSegmentGS α] (i j : Nat)
     (v : Option (List (Option Nat))) :
     elementSegmentPointsToAt i j v = elementSegmentPointsTo ⟨i, j⟩ v := rfl
 
-instance [WasmElementSegmentGS] (key : ElementSegmentKey)
+instance {α : Type} [WasmElementSegmentGS α] (key : ElementSegmentKey)
     (value : Option (List (Option Nat))) :
     BI.Timeless (elementSegmentPointsTo key value) := by
   unfold elementSegmentPointsTo
   infer_instance
 
-theorem elementSegmentPointsTo_lookup [gs : WasmElementSegmentGS]
+theorem elementSegmentPointsTo_lookup {α : Type} [gs : WasmElementSegmentGS α]
     (σ : WasmElementSegmentMap (Option (List (Option Nat))))
     (key : ElementSegmentKey) (value : Option (List (Option Nat))) :
     ghost_map_auth gs.elementSegmentName (DFrac.own 1) σ -∗
@@ -473,7 +494,7 @@ theorem elementSegmentPointsTo_lookup [gs : WasmElementSegmentGS]
   unfold elementSegmentPointsTo
   iapply ghost_map_lookup
 
-theorem elementSegmentPointsTo_update [gs : WasmElementSegmentGS]
+theorem elementSegmentPointsTo_update {α : Type} [gs : WasmElementSegmentGS α]
     (σ : WasmElementSegmentMap (Option (List (Option Nat))))
     (key : ElementSegmentKey) (oldValue newValue : Option (List (Option Nat))) :
     ghost_map_auth gs.elementSegmentName (DFrac.own 1) σ -∗
@@ -487,21 +508,21 @@ theorem elementSegmentPointsTo_update [gs : WasmElementSegmentGS]
 /-- Persistent knowledge of the immutable instantiated module. Agreement with
 the copy held by `StateInterp` lets call rules justify function-table lookups
 against the actual machine runtime. -/
-def runtimeModuleOwn [gs : WasmRuntimeModuleGS] (m : Module) :
-    IProp WasmHeapGF.{0} :=
+def runtimeModuleOwn {α : Type} [gs : WasmRuntimeModuleGS α] (m : Module) :
+    IProp (WasmHeapGF.{0} α) :=
   iOwn (E := gs.runtimeElem) gs.runtimeName (toAgree ⟨m⟩)
 
-instance [WasmRuntimeModuleGS] (m : Module) :
+instance {α : Type} [WasmRuntimeModuleGS α] (m : Module) :
     BI.Persistent (runtimeModuleOwn m) := by
   unfold runtimeModuleOwn
   infer_instance
 
-instance [WasmRuntimeModuleGS] (m : Module) :
+instance {α : Type} [WasmRuntimeModuleGS α] (m : Module) :
     BI.Timeless (runtimeModuleOwn m) := by
   unfold runtimeModuleOwn
   infer_instance
 
-theorem runtimeModuleOwn_agree [gs : WasmRuntimeModuleGS]
+theorem runtimeModuleOwn_agree {α : Type} [gs : WasmRuntimeModuleGS α]
     (actual expected : Module) :
     runtimeModuleOwn actual ∗ runtimeModuleOwn expected ⊢
       iprop(⌜actual = expected⌝) := by
@@ -510,6 +531,66 @@ theorem runtimeModuleOwn_agree [gs : WasmRuntimeModuleGS]
   icombine Hactual Hexpected gives %Hvalid
   ipureintro
   exact congrArg DiscreteO.car (toAgree_op_valid_iff_eq.mp Hvalid)
+
+/-- Persistent knowledge of the immutable host environment. -/
+def hostEnvOwn {α : Type} [gs : WasmHostEnvGS α] (env : HostEnv α) :
+    IProp (WasmHeapGF.{0} α) :=
+  iOwn (E := gs.hostEnvElem) gs.hostEnvName (toAgree ⟨env⟩)
+
+instance {α : Type} [WasmHostEnvGS α] (env : HostEnv α) :
+    BI.Persistent (hostEnvOwn env) := by
+  unfold hostEnvOwn; infer_instance
+
+instance {α : Type} [WasmHostEnvGS α] (env : HostEnv α) :
+    BI.Timeless (hostEnvOwn env) := by
+  unfold hostEnvOwn; infer_instance
+
+theorem hostEnvOwn_agree {α : Type} [gs : WasmHostEnvGS α]
+    (actual expected : HostEnv α) :
+    hostEnvOwn actual ∗ hostEnvOwn expected ⊢
+      iprop(⌜actual = expected⌝) := by
+  unfold hostEnvOwn
+  iintro ⟨Hactual, Hexpected⟩
+  icombine Hactual Hexpected gives %Hvalid
+  ipureintro
+  exact congrArg DiscreteO.car (toAgree_op_valid_iff_eq.mp Hvalid)
+
+/-- Authoritative ownership of the mutable host state. Held by `StateInterp`. -/
+def hostStateAuth {α : Type} [gs : WasmHostStateGS α] (st : α) :
+    IProp (WasmHeapGF.{0} α) :=
+  iOwn (E := gs.hostStateElem) gs.hostStateName
+    (ExclAuth.auth (⟨st⟩ : DiscreteO α))
+
+/-- Fragment ownership of the mutable host state. Given to WP proofs. -/
+def hostStateOwn {α : Type} [gs : WasmHostStateGS α] (st : α) :
+    IProp (WasmHeapGF.{0} α) :=
+  iOwn (E := gs.hostStateElem) gs.hostStateName
+    (ExclAuth.frag (⟨st⟩ : DiscreteO α))
+
+theorem hostStateOwn_agree {α : Type} [gs : WasmHostStateGS α]
+    (actual expected : α) :
+    hostStateAuth actual ∗ hostStateOwn expected ⊢
+      iprop(⌜actual = expected⌝) := by
+  unfold hostStateAuth hostStateOwn
+  iintro ⟨Hauth, Hfrag⟩
+  icombine Hauth Hfrag gives %Hvalid
+  ipureintro
+  exact congrArg DiscreteO.car (ExclAuth.agree (A := DiscreteO α) Hvalid)
+
+theorem hostStateOwn_update {α : Type} [gs : WasmHostStateGS α]
+    (old new' : α) :
+    hostStateAuth old ∗ hostStateOwn old ==∗
+      hostStateAuth new' ∗ hostStateOwn new' := by
+  unfold hostStateAuth hostStateOwn
+  iintro ⟨Hauth, Hfrag⟩
+  imod iOwn_update_op (E := gs.hostStateElem)
+      (ExclAuth.update (A := DiscreteO α) (a := (⟨old⟩ : DiscreteO α))
+        (b := ⟨old⟩) (a' := ⟨new'⟩))
+      $$ [Hauth Hfrag] with Hboth
+  · iframe
+  imodintro
+  icases iOwn_op $$ Hboth with ⟨H1, H2⟩
+  iframe
 /-! ## Points-to assertions
 
 Byte-level `↦w` plus multi-byte and array derived forms.
@@ -526,15 +607,15 @@ no-overflow side condition — without it the ghost footprint at high
 addresses wraps to low addresses and the bridge would be unprovable (or
 unsound if forced). -/
 section PointsTo
-variable [inst : WasmHeapGS]
+variable {α : Type} [inst : WasmHeapGS α]
 -- Notation for Wasm points-to (scoped: available inside this namespace
 -- and via `open Wasm.SepLogic`, without leaking through the CodeLib umbrella)
 scoped notation:50 addr:50 " ↦w " v:50 => pointsTo (L := MemoryKey) (V := Option UInt8)
-    (GF := WasmHeapGF) (H := WasmHeapMap) addr (DFrac.own 1) (some v)
+    (H := WasmHeapMap) addr (DFrac.own 1) (some v)
 
 def memPointsTo (memId : Nat) (addr : UInt32) (dfrac : DFrac)
-    (value : Option UInt8) : IProp WasmHeapGF :=
-  pointsTo (L := MemoryKey) (V := Option UInt8) (GF := WasmHeapGF)
+    (value : Option UInt8) : IProp (WasmHeapGF.{0} α) :=
+  pointsTo (L := MemoryKey) (V := Option UInt8)
     (H := WasmHeapMap) ⟨memId, addr⟩ dfrac value
 
 /-- The `n`th little-endian byte of a 64-bit word. Values above seven select
@@ -563,7 +644,7 @@ theorem u64Byte_reassemble (v : UInt64) :
   bv_decide
 
 -- Multi-byte: u64 as 8 consecutive owned bytes (little-endian)
-def pointsTo_u64 (memId : Nat) (addr : UInt32) (v : UInt64) : IProp WasmHeapGF :=
+def pointsTo_u64 (memId : Nat) (addr : UInt32) (v : UInt64) : IProp (WasmHeapGF.{0} α) :=
   iprop%
     (⟨memId, addr⟩ ↦w u64Byte v 0) ∗ (⟨memId, addr + 1⟩ ↦w u64Byte v 1) ∗
     (⟨memId, addr + 2⟩ ↦w u64Byte v 2) ∗ (⟨memId, addr + 3⟩ ↦w u64Byte v 3) ∗
@@ -609,7 +690,7 @@ theorem u32Byte_reassemble (v : UInt32) :
   bv_decide
 
 -- Multi-byte: u32 as 4 consecutive owned bytes (little-endian)
-def pointsTo_u32 (memId : Nat) (addr : UInt32) (v : UInt32) : IProp WasmHeapGF :=
+def pointsTo_u32 (memId : Nat) (addr : UInt32) (v : UInt32) : IProp (WasmHeapGF.{0} α) :=
   iprop%
     (⟨memId, addr⟩ ↦w u32Byte v 0) ∗ (⟨memId, addr + 1⟩ ↦w u32Byte v 1) ∗
     (⟨memId, addr + 2⟩ ↦w u32Byte v 2) ∗ (⟨memId, addr + 3⟩ ↦w u32Byte v 3)
@@ -629,7 +710,7 @@ instance instTimelessPointsToU32 (memId : Nat) (addr v : UInt32) :
 -- Array ownership: n consecutive u32 elements at ptr
 -- arrayAt memId ptr [x₀, x₁, ..., xₙ₋₁] =
 --   pointsTo_u32 memId ptr x₀ ∗ pointsTo_u32 memId (ptr+4) x₁ ∗ ...
-def arrayAt (memId : Nat) (ptr : UInt32) (xs : List UInt32) : IProp WasmHeapGF :=
+def arrayAt (memId : Nat) (ptr : UInt32) (xs : List UInt32) : IProp (WasmHeapGF.{0} α) :=
   match xs with
   | [] => iprop% emp
   | x :: rest => iprop% (pointsTo_u32 memId ptr x) ∗ (arrayAt memId (ptr + 4) rest)
@@ -752,7 +833,7 @@ region.
 -/
 
 /-- Ownership of consecutive little-endian u64 words beginning at `ptr`. -/
-def array64At (memId : Nat) (ptr : UInt32) (xs : List UInt64) : IProp WasmHeapGF :=
+def array64At (memId : Nat) (ptr : UInt32) (xs : List UInt64) : IProp (WasmHeapGF.{0} α) :=
   match xs with
   | [] => iprop% emp
   | x :: rest => iprop% (pointsTo_u64 memId ptr x) ∗ (array64At memId (ptr + 8) rest)
