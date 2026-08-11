@@ -16,3 +16,4 @@ git.rev = "3d9ecf13c89946a877fceb048a389e1596808157"
 
 [[lean_lib]]
 name = "CodeLib"
+roots = ["CodeLib", "CodeLib.Examples.Quicksort.Proof"]

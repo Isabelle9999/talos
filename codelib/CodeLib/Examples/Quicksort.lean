@@ -499,7 +499,7 @@ theorem quicksortHeap_inBounds (arr : UInt32) (input : List UInt32)
   apply quicksortHeapAux_inBounds
   · intro a b hget; simp [get?_empty] at hget
   · exact hfit
-  · have hpages : (quicksortModule.initialStore (α := Unit)).mem.pages = 1 := by native_decide
+  · have hpages : (quicksortModule.initialStore (α := Unit)).mem.pages = 1 := by decide
     simp only [hpages]
     exact hmem
 
@@ -621,135 +621,7 @@ theorem arrayAt_readWordArray [WasmSmallStepGS hlc]
 
 /-! ## WAT decoder agreement -/
 
--- keep in sync with quicksort.wat
-private def quicksortWat : String := "
-(module
-  (memory 1)
-  (func (param i32 i32 i32) (result i32) (local i32 i32 i32 i32 i32)
-    local.get 2
-    i32.const 1
-    i32.sub
-    local.set 6
-    local.get 0
-    local.get 6
-    i32.const 4
-    i32.mul
-    i32.add
-    i32.load
-    local.set 3
-    local.get 1
-    local.set 4
-    local.get 1
-    local.set 5
-    block
-      loop
-        local.get 5
-        local.get 6
-        i32.lt_u
-        i32.eqz
-        br_if 1
-        local.get 3
-        local.get 0
-        local.get 5
-        i32.const 4
-        i32.mul
-        i32.add
-        i32.load
-        i32.lt_u
-        if
-        else
-          local.get 0
-          local.get 4
-          i32.const 4
-          i32.mul
-          i32.add
-          i32.load
-          local.set 7
-          local.get 0
-          local.get 4
-          i32.const 4
-          i32.mul
-          i32.add
-          local.get 0
-          local.get 5
-          i32.const 4
-          i32.mul
-          i32.add
-          i32.load
-          i32.store
-          local.get 0
-          local.get 5
-          i32.const 4
-          i32.mul
-          i32.add
-          local.get 7
-          i32.store
-          local.get 4
-          i32.const 1
-          i32.add
-          local.set 4
-        end
-        local.get 5
-        i32.const 1
-        i32.add
-        local.set 5
-        br 0
-      end
-    end
-    local.get 0
-    local.get 4
-    i32.const 4
-    i32.mul
-    i32.add
-    i32.load
-    local.set 7
-    local.get 0
-    local.get 4
-    i32.const 4
-    i32.mul
-    i32.add
-    local.get 0
-    local.get 6
-    i32.const 4
-    i32.mul
-    i32.add
-    i32.load
-    i32.store
-    local.get 0
-    local.get 6
-    i32.const 4
-    i32.mul
-    i32.add
-    local.get 7
-    i32.store
-    local.get 4
-    return)
-  (func (param i32 i32 i32) (local i32)
-    local.get 2
-    local.get 1
-    i32.sub
-    i32.const 2
-    i32.lt_u
-    if
-      return
-    end
-    local.get 0
-    local.get 1
-    local.get 2
-    call 0
-    local.set 3
-    local.get 0
-    local.get 1
-    local.get 3
-    call 1
-    local.get 0
-    local.get 3
-    i32.const 1
-    i32.add
-    local.get 2
-    call 1
-    return))
-"
+private def quicksortWat : String := include_str "quicksort.wat"
 
 private def quicksortModuleDecoded : Module :=
   match Wasm.Decoder.Wat.decode quicksortWat with
@@ -770,7 +642,13 @@ def runQuicksortDecoded (fuel : Nat) (arr : UInt32) (input : List UInt32) :
 
 theorem quicksort_decoded_agrees :
     runQuicksortDecoded 15000 0 [5, 1, 4, 2, 3] =
-    runQuicksortExample 15000 0 [5, 1, 4, 2, 3] := by
+      runQuicksortExample 15000 0 [5, 1, 4, 2, 3] ∧
+    runQuicksortDecoded 15000 0 [] = runQuicksortExample 15000 0 [] ∧
+    runQuicksortDecoded 15000 0 [7] = runQuicksortExample 15000 0 [7] ∧
+    runQuicksortDecoded 15000 0 [4, 3, 2, 1] =
+      runQuicksortExample 15000 0 [4, 3, 2, 1] ∧
+    runQuicksortDecoded 20 0 [3, 2, 1] =
+      runQuicksortExample 20 0 [3, 2, 1] := by
   native_decide
 
 end Wasm.Examples.Quicksort

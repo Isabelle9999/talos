@@ -342,8 +342,8 @@ private theorem getElem!_eq_of_take {a b : List UInt32} {k i : Nat}
     (hik : i < k) (htake : a.take k = b.take k) :
     a[i]! = b[i]! := by
   simp only [List.getElem!_eq_getElem?_getD]
-  rw [show a[i]? = (a.take k)[i]? from by simp [List.getElem?_take, hik],
-      show b[i]? = (b.take k)[i]? from by simp [List.getElem?_take, hik],
+  rw [show a[i]? = (a.take k)[i]? from by simp [hik],
+      show b[i]? = (b.take k)[i]? from by simp [hik],
       htake]
 
 private theorem getElem!_eq_of_drop {a b : List UInt32} {k i : Nat}

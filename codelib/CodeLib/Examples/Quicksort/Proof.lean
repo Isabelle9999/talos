@@ -389,7 +389,7 @@ theorem wp_partitionBody
         7 (.i32 (current'[i']'hiLen')) =
       some (partitionLocals arr lo hi (input[hi - 1]!) i' (hi - 1) (hi - 1)
           (current'[i']'hiLen') [.i32 (current'[i']'hiLen')]) := rfl
-  simp only [partitionLocals, List.drop_zero]
+  simp only [partitionLocals]
   iapply wp_swapAt hiLen' hjm1Len' hfitCurrent rfl rfl htmp_set rfl rfl rfl rfl
   isplitl [Harray]
   · iexact Harray
@@ -571,7 +571,7 @@ private theorem wp_quicksortBody_aux
     inext; iintro Hruntime
     simp [quicksortFunction, Function.toLocals, Function.numParams, ValueType.zero]
     simp only [quicksortBody, quicksortBaseCheck, quicksortPartitionCall, quicksortLeftCall,
-      quicksortRightCall, List.append_assoc, List.cons_append, List.nil_append]
+      quicksortRightCall, List.cons_append, List.nil_append]
     iapply Wasm.SmallStep.wp_localGet rfl; inext
     iapply Wasm.SmallStep.wp_localGet rfl; inext
     iapply Wasm.SmallStep.wp_sub; inext
@@ -641,7 +641,6 @@ private theorem wp_quicksortBody_aux
       · iexact Harray_p
       iintro %out_l Hruntime_l %hpure_l Harray_l
       obtain ⟨hlen_l, htake_l, hdrop_l, hsorted_l, hperm_l⟩ := hpure_l
-      simp only [quicksortLocals]
       iapply Wasm.SmallStep.wp_localGet rfl; inext
       iapply Wasm.SmallStep.wp_localGet rfl; inext
       iapply Wasm.SmallStep.wp_const; inext
