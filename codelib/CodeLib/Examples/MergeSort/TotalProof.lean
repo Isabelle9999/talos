@@ -408,7 +408,7 @@ theorem twp_mergeMainLoop
         ihave Hdone := Hfinish $$ %state.scratch %state.i %state.j
           %state.k %state.emitted %hstate %(Or.inr rfl)
           Hsource Htemporary
-        isimp only [mergeLocals] in Hdone
+        isimp only [mergeLocals] at Hdone
         isimp only [mergeLocals]
         iexact Hdone
     · simp only [hiCmp, if_neg hi]
@@ -421,7 +421,7 @@ theorem twp_mergeMainLoop
       ihave Hdone := Hfinish $$ %state.scratch %state.i %state.j
         %state.k %state.emitted %hstate %(Or.inl rfl)
         Hsource Htemporary
-      isimp only [mergeLocals] in Hdone
+      isimp only [mergeLocals] at Hdone
       isimp only [mergeLocals]
       iexact Hdone
   · simp only [Inv]
@@ -752,7 +752,7 @@ theorem twp_mergeLeftLoop
         List.drop_zero]
       ihave Hdone := Hfinish $$ %state.scratch %state.j %state.k
         %state.emitted %hstate Hsource Htemporary
-      isimp only [mergeLocals] in Hdone
+      isimp only [mergeLocals] at Hdone
       isimp only [mergeLocals]
       iexact Hdone
   · simp only [Inv]
@@ -889,7 +889,7 @@ theorem twp_mergeRightLoop
         List.drop_zero]
       ihave Hdone := Hfinish $$ %state.scratch %state.k
         %state.emitted %hstate Hsource Htemporary
-      isimp only [mergeLocals] in Hdone
+      isimp only [mergeLocals] at Hdone
       isimp only [mergeLocals]
       iexact Hdone
   · simp only [Inv]
@@ -1111,7 +1111,7 @@ theorem twp_mergeCopyLoop
         List.drop_zero]
       ihave Hdone := Hfinish $$ %state.current %hcopyFinished
         Hsource Htemporary
-      isimp only [mergeLocals] in Hdone
+      isimp only [mergeLocals] at Hdone
       isimp only [mergeLocals]
       iexact Hdone
   · simp only [Inv]
@@ -1885,7 +1885,7 @@ theorem twp_mergeSortInnerLoop
         %hscratchLength %(by
           simpa only [left] using Nat.le_of_not_gt hleftCount)
         Hruntime Hsource Htemporary
-      isimp only [sortLocals] in Hdone
+      isimp only [sortLocals] at Hdone
       iexact Hdone
   · simp only [Inv]
     isplitr
@@ -2132,7 +2132,7 @@ theorem twp_mergeSortOuterLoop
         %hvaluesLength %hscratchLength
         %(Nat.le_of_not_gt hwidthCount')
         Hruntime Hsource Htemporary
-      isimp only [sortLocals] in Hdone
+      isimp only [sortLocals] at Hdone
       iexact Hdone
   · simp only [Inv]
     isplitr
