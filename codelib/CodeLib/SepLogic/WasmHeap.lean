@@ -5,6 +5,7 @@ import Iris.Algebra.Lib.ExclAuth
 import Interpreter.Wasm.Mem
 import Interpreter.Wasm.Syntax
 import Interpreter.Wasm.Host
+import Interpreter.Wasm.SmallStep
 import Std.Tactic.BVDecide
 /-! # Wasm Memory as an Iris GenHeap
 Instantiates iris-lean's GenHeap for Wasm byte-level memory.
@@ -12,6 +13,7 @@ Location = MemoryKey (memory id × byte address), Value = Option UInt8 (byte).
 -/
 namespace Wasm.SepLogic
 open Iris Std
+open Wasm.SmallStep (ModuleInstance)
 
 -- Named key types for multi-module ghost maps.
 -- ExtTreeMap requires Ord + OrientedCmp + TransCmp + LawfulEqCmp.
@@ -285,6 +287,8 @@ abbrev WasmHeapGF (α : Type 0) : BundledGFunctors
         WasmElementSegmentMap), by infer_instance⟩
   | 12 => ⟨constOF (Agree (DiscreteO (HostEnv α))), by infer_instance⟩
   | 13 => ⟨Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α)))), by infer_instance⟩
+  | 14 => ⟨Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat)))), by infer_instance⟩
+  | 15 => ⟨constOF (Agree (DiscreteO (Array (ModuleInstance α)))), by infer_instance⟩
   | _ => ⟨constOF Unit, by infer_instance⟩
 -- Wire genHeapPreS (following HeapLang's instHeapLangGS_HeapLangS)
 instance instWasmHeapPreS (α : Type) :
@@ -341,6 +345,13 @@ class WasmRuntimeModuleGS (α : outParam Type) where
 
 attribute [reducible, instance] WasmRuntimeModuleGS.runtimeElem
 
+class WasmRuntimeInstancesGS (α : outParam Type) where
+  runtimeInstancesElem :
+    ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α)))))
+  runtimeInstancesName : GName
+
+attribute [reducible, instance] WasmRuntimeInstancesGS.runtimeInstancesElem
+
 class WasmHostEnvGS (α : outParam Type) where
   hostEnvElem :
     ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (HostEnv α))))
@@ -354,6 +365,15 @@ class WasmHostStateGS (α : outParam Type) where
   hostStateName : GName
 
 attribute [reducible, instance] WasmHostStateGS.hostStateElem
+
+/-- Authoritative ghost cell for the current module instance id (`runtime.entry`).
+Uses ExclAuth so it can be updated on cross-instance call/return. -/
+class WasmInstanceGS (α : outParam Type) where
+  instanceElem :
+    ElemG (WasmHeapGF.{0} α) (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat)))))
+  instanceName : GName
+
+attribute [reducible, instance] WasmInstanceGS.instanceElem
 
 def globalPointsTo {α : Type} [gs : WasmGlobalGS α] (key : GlobalKey) (value : Value) :
     IProp (WasmHeapGF.{0} α) :=
@@ -532,6 +552,33 @@ theorem runtimeModuleOwn_agree {α : Type} [gs : WasmRuntimeModuleGS α]
   ipureintro
   exact congrArg DiscreteO.car (toAgree_op_valid_iff_eq.mp Hvalid)
 
+/-- Persistent knowledge of the immutable instances array. Agreement with the
+copy held by `StateInterp` lets cross-instance call rules verify instance
+lookups against the actual machine. -/
+def runtimeInstancesOwn {α : Type} [gs : WasmRuntimeInstancesGS α]
+    (instances : Array (ModuleInstance α)) : IProp (WasmHeapGF.{0} α) :=
+  iOwn (E := gs.runtimeInstancesElem) gs.runtimeInstancesName (toAgree ⟨instances⟩)
+
+instance {α : Type} [WasmRuntimeInstancesGS α] (instances : Array (ModuleInstance α)) :
+    BI.Persistent (runtimeInstancesOwn instances) := by
+  unfold runtimeInstancesOwn
+  infer_instance
+
+instance {α : Type} [WasmRuntimeInstancesGS α] (instances : Array (ModuleInstance α)) :
+    BI.Timeless (runtimeInstancesOwn instances) := by
+  unfold runtimeInstancesOwn
+  infer_instance
+
+theorem runtimeInstancesOwn_agree {α : Type} [gs : WasmRuntimeInstancesGS α]
+    (actual expected : Array (ModuleInstance α)) :
+    runtimeInstancesOwn actual ∗ runtimeInstancesOwn expected ⊢
+      iprop(⌜actual = expected⌝) := by
+  unfold runtimeInstancesOwn
+  iintro ⟨Hactual, Hexpected⟩
+  icombine Hactual Hexpected gives %Hvalid
+  ipureintro
+  exact congrArg DiscreteO.car (toAgree_op_valid_iff_eq.mp Hvalid)
+
 /-- Persistent knowledge of the immutable host environment. -/
 def hostEnvOwn {α : Type} [gs : WasmHostEnvGS α] (env : HostEnv α) :
     IProp (WasmHeapGF.{0} α) :=
@@ -591,6 +638,76 @@ theorem hostStateOwn_update {α : Type} [gs : WasmHostStateGS α]
   imodintro
   icases iOwn_op $$ Hboth with ⟨H1, H2⟩
   iframe
+
+def currentInstanceAuthN {α : Type} [gs : WasmInstanceGS α] (n : Nat) :
+    IProp (WasmHeapGF.{0} α) :=
+  iOwn (E := gs.instanceElem) gs.instanceName
+    (ExclAuth.auth (⟨n⟩ : DiscreteO Nat))
+
+def currentInstanceOwnN {α : Type} [gs : WasmInstanceGS α] (n : Nat) :
+    IProp (WasmHeapGF.{0} α) :=
+  iOwn (E := gs.instanceElem) gs.instanceName
+    (ExclAuth.frag (⟨n⟩ : DiscreteO Nat))
+
+instance {α : Type} [WasmInstanceGS α] (n : Nat) :
+    BI.Timeless (currentInstanceAuthN (α := α) n) := by
+  unfold currentInstanceAuthN; infer_instance
+
+instance {α : Type} [WasmInstanceGS α] (n : Nat) :
+    BI.Timeless (currentInstanceOwnN (α := α) n) := by
+  unfold currentInstanceOwnN; infer_instance
+
+theorem currentInstanceOwnN_agree {α : Type} [gs : WasmInstanceGS α]
+    (actual expected : Nat) :
+    currentInstanceAuthN (α := α) actual ∗ currentInstanceOwnN expected ⊢
+      iprop(⌜actual = expected⌝) := by
+  unfold currentInstanceAuthN currentInstanceOwnN
+  iintro ⟨Hauth, Hfrag⟩
+  icombine Hauth Hfrag gives %Hvalid
+  ipureintro
+  exact congrArg DiscreteO.car (ExclAuth.agree (A := DiscreteO Nat) Hvalid)
+
+theorem currentInstanceOwnN_update {α : Type} [gs : WasmInstanceGS α]
+    (old new' : Nat) :
+    currentInstanceAuthN (α := α) old ∗ currentInstanceOwnN old ==∗
+      currentInstanceAuthN new' ∗ currentInstanceOwnN new' := by
+  unfold currentInstanceAuthN currentInstanceOwnN
+  iintro ⟨Hauth, Hfrag⟩
+  imod iOwn_update_op (E := gs.instanceElem)
+      (ExclAuth.update (A := DiscreteO Nat) (a := (⟨old⟩ : DiscreteO Nat))
+        (b := ⟨old⟩) (a' := ⟨new'⟩))
+      $$ [Hauth Hfrag] with Hboth
+  · iframe
+  imodintro
+  icases iOwn_op $$ Hboth with ⟨H1, H2⟩
+  iframe
+
+theorem currentInstanceOwnN_update_of_any {α : Type} [gs : WasmInstanceGS α]
+    (actual expected new' : Nat) :
+    currentInstanceAuthN (α := α) actual ∗ currentInstanceOwnN expected ==∗
+      currentInstanceAuthN new' ∗ currentInstanceOwnN new' ∗ ⌜actual = expected⌝ := by
+  unfold currentInstanceAuthN currentInstanceOwnN
+  iintro ⟨Hauth, Hfrag⟩
+  ihave %heq : ⌜actual = expected⌝ $$ [Hauth Hfrag]
+  · icombine Hauth Hfrag gives %Hvalid
+    ipureintro
+    exact congrArg DiscreteO.car (ExclAuth.agree (A := DiscreteO Nat) Hvalid)
+  imod iOwn_update_op (E := gs.instanceElem)
+      (ExclAuth.update (A := DiscreteO Nat)
+        (a := (⟨actual⟩ : DiscreteO Nat))
+        (b := ⟨expected⟩)
+        (a' := ⟨new'⟩))
+      $$ [Hauth Hfrag] with Hboth
+  · iframe
+  imodintro
+  icases iOwn_op $$ Hboth with ⟨H1, H2⟩
+  isplitl [H1]
+  · iexact H1
+  isplitl [H2]
+  · iexact H2
+  · ipureintro
+    exact heq
+
 /-! ## Points-to assertions
 
 Byte-level `↦w` plus multi-byte and array derived forms.

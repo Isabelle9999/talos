@@ -109,12 +109,12 @@ theorem dispatch_steps (n : UInt32) :
       ⟨.done [.i32 (n + 1)], (dispatchConfig n).store⟩ := by
   apply Steps.cons (.localGet rfl)
   apply Steps.cons .const
-  apply Steps.cons (.callIndirect rfl rfl rfl (by decide) (by decide)
+  apply Steps.cons (.callIndirect rfl rfl rfl (by decide)
     rfl rfl rfl rfl)
   apply Steps.cons (.localGet rfl)
   apply Steps.cons .const
   apply Steps.cons .add
-  apply Steps.cons .returnFromCallFallthrough
+  apply Steps.cons (.returnFromCallFallthrough rfl)
   apply Steps.cons .finish
   simpa [dispatchConfig, Incr, Function.numParams, Function.toLocals,
     UInt32.add_comm] using
