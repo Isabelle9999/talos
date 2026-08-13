@@ -716,4 +716,149 @@ theorem twp_store32
   · iapply Htwp
     iexact Hword
 
+theorem twp_and
+    {params localValues values : List Value}
+    {lhs rhs : UInt32} {code : Program} {arity : Nat}
+    {remainder : List Value} {controls : List ControlFrame}
+    {calls : List CallFrame} :
+    WP (.running
+      ⟨⟨params, localValues, .i32 (lhs &&& rhs) :: values⟩,
+        code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+        [{ Φ }] ⊢
+    WP (.running
+      ⟨⟨params, localValues, .i32 rhs :: .i32 lhs :: values⟩,
+        .and :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+      [{ Φ }] :=
+  twp_pureStep _ _ _ (fun _ => Step.and)
+
+theorem twp_ne
+    {params localValues values : List Value}
+    {lhs rhs result : UInt32} {code : Program} {arity : Nat}
+    {remainder : List Value} {controls : List ControlFrame}
+    {calls : List CallFrame}
+    (hresult : result = if lhs ≠ rhs then 1 else 0) :
+    WP (.running
+      ⟨⟨params, localValues, .i32 result :: values⟩,
+        code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+        [{ Φ }] ⊢
+    WP (.running
+      ⟨⟨params, localValues, .i32 rhs :: .i32 lhs :: values⟩,
+        .ne :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+      [{ Φ }] :=
+  twp_pureStep _ _ _ (fun _ => Step.ne hresult)
+
+theorem twp_globalGet
+    {params localValues values : List Value}
+    {value : Value} {code : Program} {arity : Nat}
+    {remainder : List Value} {controls : List ControlFrame}
+    {calls : List CallFrame} :
+    let current : ThreadState α :=
+      ⟨⟨params, localValues, values⟩, .globalGet 0 :: code,
+        arity, remainder, controls, calls⟩
+    let next : ThreadState α :=
+      ⟨⟨params, localValues, value :: values⟩, code,
+        arity, remainder, controls, calls⟩
+    globalPointsTo 0 value -∗
+    (globalPointsTo 0 value -∗
+      WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
+      WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
+  dsimp only
+  iintro Hglobal Htwp
+  iapply twp_lift_step_no_fork rfl
+  iintro %store %ns %obs %nt Hσ
+  have hcanonical : ∀ s : MachineStore α,
+      canonicalGlobalIndex s 0 = 0 := fun _ => rfl
+  ihave %Hget :
+      ⌜store.wasm.globals.globals[0]? = some value⌝ $$ [Hσ Hglobal]
+  · imod stateInterp_global_facts store ns obs nt 0 value $$
+        [$Hσ $Hglobal] with %Hget
+    ipureintro
+    exact Hget
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
+    exact ⟨.running ⟨⟨params, localValues, value :: values⟩,
+        code, arity, remainder, controls, calls⟩,
+      store, [], ⟨rfl, _, rfl, Step.globalGet (by
+        simpa [globalAt?, hcanonical] using Hget)⟩⟩
+  iintro %κ %e₂ %store₂ %forks %Hstep
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst κ
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic (Step.globalGet (α := α) (by
+      simpa [globalAt?, hcanonical] using Hget)) wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  imod Hclose
+  imodintro
+  isplit
+  · ipureintro
+    rfl
+  isplit
+  · ipureintro
+    rfl
+  isplitl [Hσ]
+  · iexact Hσ
+  · iapply Htwp
+    iexact Hglobal
+
+theorem twp_scalarFloat0
+    {params localValues values : List Value}
+    {instruction : Instruction} {value : Value}
+    {code : Program} {arity : Nat} {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame}
+    (heval : evalScalarFloat0? instruction = some value) :
+    WP (.running
+      ⟨⟨params, localValues, value :: values⟩,
+        code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+        [{ Φ }] ⊢
+    WP (.running
+      ⟨⟨params, localValues, values⟩,
+        instruction :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+      [{ Φ }] :=
+  twp_pureStep _ _ _ (fun _ => Step.scalarFloat0 heval)
+
+theorem twp_scalarFloat1
+    {params localValues values : List Value}
+    {instruction : Instruction} {operand value : Value}
+    {code : Program} {arity : Nat} {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame}
+    (hzero : evalScalarFloat0? instruction = none)
+    (heval : evalScalarFloat1? instruction operand = some value) :
+    WP (.running
+      ⟨⟨params, localValues, value :: values⟩,
+        code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+        [{ Φ }] ⊢
+    WP (.running
+      ⟨⟨params, localValues, operand :: values⟩,
+        instruction :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+      [{ Φ }] :=
+  twp_pureStep _ _ _ (fun _ => Step.scalarFloat1 hzero heval)
+
+theorem twp_scalarFloat2
+    {params localValues values : List Value}
+    {instruction : Instruction} {lhs rhs value : Value}
+    {code : Program} {arity : Nat} {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame}
+    (hzero : evalScalarFloat0? instruction = none)
+    (hunary : evalScalarFloat1? instruction rhs = none)
+    (heval : evalScalarFloat2? instruction lhs rhs = some value) :
+    WP (.running
+      ⟨⟨params, localValues, value :: values⟩,
+        code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+        [{ Φ }] ⊢
+    WP (.running
+      ⟨⟨params, localValues, rhs :: lhs :: values⟩,
+        instruction :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+      [{ Φ }] :=
+  twp_pureStep _ _ _ (fun _ => Step.scalarFloat2 hzero hunary heval)
+
 end Wasm.SmallStep
