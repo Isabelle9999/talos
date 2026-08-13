@@ -25,6 +25,13 @@ name = "float_trunc"
 version = "0.1.0"
 
 [[package]]
+name = "mergesort"
+version = "0.1.0"
+dependencies = [
+ "talos-stdio",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -78,6 +85,10 @@ version = "0.1.0"
 
 [[package]]
 name = "swap_elements_opt3"
+version = "0.1.0"
+
+[[package]]
+name = "talos-stdio"
 version = "0.1.0"
 
 [[package]]
