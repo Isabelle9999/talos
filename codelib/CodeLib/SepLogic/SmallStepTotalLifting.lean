@@ -1130,4 +1130,218 @@ theorem twp_globalSet
   · iapply Htwp
     iexact Hglobal
 
+theorem twp_or
+    {params localValues values : List Value}
+    {lhs rhs : UInt32} {code : Program} {arity : Nat}
+    {remainder : List Value} {controls : List ControlFrame}
+    {calls : List CallFrame} :
+    WP (.running
+      ⟨⟨params, localValues, .i32 (lhs ||| rhs) :: values⟩,
+        code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+        [{ Φ }] ⊢
+    WP (.running
+      ⟨⟨params, localValues, .i32 rhs :: .i32 lhs :: values⟩,
+        .or :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+      [{ Φ }] :=
+  twp_pureStep _ _ _ (fun _ => Step.or)
+
+theorem twp_f64Load
+    {params localValues values : List Value}
+    {address offset : UInt32} {code : Program} {arity : Nat}
+    {remainder : List Value} {controls : List ControlFrame}
+    {calls : List CallFrame} (word : UInt64)
+    (hnowrap : (address + offset).toNat =
+      address.toNat + offset.toNat)
+    (h1 : ((address + offset) + 1).toNat =
+      (address + offset).toNat + 1)
+    (h2 : ((address + offset) + 2).toNat =
+      (address + offset).toNat + 2)
+    (h3 : ((address + offset) + 3).toNat =
+      (address + offset).toNat + 3)
+    (h4 : ((address + offset) + 4).toNat =
+      (address + offset).toNat + 4)
+    (h5 : ((address + offset) + 5).toNat =
+      (address + offset).toNat + 5)
+    (h6 : ((address + offset) + 6).toNat =
+      (address + offset).toNat + 6)
+    (h7 : ((address + offset) + 7).toNat =
+      (address + offset).toNat + 7) :
+    let current : ThreadState α :=
+      ⟨⟨params, localValues, .i32 address :: values⟩,
+        .f64Load offset :: code, arity, remainder, controls, calls⟩
+    let next : ThreadState α :=
+      ⟨⟨params, localValues, .f64 word :: values⟩,
+        code, arity, remainder, controls, calls⟩
+    pointsTo_u64 (address + offset) word -∗
+    (pointsTo_u64 (address + offset) word -∗
+      WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
+      WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
+  dsimp only
+  iintro Hword Htwp
+  iapply twp_lift_step_no_fork rfl
+  iintro %store %ns %obs %nt Hσ
+  ihave %Hfacts :
+      ⌜store.wasm.mem.read64 (address + offset) = word ∧
+        (address + offset).toNat + 8 ≤
+          store.wasm.mem.pages * 65536⌝ $$ [Hσ Hword]
+  · imod stateInterp_pointsTo_u64_facts store ns obs nt
+      (address + offset) word h1 h2 h3 h4 h5 h6 h7 $$ [$Hσ $Hword] with %Hfacts
+    ipureintro
+    exact Hfacts
+  obtain ⟨Hread, HinBounds⟩ := Hfacts
+  have hbound : address.toNat + offset.toNat + 8 ≤
+      store.wasm.mem.pages * 65536 := by
+    simpa only [hnowrap] using HinBounds
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
+    exact ⟨.running
+        ⟨⟨params, localValues, .f64 word :: values⟩,
+          code, arity, remainder, controls, calls⟩,
+      store, [], ⟨rfl, .instruction (.f64Load offset), rfl,
+        by simpa [Hread] using
+          Step.f64Load (α := α) (address := .i32 address) rfl hbound⟩⟩
+  iintro %κ %e₂ %store₂ %forks %Hprim
+  rcases Hprim with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst κ
+  have expectedStep : Step
+      ⟨.running
+        ⟨⟨params, localValues, .i32 address :: values⟩,
+          .f64Load offset :: code, arity, remainder, controls, calls⟩,
+        store⟩
+      (.instruction (.f64Load offset))
+      ⟨.running
+        ⟨⟨params, localValues, .f64 word :: values⟩,
+          code, arity, remainder, controls, calls⟩, store⟩ := by
+    simpa [Hread] using
+      (Step.f64Load (α := α) (address := .i32 address) rfl hbound)
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic expectedStep wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  imod Hclose
+  imodintro
+  isplit
+  · ipureintro
+    rfl
+  isplit
+  · ipureintro
+    rfl
+  isplitl [Hσ]
+  · iexact Hσ
+  · iapply Htwp
+    iexact Hword
+
+theorem twp_f64Store
+    {params localValues values : List Value}
+    {address offset : UInt32} {value : UInt64}
+    {code : Program} {arity : Nat}
+    {remainder : List Value} {controls : List ControlFrame}
+    {calls : List CallFrame} (oldWord : UInt64)
+    (hnowrap : (address + offset).toNat =
+      address.toNat + offset.toNat)
+    (h1 : ((address + offset) + 1).toNat =
+      (address + offset).toNat + 1)
+    (h2 : ((address + offset) + 2).toNat =
+      (address + offset).toNat + 2)
+    (h3 : ((address + offset) + 3).toNat =
+      (address + offset).toNat + 3)
+    (h4 : ((address + offset) + 4).toNat =
+      (address + offset).toNat + 4)
+    (h5 : ((address + offset) + 5).toNat =
+      (address + offset).toNat + 5)
+    (h6 : ((address + offset) + 6).toNat =
+      (address + offset).toNat + 6)
+    (h7 : ((address + offset) + 7).toNat =
+      (address + offset).toNat + 7) :
+    let current : ThreadState α :=
+      ⟨⟨params, localValues, .f64 value :: .i32 address :: values⟩,
+        .f64Store offset :: code, arity, remainder, controls, calls⟩
+    let next : ThreadState α :=
+      ⟨⟨params, localValues, values⟩,
+        code, arity, remainder, controls, calls⟩
+    pointsTo_u64 (address + offset) oldWord -∗
+    (pointsTo_u64 (address + offset) value -∗
+      WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
+      WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
+  dsimp only
+  iintro Hword Htwp
+  iapply twp_lift_step_no_fork rfl
+  iintro %store %ns %obs %nt Hσ
+  ihave %Hfacts :
+      ⌜store.wasm.mem.read64 (address + offset) = oldWord ∧
+        (address + offset).toNat + 8 ≤
+          store.wasm.mem.pages * 65536⌝ $$ [Hσ Hword]
+  · imod stateInterp_pointsTo_u64_facts store ns obs nt
+      (address + offset) oldWord h1 h2 h3 h4 h5 h6 h7 $$ [$Hσ $Hword] with %Hfacts
+    ipureintro
+    exact Hfacts
+  have hbound : address.toNat + offset.toNat + 8 ≤
+      store.wasm.mem.pages * 65536 := by
+    simpa only [hnowrap] using Hfacts.2
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
+    exact ⟨.running
+        ⟨⟨params, localValues, values⟩,
+          code, arity, remainder, controls, calls⟩,
+      { store with wasm :=
+          { store.wasm with
+            mem := store.wasm.mem.write64 (address + offset) value } },
+      [], ⟨rfl, .instruction (.f64Store offset), rfl,
+        by simpa only [Wasm.SmallStep.setMemory_eq] using
+          Step.f64Store (address := .i32 address) rfl hbound⟩⟩
+  iintro %κ %e₂ %store₂ %forks %Hstep
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst κ
+  have expectedStep : Step
+      ⟨.running
+        ⟨⟨params, localValues, .f64 value :: .i32 address :: values⟩,
+          .f64Store offset :: code, arity, remainder, controls, calls⟩,
+        store⟩
+      (.instruction (.f64Store offset))
+      ⟨.running
+        ⟨⟨params, localValues, values⟩,
+          code, arity, remainder, controls, calls⟩,
+        { store with wasm :=
+            { store.wasm with
+              mem := store.wasm.mem.write64 (address + offset) value } }⟩ := by
+    simpa only [Wasm.SmallStep.setMemory_eq] using
+      Step.f64Store (address := .i32 address) rfl hbound
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic expectedStep wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  imod stateInterp_store64 store ns obs nt
+      (address + offset) oldWord value h1 h2 h3 h4 h5 h6 h7 Hfacts.2 $$
+      [$Hσ $Hword] with ⟨Hσ, Hword⟩
+  imod Hclose
+  imodintro
+  isplit
+  · ipureintro
+    rfl
+  isplit
+  · ipureintro
+    rfl
+  isplitl [Hσ]
+  · iexact Hσ
+  · iapply Htwp
+    iexact Hword
+
 end Wasm.SmallStep
