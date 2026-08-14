@@ -104,7 +104,7 @@ def SwapElementsOpt3Spec : Prop :=
     heapAgreesWithMem σ wasm.mem →
     heapAddressesInBounds σ wasm.mem →
     globalHeapAgrees globalσ wasm.globals →
-    (∀ [WasmHeapGS],
+    (∀ [WasmHeapGS Unit],
       ([∗map] address ↦ value ∈ σ,
         pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢

@@ -1030,7 +1030,7 @@ theorem func4_alias_smallStep_wp
 
 set_option maxHeartbeats 4000000 in
 theorem twp_func1_happyPrefix_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (ptr len i j : UInt32) (hi : i < len) (hj : j < len)
@@ -1086,7 +1086,7 @@ theorem twp_func1_happyPrefix_smallStep_wp
   iexact Htarget
 
 theorem twp_func1_call2_entry_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (ptr len i j : UInt32) (calls : List Wasm.SmallStep.CallFrame) :
@@ -1125,7 +1125,7 @@ theorem twp_func1_call2_entry_smallStep_wp
       «module» 2 func2Def (by decide) rfl)
 
 theorem twp_func2_in_func1_context_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -1175,7 +1175,7 @@ theorem twp_func2_in_func1_context_smallStep_wp
     iframe
 
 theorem twp_func2Alias_in_func1_context_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -1219,7 +1219,7 @@ theorem twp_func2Alias_in_func1_context_smallStep_wp
     iframe
 
 theorem twp_func1_alias_context_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -1259,7 +1259,7 @@ theorem twp_func1_alias_context_smallStep_wp
   · iframe
 
 theorem twp_func1_happy_context_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -1303,7 +1303,7 @@ theorem twp_func1_happy_context_smallStep_wp
   · iframe
 
 theorem twp_func1_happy_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (ptr len i j : UInt32) (oldScratch oldA oldB : UInt64)
     (hi : i < len) (hj : j < len)
@@ -1341,7 +1341,7 @@ theorem twp_func1_happy_smallStep_wp
     · iexact Hresources
 
 theorem twp_func0_happy_context_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -1393,7 +1393,7 @@ theorem twp_func0_happy_context_smallStep_wp
   · iframe
 
 theorem twp_func0_alias_context_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -1442,7 +1442,7 @@ theorem twp_func0_alias_context_smallStep_wp
   · iframe
 
 theorem twp_func0_alias_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (ptr len i : UInt32) (oldScratch oldValue : UInt64)
     (hi : i < len)
@@ -1476,7 +1476,7 @@ theorem twp_func0_alias_smallStep_wp
     · iexact Hresources
 
 theorem twp_func0_happy_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (ptr len i j : UInt32) (oldScratch oldA oldB : UInt64)
     (hi : i < len) (hj : j < len)
@@ -1513,7 +1513,7 @@ theorem twp_func0_happy_smallStep_wp
     · iexact Hresources
 
 theorem twp_func2_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (ptrA ptrB : UInt32) (oldScratch oldA oldB : UInt64)
     (hroomA : ptrA.toNat + 8 ≤ 4294967296)
@@ -1534,7 +1534,7 @@ theorem twp_func2_smallStep_wp
       ptrA ptrB oldScratch oldA oldB hroomA hroomB)
 
 theorem twp_func3_context_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -1575,7 +1575,7 @@ theorem twp_func3_context_smallStep_wp
   iframe
 
 theorem twp_func3_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (oldPtr oldLen ptr len : UInt32) :
     pointsTo_u32 1048568 oldPtr ∗ pointsTo_u32 1048572 oldLen ⊢
@@ -1590,7 +1590,7 @@ theorem twp_func3_smallStep_wp
 
 set_option maxHeartbeats 4000000 in
 theorem twp_func4_happy_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (ptr len i j oldSpillPtr oldSpillLen : UInt32)
     (oldScratch oldA oldB : UInt64)
@@ -1705,7 +1705,7 @@ theorem twp_func4_happy_smallStep_wp
 
 set_option maxHeartbeats 4000000 in
 theorem twp_func4_alias_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (ptr len i oldSpillPtr oldSpillLen : UInt32)
     (oldScratch oldValue : UInt64)
@@ -2035,7 +2035,7 @@ theorem func4_distinct_store_terminatesWith
     (hagree : heapAgreesWithMem σ wasm.mem)
     (hinBounds : heapAddressesInBounds σ wasm.mem)
     (hglobals : globalHeapAgrees globalσ wasm.globals)
-    (hresources : ∀ [WasmHeapGS],
+    (hresources : ∀ [WasmHeapGS Unit],
       ([∗map] address ↦ value ∈ σ,
         pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
@@ -2044,7 +2044,7 @@ theorem func4_distinct_store_terminatesWith
       pointsTo_u32 1048572 oldSpillLen ∗
       pointsTo_u64 ((i <<< (3 % 32)) + ptr) oldA ∗
       pointsTo_u64 ((j <<< (3 % 32)) + ptr) oldB)
-    (hglobalOwn : ∀ [WasmGlobalGS],
+    (hglobalOwn : ∀ [WasmGlobalGS Unit],
       ([∗map] index ↦ value ∈ globalσ,
         globalPointsTo index value) ⊢
       globalPointsTo 0 (.i32 1048576)) :
@@ -2142,7 +2142,7 @@ theorem func4_alias_store_terminatesWith
     (hagree : heapAgreesWithMem σ wasm.mem)
     (hinBounds : heapAddressesInBounds σ wasm.mem)
     (hglobals : globalHeapAgrees globalσ wasm.globals)
-    (hresources : ∀ [WasmHeapGS],
+    (hresources : ∀ [WasmHeapGS Unit],
       ([∗map] address ↦ value ∈ σ,
         pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
@@ -2150,7 +2150,7 @@ theorem func4_alias_store_terminatesWith
       pointsTo_u32 1048568 oldSpillPtr ∗
       pointsTo_u32 1048572 oldSpillLen ∗
       pointsTo_u64 ((i <<< (3 % 32)) + ptr) oldValue)
-    (hglobalOwn : ∀ [WasmGlobalGS],
+    (hglobalOwn : ∀ [WasmGlobalGS Unit],
       ([∗map] index ↦ value ∈ globalσ,
         globalPointsTo index value) ⊢
       globalPointsTo 0 (.i32 1048576)) :

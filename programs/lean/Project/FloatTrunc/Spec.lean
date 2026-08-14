@@ -120,7 +120,7 @@ def func1Config (x : UInt32) : Config Unit :=
 stops immediately before the generated `ret`, so the same rule works both at
 top level and beneath an arbitrary saved call stack. -/
 theorem func1_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp Wasm.SepLogic.WasmHeapGF}
     (x : UInt32) (calls : List CallFrame) :
     ▷ WP (.running
@@ -216,7 +216,7 @@ theorem func0Globals_agree :
   · rw [get?_insert_ne (Ne.symm hindex), get?_empty] at hget
     contradiction
 
-theorem func0Heap_pointsTo [WasmHeapGS] :
+theorem func0Heap_pointsTo [WasmHeapGS Unit] :
     ([∗map] address ↦ value ∈ func0Heap,
       pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
@@ -228,7 +228,7 @@ theorem func0Heap_pointsTo [WasmHeapGS] :
       (get?_empty _) (get?_empty _) (get?_empty _) (get?_empty _)
       (by decide) (by decide) (by decide))
 
-theorem func0Globals_pointsTo [WasmGlobalGS] :
+theorem func0Globals_pointsTo [WasmGlobalGS Unit] :
     ([∗map] index ↦ value ∈ func0Globals,
       globalPointsTo index value) ⊢
       globalPointsTo 0 (.i32 1048576) := by
@@ -240,7 +240,7 @@ theorem func0Globals_pointsTo [WasmGlobalGS] :
 all unrelated ownership, and the continuation decides whether the generated
 `ret` returns from a nested call or from the top-level invocation. -/
 theorem func0_tail_to_ret_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x word : UInt32) (calls : List CallFrame) :
     R ∗ pointsTo_u32 1048572 word ∗
@@ -274,7 +274,7 @@ theorem func0_tail_to_ret_smallStep_wp
 /-- Common load-and-return tail after one of `naive_trunc`'s four branches
 has written the authoritative scratch word. -/
 theorem func0_tail_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     (x word : UInt32) :
     pointsTo_u32 1048572 word ⊢
       WP (.running
@@ -300,7 +300,7 @@ theorem func0_tail_smallStep_wp
 /-- Specialized authoritative store rule for `func0`'s concrete
 `1048560 + 12 = 1048572` scratch address. -/
 theorem func0_store32_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     {params localValues values : List Value}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -336,7 +336,7 @@ theorem func0_store32_smallStep_wp
 control-flow paths write the same value as Rust's saturating cast and join
 immediately before the generated `ret`. -/
 theorem func0_body_to_ret_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x : UInt32) (calls : List CallFrame)
     (hreturn : ∀ word : UInt32,
@@ -599,7 +599,7 @@ theorem func0_smallStep (x : UInt32) :
 /-! ## Total WP helpers (no `▷` on continuations) -/
 
 theorem twp_func1_body
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (x : UInt32) (calls : List CallFrame) :
     WP (.running
@@ -615,7 +615,7 @@ theorem twp_func1_body
   iexact Hret
 
 theorem twp_func0_tail_to_ret
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x word : UInt32) (calls : List CallFrame) :
     R ∗ pointsTo_u32 1048572 word ∗
@@ -643,7 +643,7 @@ theorem twp_func0_tail_to_ret
     iexact Hword
 
 theorem twp_func0_store32
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     {params localValues values : List Value}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -673,7 +673,7 @@ theorem twp_func0_store32
   iexact Hword
 
 theorem twp_func0_body_to_ret
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x : UInt32) (calls : List CallFrame)
     (hreturn : ∀ word : UInt32,
@@ -841,7 +841,7 @@ def checkConfig (x : UInt32) : Config Unit :=
         wasm := «module».initialStore } }
 
 theorem twp_check
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     (x : UInt32) :
     runtimeModuleOwn «module» ∗ globalPointsTo 0 (.i32 1048576) ∗
       pointsTo_u32 1048572 0 ⊢

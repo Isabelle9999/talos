@@ -124,7 +124,7 @@ def SwapElementsDistinctTerminatesSpec : Prop :=
     heapAgreesWithMem σ wasm.mem →
     heapAddressesInBounds σ wasm.mem →
     globalHeapAgrees globalσ wasm.globals →
-    (∀ [WasmHeapGS],
+    (∀ [WasmHeapGS Unit],
       ([∗map] address ↦ value ∈ σ,
         pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
@@ -133,7 +133,7 @@ def SwapElementsDistinctTerminatesSpec : Prop :=
       pointsTo_u32 1048572 oldSpillLen ∗
       pointsTo_u64 ((i <<< (3 % 32)) + ptr) oldA ∗
       pointsTo_u64 ((j <<< (3 % 32)) + ptr) oldB) →
-    (∀ [WasmGlobalGS],
+    (∀ [WasmGlobalGS Unit],
       ([∗map] index ↦ value ∈ globalσ,
         globalPointsTo index value) ⊢
       globalPointsTo 0 (.i32 1048576)) →
@@ -168,7 +168,7 @@ def SwapElementsAliasTerminatesSpec : Prop :=
     heapAgreesWithMem σ wasm.mem →
     heapAddressesInBounds σ wasm.mem →
     globalHeapAgrees globalσ wasm.globals →
-    (∀ [WasmHeapGS],
+    (∀ [WasmHeapGS Unit],
       ([∗map] address ↦ value ∈ σ,
         pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
@@ -176,7 +176,7 @@ def SwapElementsAliasTerminatesSpec : Prop :=
       pointsTo_u32 1048568 oldSpillPtr ∗
       pointsTo_u32 1048572 oldSpillLen ∗
       pointsTo_u64 ((i <<< (3 % 32)) + ptr) oldValue) →
-    (∀ [WasmGlobalGS],
+    (∀ [WasmGlobalGS Unit],
       ([∗map] index ↦ value ∈ globalσ,
         globalPointsTo index value) ⊢
       globalPointsTo 0 (.i32 1048576)) →

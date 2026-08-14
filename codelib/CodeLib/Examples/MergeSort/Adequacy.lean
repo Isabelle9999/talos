@@ -127,7 +127,7 @@ private theorem mergeSortHeapAux_get?_none
       · right; rw [h4]; omega
     · exact hσ'
 
-private theorem mergeSortHeapAux_pointsTo [WasmHeapGS]
+private theorem mergeSortHeapAux_pointsTo [WasmHeapGS Unit]
     (σ : WasmHeapMap (Option UInt8)) (base : UInt32) (xs : List UInt32)
     (hnoWrap : base.toNat + 4 * xs.length + 4 ≤ 4294967296)
     (hfresh : ∀ addr : UInt32,
@@ -216,7 +216,7 @@ private theorem mergeSortHeap_inBounds
   · rw [hpages]; omega
   · exact heapAddressesInBounds_empty _
 
-private theorem mergeSortHeap_pointsTo [WasmHeapGS]
+private theorem mergeSortHeap_pointsTo [WasmHeapGS Unit]
     (source temporary : UInt32) (input scratch : List UInt32)
     (hvalid : ValidLayout source temporary input.length)
     (hscr : scratch.length = input.length)
@@ -257,7 +257,7 @@ private theorem mergeSortHeap_pointsTo [WasmHeapGS]
   iframe
 
 -- post conversion: mergeSortPost implies existence of a sorted permutation
-private theorem mergeSortPost_to_exists {hlc : HasLC} [WasmSmallStepGS hlc]
+private theorem mergeSortPost_to_exists {hlc : HasLC} [WasmSmallStepGS hlc Unit]
     (source temporary : UInt32) (input : List UInt32) (_values : List Value) :
     mergeSortPost source temporary input ⊢
     (iprop% ∀ (store : MachineStore Unit) (_observations : List StepKind),

@@ -84,7 +84,7 @@ theorem roundGlobals_agree :
   · rw [get?_insert_ne (Ne.symm hindex), get?_empty] at hget
     contradiction
 
-theorem roundHeap_pointsTo [WasmHeapGS] :
+theorem roundHeap_pointsTo [WasmHeapGS Unit] :
     ([∗map] address ↦ value ∈ roundHeap,
       pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
@@ -110,7 +110,7 @@ theorem roundHeap_pointsTo [WasmHeapGS] :
   icases Hinner with ⟨Hinner, Hempty⟩
   iframe
 
-theorem roundGlobals_pointsTo [WasmGlobalGS] :
+theorem roundGlobals_pointsTo [WasmGlobalGS Unit] :
     ([∗map] index ↦ value ∈ roundGlobals,
       globalPointsTo index value) ⊢
       globalPointsTo 0 (.i32 1048576) := by
@@ -121,7 +121,7 @@ theorem roundGlobals_pointsTo [WasmGlobalGS] :
 /-! ## Small-step optimized-round path -/
 
 theorem func5_lowered_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -186,7 +186,7 @@ theorem func5_lowered_body_smallStep_wp
   iframe
 
 theorem func4_lowered_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -223,7 +223,7 @@ theorem func4_lowered_smallStep_wp
   · iframe
 
 theorem deepFrameFloat_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (instruction : Instruction) (result : UInt32)
@@ -294,7 +294,7 @@ theorem deepFrameFloat_body_smallStep_wp
   iframe
 
 theorem func1_deep_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -314,7 +314,7 @@ theorem func1_deep_body_smallStep_wp
       .f32Trunc (f32Trunc x) rfl rfl calls hreturn)
 
 theorem func2_deep_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -334,7 +334,7 @@ theorem func2_deep_body_smallStep_wp
       .f32Ceil (f32Ceil x) rfl rfl calls hreturn)
 
 theorem func3_deep_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -427,7 +427,7 @@ def naiveDFrame : ControlFrame :=
     belowStack := [] }
 
 theorem naive_tail_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x result : UInt32)
     (calls : List CallFrame)
@@ -493,7 +493,7 @@ theorem naive_tail_smallStep_wp
   iframe
 
 theorem naive_storeTrunc_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -546,7 +546,7 @@ theorem naive_storeTrunc_smallStep_wp
   iframe
 
 theorem naive_ceil_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
@@ -620,7 +620,7 @@ theorem naive_ceil_smallStep_wp
   · iframe
 
 theorem naive_floor_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
@@ -693,7 +693,7 @@ theorem naive_floor_smallStep_wp
   · iframe
 
 theorem naive_compare_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
@@ -829,7 +829,7 @@ theorem naive_compare_smallStep_wp
       · iframe
 
 theorem func0_lowered_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
@@ -1021,7 +1021,7 @@ def roundCheckInnerFrame : ControlFrame :=
     belowStack := [] }
 
 theorem roundCheck_tail_result_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF) (x result : UInt32) :
     R ∗ globalPointsTo 0 (.i32 1048560) ∗
       pointsTo_u32 1048572 result ⊢
@@ -1070,7 +1070,7 @@ theorem roundCheck_tail_result_smallStep_wp
   exact ⟨result, rfl⟩
 
 theorem roundCheck_comparison_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (x oldDeep oldWord oldResult : UInt32)
     (hzero : ∀ deep word : UInt32,
@@ -1208,7 +1208,7 @@ theorem roundCheck_comparison_smallStep_wp
   · iframe
 
 theorem func6_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset} :
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset} :
     pointsTo_u32 1048540 0 ∗ pointsTo_u32 1048556 0 ∗
       pointsTo_u32 1048572 0 ∗ runtimeModuleOwn «module» ∗
       globalPointsTo 0 (.i32 1048576) ⊢
@@ -1312,7 +1312,7 @@ theorem checkRound_smallStep (x : UInt32) :
 /-! ## Total WP helpers (no `▷` on continuations) -/
 
 theorem twp_func5_lowered_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -1360,7 +1360,7 @@ theorem twp_func5_lowered_body_smallStep_wp
   iframe
 
 theorem twp_func4_lowered_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -1394,7 +1394,7 @@ theorem twp_func4_lowered_smallStep_wp
   · iframe
 
 theorem twp_deepFrameFloat_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (instruction : Instruction) (result : UInt32)
@@ -1447,7 +1447,7 @@ theorem twp_deepFrameFloat_body_smallStep_wp
   iframe
 
 theorem twp_func1_deep_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -1467,7 +1467,7 @@ theorem twp_func1_deep_body_smallStep_wp
       .f32Trunc (f32Trunc x) rfl rfl calls hreturn)
 
 theorem twp_func2_deep_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -1487,7 +1487,7 @@ theorem twp_func2_deep_body_smallStep_wp
       .f32Ceil (f32Ceil x) rfl rfl calls hreturn)
 
 theorem twp_func3_deep_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -1507,7 +1507,7 @@ theorem twp_func3_deep_body_smallStep_wp
       .f32Floor (f32Floor x) rfl rfl calls hreturn)
 
 theorem twp_naive_tail_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x result : UInt32)
     (calls : List CallFrame)
@@ -1558,7 +1558,7 @@ theorem twp_naive_tail_smallStep_wp
   iframe
 
 theorem twp_naive_storeTrunc_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldWord : UInt32)
     (calls : List CallFrame)
@@ -1605,7 +1605,7 @@ theorem twp_naive_storeTrunc_smallStep_wp
   iframe
 
 theorem twp_naive_ceil_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
@@ -1671,7 +1671,7 @@ theorem twp_naive_ceil_smallStep_wp
   · iframe
 
 theorem twp_naive_floor_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
@@ -1736,7 +1736,7 @@ theorem twp_naive_floor_smallStep_wp
   · iframe
 
 theorem twp_naive_compare_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
@@ -1851,7 +1851,7 @@ theorem twp_naive_compare_smallStep_wp
       · iframe
 
 theorem twp_func0_lowered_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
@@ -1985,7 +1985,7 @@ theorem twp_func0_lowered_smallStep_wp
   · iframe
 
 theorem twp_roundCheck_tail_result_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF) (x result : UInt32) :
     R ∗ globalPointsTo 0 (.i32 1048560) ∗
       pointsTo_u32 1048572 result ⊢
@@ -2022,7 +2022,7 @@ theorem twp_roundCheck_tail_result_smallStep_wp
   exact ⟨result, rfl⟩
 
 theorem twp_roundCheck_comparison_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset}
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (x oldDeep oldWord oldResult : UInt32)
     (hzero : ∀ deep word : UInt32,
@@ -2134,7 +2134,7 @@ theorem twp_roundCheck_comparison_smallStep_wp
   · iframe
 
 theorem twp_func6_body_smallStep_wp
-    [WasmSmallStepGS hlc] {s : Stuckness} {E : CoPset} :
+    [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset} :
     pointsTo_u32 1048540 0 ∗ pointsTo_u32 1048556 0 ∗
       pointsTo_u32 1048572 0 ∗ runtimeModuleOwn «module» ∗
       globalPointsTo 0 (.i32 1048576) ⊢

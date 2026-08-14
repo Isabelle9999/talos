@@ -127,7 +127,7 @@ theorem gcdFrameHeap_pointsTo
     (outerA outerB : UInt64) :
     ([∗map] address ↦ byte ∈
         gcdFrameHeap result x y shiftXY shiftX shiftY nextY nextX outerA outerB,
-      pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
         address (DFrac.own 1) byte) ⊢
       pointsTo_u64 1048512 result ∗
       pointsTo_u64 1048520 x ∗
@@ -212,8 +212,8 @@ loaded operands and all unrelated resources are framed by `R`. -/
 theorem func1_spillPrefix_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldX oldY : UInt64)
     (hcontinue :
@@ -323,7 +323,7 @@ instruction rules, without exposing individual byte ownership to clients. -/
 theorem func1_spillPrefix_frame_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    {Φ : List Value → IProp WasmHeapGF}
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
@@ -343,7 +343,7 @@ theorem func1_spillPrefix_frame_smallStep_wp
     globalPointsTo 0 (.i32 1048560) ∗
       ([∗map] address ↦ byte ∈
         gcdFrameHeap result oldX oldY shiftXY shiftX shiftY nextY nextX a b,
-        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
           address (DFrac.own 1) byte) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
@@ -375,8 +375,8 @@ written through the callee frame, read back, and returned as an Iris value. -/
 theorem func1_leftZero_core_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (calls : List Wasm.SmallStep.CallFrame)
     (result b : UInt64)
     (hreturn :
@@ -517,7 +517,7 @@ theorem func1_leftZero_core_smallStep_wp_to_return
 theorem func1_leftZero_core_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (result b : UInt64) :
     R ∗ globalPointsTo 0 (.i32 1048560) ∗
       pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
@@ -550,8 +550,8 @@ until the explicit return transition. -/
 theorem func1_leftZero_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY b : UInt64)
     (hreturn :
@@ -590,7 +590,7 @@ top-level return transition. -/
 theorem func1_leftZero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (result oldX oldY b : UInt64) :
     R ∗ globalPointsTo 0 (.i32 1048560) ∗
       pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
@@ -622,8 +622,8 @@ left operand is preserved as the result. -/
 theorem func1_rightZero_core_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (calls : List Wasm.SmallStep.CallFrame)
     (result a : UInt64) (ha : a ≠ 0)
     (hreturn :
@@ -789,7 +789,7 @@ theorem func1_rightZero_core_smallStep_wp_to_return
 theorem func1_rightZero_core_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (result a : UInt64) (ha : a ≠ 0) :
     R ∗ globalPointsTo 0 (.i32 1048560) ∗
       pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
@@ -822,8 +822,8 @@ until the explicit return transition. -/
 theorem func1_rightZero_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY a : UInt64) (ha : a ≠ 0)
     (hreturn :
@@ -861,7 +861,7 @@ operand, including the memory spill prologue. -/
 theorem func1_rightZero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (result oldX oldY a : UInt64) (ha : a ≠ 0) :
     R ∗ globalPointsTo 0 (.i32 1048560) ∗
       pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
@@ -893,7 +893,7 @@ result rather than the compiler's two control-flow branches. -/
 theorem func1_zero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (result oldX oldY a b : UInt64) (hz : a = 0 ∨ b = 0) :
     R ∗ globalPointsTo 0 (.i32 1048560) ∗
       pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
@@ -929,7 +929,7 @@ theorem func1_zero_frame_smallStep_wp
     globalPointsTo 0 (.i32 1048560) ∗
       ([∗map] address ↦ byte ∈
         gcdFrameHeap result oldX oldY shiftXY shiftX shiftY nextY nextX a b,
-        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
           address (DFrac.own 1) byte) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
@@ -1154,8 +1154,8 @@ store/reload it through scratch offset 44, and install it in local 3. -/
 theorem func1_sharedShift_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (oldShift : UInt32)
@@ -1280,8 +1280,8 @@ def func1XShiftLocals (a b : UInt64) : List Value :=
 theorem func1_normalizeX_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (ha : a ≠ 0) (oldShiftX : UInt32)
@@ -1427,8 +1427,8 @@ off with both frame operands reduced to their odd parts. -/
 theorem func1_normalizeY_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (hb : b ≠ 0) (oldShiftY : UInt32)
@@ -1567,8 +1567,8 @@ scratch-memory slices. The next instruction is the generated Stein loop. -/
 theorem func1_normalization_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
@@ -1656,8 +1656,8 @@ control-frame theorem. -/
 theorem func1_equalRecombine_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b g oldResult : UInt64)
@@ -1750,8 +1750,8 @@ The final `br 2` remains visible to the enclosing loop/control proof. -/
 theorem func1_equalBlock_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b g oldResult : UInt64)
@@ -1869,8 +1869,8 @@ scratch shift-count slot and exposes the arm's `br 1` to its block proof. -/
 theorem func1_loopNormalizeY_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x d : UInt64) (hd : d ≠ 0) (oldShift : UInt32)
@@ -2017,8 +2017,8 @@ odd-part normalization to `func1_loopNormalizeY_smallStep_wp`. -/
 theorem func1_loopDecreaseY_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y : UInt64) (hsub : y - x ≠ 0)
@@ -2153,8 +2153,8 @@ from the right-arm scratch word at `fp+32`. -/
 theorem func1_loopNormalizeX_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b y d : UInt64) (hd : d ≠ 0) (oldShift : UInt32)
@@ -2301,8 +2301,8 @@ that result through the dedicated `fp+28` scratch word. -/
 theorem func1_loopDecreaseX_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y : UInt64) (hsub : x - y ≠ 0)
@@ -2455,8 +2455,8 @@ block's concrete continuation. -/
 theorem func1_loopEqualityDispatch_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y oldResult : UInt64)
@@ -2566,8 +2566,8 @@ frame so their final branch is an actual back-edge. -/
 theorem func1_loopDecreaseDispatch_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y : UInt64)
@@ -2749,9 +2749,9 @@ left-arm loop back-edge, and the right-arm loop back-edge. -/
 theorem func1_loopBodyDispatch_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
-    (K : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
+    (K : IProp WasmHeapGF)
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y oldResult : UInt64)
@@ -2863,8 +2863,8 @@ oddness, and mathematical GCD at the two real loop back-edges. -/
 theorem func1_loop_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y expected oldResult : UInt64)
@@ -2901,7 +2901,7 @@ theorem func1_loop_smallStep_wp
   iloeb as IH generalizing
     %x %y %oldResult %oldShiftX %oldShiftY %c6 %c8 %c7 %c9
     %hxne %hyne %hxodd %hyodd %hgcd
-  let Kloop : IProp (WasmHeapGF Unit) := iprop(
+  let Kloop : IProp WasmHeapGF := iprop(
     ▷ ∀ (x y oldResult : UInt64)
         (oldShiftX oldShiftY : UInt32)
         (c6 c8 : UInt64) (c7 c9 : UInt32),
@@ -3014,8 +3014,8 @@ its `br 2` exit. -/
 theorem func1_loopEntry_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
@@ -3080,8 +3080,8 @@ physical scratch frame, enter the real loop, and expose only the final
 theorem func1_nonzeroCore_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
@@ -3172,8 +3172,8 @@ remaining outer frame. -/
 theorem func1_nonzeroGuards_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (hcontinue :
@@ -3272,8 +3272,8 @@ from a top-level invocation of `func1`. -/
 theorem func1_nonzeroFinish_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (outerBody : Program)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b g d6 d8 : UInt64) (shiftX shiftY d7 d9 : UInt32)
@@ -3336,7 +3336,7 @@ theorem func1_nonzeroFinish_smallStep_wp_to_return
 theorem func1_nonzeroFinish_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (outerBody : Program)
     (a b g d6 d8 : UInt64) (shiftX shiftY d7 d9 : UInt32)
     (hgcd : g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat) :
@@ -3374,8 +3374,8 @@ left to the caller, so the same proof can be used beneath a Wasm call frame. -/
 theorem func1_nonzeroOuterCore_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (outerBody : Program)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
@@ -3427,7 +3427,7 @@ and discharge its equality exit through `func1`'s epilogue. -/
 theorem func1_nonzeroOuterCore_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (outerBody : Program)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (oldShared oldNormX oldNormY oldLoopX oldLoopY : UInt32) :
@@ -3509,8 +3509,8 @@ the explicit return so a caller-provided call frame can resume. -/
 theorem func1_nonzero_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (oldShared oldNormX oldNormY oldLoopX oldLoopY : UInt32)
@@ -3593,7 +3593,7 @@ return. -/
 theorem func1_nonzero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (result oldX oldY a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (oldShared oldNormX oldNormY oldLoopX oldLoopY : UInt32) :
     R ∗ globalPointsTo 0 (.i32 1048560) ∗
@@ -3673,7 +3673,7 @@ theorem func1_nonzero_frame_smallStep_wp
     globalPointsTo 0 (.i32 1048560) ∗
       ([∗map] address ↦ byte ∈
         gcdFrameHeap result oldX oldY shiftXY shiftX shiftY nextY nextX a b,
-        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
           address (DFrac.own 1) byte) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
@@ -3780,273 +3780,6 @@ theorem func1_smallStep_partiallyMeets
     · exact func1_nonzero_smallStep_partiallyMeets
         result oldX oldY shiftXY shiftX shiftY nextY nextX a b ha hb
 
-/- Driving the OUTER-body program when both operands are nonzero. The
-final result `gcd a b` is left at slot `1048512` (`fp + 0`); the loop
-exits via `br 2`, surfacing as a `.Break 0` to the supplied continuation
-`Q`. The continuation hypothesis `hQ` only needs the result slot and the
-fact that the frame pointer (local 2) is unchanged, which is all the
-OUTER continuation reads. -/
-set_option maxHeartbeats 4000000 in
-theorem meatLoop_wp (env : HostEnv Unit) (stm : Store Unit) (a b : UInt64)
-    (p0 p1 l1 l2 l3 l4 l5 l6 l7 : Value) (vals : List Value) (Q : Assertion Unit)
-    (hpg : stm.mem.pages = 16)
-    (ha0 : a ≠ 0) (hb0 : b ≠ 0)
-    (ha : stm.mem.read64 1048520 = a)
-    (hb : stm.mem.read64 1048528 = b)
-    (hQ : ∀ (stf : Store Unit) (sf : Locals),
-            stf.mem.read64 1048512 = UInt64.ofNat (a.toNat.gcd b.toNat) →
-            stf.mem.pages = 16 →
-            stf.globals = stm.globals →
-            sf.get 2 = some (.i32 1048512) →
-            Q (.Break 0 stf sf)) :
-    wp «module» meatLoopProg Q stm
-      { params := [p0, p1],
-        locals := [.i32 1048512, l1, l2, l3, l4, l5, l6, l7], values := vals } env := by
-  show wp «module» meatLoopProg Q stm _ env
-  unfold meatLoopProg
-  simp only []
-  simp (config := { maxSteps := 4000000, decide := true }) only [wp_simp, Locals.get, Locals.set?,
-    List.length_cons, List.length_nil,
-    List.getElem?_cons_zero, List.getElem?_cons_succ, List.set_cons_zero, List.set_cons_succ,
-    Nat.reduceLT, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub, reduceIte,
-    Nat.reduceLeDiff,
-    UInt32.reduceAdd, UInt32.reduceToNat, gt_iff_lt,
-    Mem.read64_write64_disjoint, Mem.read64_write32_disjoint,
-    Mem.read32_write32_same,
-    hpg, ha, hb,
-    Mem.write64_pages, Mem.write32_pages]
-  -- Rewrite the two odd-part shift amounts into the `CodeLib` form.
-  rw [shift_pipeline a ha0, shift_pipeline b hb0]
-  -- Abbreviations for the odd parts and the recombination shift.
-  set ao : UInt64 := a >>> (UInt64.ofNat (ctz64 64 a) % 64) with hao
-  set bo : UInt64 := b >>> (UInt64.ofNat (ctz64 64 b) % 64) with hbo
-  have hab0 : a ||| b ≠ 0 := fun h => ha0 (UInt64.or_eq_zero_iff.mp h).1
-  have haone : ao ≠ 0 := UInt64.shr_ctz_ne_zero a ha0
-  have hbone : bo ≠ 0 := UInt64.shr_ctz_ne_zero b hb0
-  have haodd : ao.toNat % 2 = 1 := UInt64.shr_ctz_toNat_odd a ha0
-  have hbodd : bo.toNat % 2 = 1 := UInt64.shr_ctz_toNat_odd b hb0
-  -- Generalize the cluttered scratch-only memory into a single store whose
-  -- slots `1048520`/`1048528` carry `ao`/`bo`.
-  set stL : Store Unit :=
-    { globals := stm.globals,
-      mem :=
-        ((((stm.mem.write32 1048556 (UInt32.ofNat ((UInt64.ofNat (ctz64 64 (a ||| b))).toNat % 2 ^ 32))).write32 1048552
-                      (UInt32.ofNat ((UInt64.ofNat (ctz64 64 a)).toNat % 2 ^ 32))).write64
-                  1048520 ao).write32
-              1048548 (UInt32.ofNat ((UInt64.ofNat (ctz64 64 b)).toNat % 2 ^ 32))).write64
-          1048528 bo,
-      extraMems := stm.extraMems, dataSegments := stm.dataSegments, tables := stm.tables,
-      elementSegments := stm.elementSegments, exns := stm.exns, host := stm.host } with hstL
-  have hLpg : stL.mem.pages = 16 := by rw [hstL]; simp [hpg]
-  have hLa : stL.mem.read64 1048520 = ao := by
-    rw [hstL]
-    rw [Mem.read64_write64_disjoint _ _ _ _ (by decide),
-        Mem.read64_write32_disjoint _ _ _ _ (by decide),
-        Mem.read64_write64_same]
-  have hLb : stL.mem.read64 1048528 = bo := by
-    rw [hstL]; rw [Mem.read64_write64_same]
-  -- The shift amount used by the final `shl` recombine.
-  have hsh : UInt64.ofNat ((63 : UInt32) &&&
-      UInt32.ofNat ((UInt64.ofNat (ctz64 64 (a ||| b))).toNat % 2 ^ 32)).toNat % 64
-      = UInt64.ofNat (ctz64 64 (b ||| a)) % 64 := by
-    rw [ctz_wrap_and_toNat (a ||| b) hab0, ctz_or_comm]
-  -- The constant shift value sitting in local 3 throughout the loop.
-  set sh3 : UInt32 := UInt32.ofNat ((UInt64.ofNat (ctz64 64 (a ||| b))).toNat % 2 ^ 32) with hsh3
-  apply wp_loop_cons
-    (Inv := fun st' s' =>
-      st'.mem.pages = 16 ∧ st'.globals = stm.globals ∧ s'.values = vals ∧
-      (∃ c4 c5 c6 c7 c8 c9 : Value,
-        s' = { params := [p0, p1],
-               locals := [.i32 1048512, .i32 sh3, c4, c5, c6, c7, c8, c9], values := vals }) ∧
-      ∃ x y : UInt64,
-        st'.mem.read64 1048520 = x ∧ st'.mem.read64 1048528 = y ∧
-        x ≠ 0 ∧ y ≠ 0 ∧ x.toNat % 2 = 1 ∧ y.toNat % 2 = 1 ∧
-        Nat.gcd x.toNat y.toNat = Nat.gcd ao.toNat bo.toNat)
-    (μ := fun st' _ => (st'.mem.read64 1048520).toNat + (st'.mem.read64 1048528).toNat)
-  · -- Initial invariant.
-    exact ⟨hLpg, rfl, rfl, ⟨_, _, _, _, _, _, rfl⟩, ao, bo, hLa, hLb, haone, hbone, haodd, hbodd, rfl⟩
-  · -- One iteration.
-    rintro st' s' ⟨hpg', hglob', hvals, ⟨c4, c5, c6, c7, c8, c9, rfl⟩, x, y, hxr, hyr, hxne, hyne, hxodd, hyodd, hgcd⟩
-    -- Enter block A.
-    apply wp_block_cons
-    simp only [wp_simp, Locals.get, List.length_cons, List.length_nil,
-      List.getElem?_cons_zero, List.getElem?_cons_succ,
-      Nat.reduceLT, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub, reduceIte,
-      UInt32.reduceAdd, UInt32.reduceToNat, gt_iff_lt, hpg', hxr, hyr]
-    by_cases hxy : x = y
-    · -- x = y: loop exits with the recombined gcd.
-      subst hxy
-      simp only [ne_eq, not_true_eq_false, if_false]
-      -- The break stores `x <<< shift` at slot 1048512.
-      refine hQ _ _ ?_ ?_ hglob' rfl
-      · -- result slot holds the gcd.
-        rw [Mem.read64_write64_same, hsh]
-        have hrec := UInt64.recombine_loop a b x ha0 hb0 ?_
-        · simpa [ao, bo, UInt64.toNat_shiftRight] using hrec
-        · rw [Nat.gcd_self]
-          have hgcd' := hgcd
-          rw [hao, hbo] at hgcd'
-          simpa [UInt64.toNat_shiftRight] using hgcd'
-      · rw [Mem.write64_pages]; exact hpg'
-    · -- x ≠ y: fall into block B.
-      rw [if_pos hxy]
-      simp only [show (1 : UInt32) &&& 1 = 1 from rfl]
-      apply wp_block_cons
-      simp (config := { maxSteps := 4000000, decide := true }) only [wp_simp,
-        Locals.get, Locals.set?, List.length_cons, List.length_nil,
-        List.getElem?_cons_zero, List.getElem?_cons_succ, List.set_cons_zero, List.set_cons_succ,
-        Nat.reduceLT, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub, reduceIte,
-        UInt32.reduceAdd, UInt32.reduceToNat, gt_iff_lt, hpg', hxr, hyr,
-        Mem.read64_write64_same, Mem.read64_write64_disjoint, Mem.read64_write32_disjoint,
-        Mem.read32_write32_same,
-        Mem.write64_pages, Mem.write32_pages]
-      simp only [List.take_zero, List.drop_zero, List.nil_append]
-      by_cases hlt : y < x
-      · -- y < x: subtract y from x, halve x.  (x-branch.)
-        rw [if_pos hlt]
-        obtain ⟨hne', hodd', hgcd', hdec⟩ := UInt64.stein_step_x x y hxne hyne hxodd hyodd hlt
-        have hxsub0 : x - y ≠ 0 := by
-          intro h
-          have hsub := UInt64.toNat_sub_of_le x y
-            (UInt64.le_iff_toNat_le.mpr (Nat.le_of_lt (UInt64.lt_iff_toNat_lt.mp hlt)))
-          have h0 : (x - y).toNat = 0 := by rw [h]; rfl
-          rw [hsub] at h0
-          have := UInt64.lt_iff_toNat_lt.mp hlt
-          omega
-        have hshx := ctz_wrap_and_toNat (x - y) hxsub0
-        have hx1 := oddPart_toNat (x - y)
-        split
-        · rename_i h; simp at h
-        · rw [hshx]
-          refine ⟨⟨trivial, hglob', by simp, ⟨c4, c5, _, _, _, _, rfl⟩,
-            (x - y) >>> (UInt64.ofNat (ctz64 64 (x - y)) % 64), y,
-            rfl, rfl, hne', hyne, ?_, hyodd, ?_⟩, ?_⟩
-          · rw [hx1]; exact hodd'
-          · rw [hx1]; exact hgcd'.trans hgcd
-          · rw [hx1]; have := hdec; omega
-        · rename_i h; exact (h 1 vals rfl).elim
-      · -- ¬(y < x): subtract x from y, halve y.  (y-branch.)
-        rw [if_neg hlt]
-        obtain ⟨hne', hodd', hgcd', hdec⟩ :=
-          UInt64.stein_step_y x y hxne hyne hxodd hyodd hlt hxy
-        have hysub0 : y - x ≠ 0 := by
-          intro h
-          have hxlt : x < y := by
-            rw [UInt64.lt_iff_toNat_lt]
-            have h1 : ¬ y.toNat < x.toNat := fun hh => hlt (UInt64.lt_iff_toNat_lt.mpr hh)
-            have h2 : x.toNat ≠ y.toNat := fun hh => hxy (UInt64.toNat.inj hh)
-            omega
-          have hsub := UInt64.toNat_sub_of_le y x
-            (UInt64.le_iff_toNat_le.mpr (Nat.le_of_lt (UInt64.lt_iff_toNat_lt.mp hxlt)))
-          have h0 : (y - x).toNat = 0 := by rw [h]; rfl
-          rw [hsub] at h0
-          have := UInt64.lt_iff_toNat_lt.mp hxlt
-          omega
-        have hshy := ctz_wrap_and_toNat (y - x) hysub0
-        have hy1 := oddPart_toNat (y - x)
-        split
-        · rw [hshy]
-          refine ⟨⟨trivial, hglob', trivial, ⟨c4, c5, _, _, c8, c9, rfl⟩,
-            x, (y - x) >>> (UInt64.ofNat (ctz64 64 (y - x)) % 64),
-            rfl, rfl, hxne, hne', hxodd, ?_, ?_⟩, ?_⟩
-          · rw [hy1]; exact hodd'
-          · rw [hy1]; exact hgcd'.trans hgcd
-          · rw [hy1]; have := hdec; omega
-        · rename_i h0 h; simp only [List.cons.injEq, Value.i32.injEq,
-            show (1 : UInt32) &&& 0 = 0 from rfl] at h; exact (h0 h.1.symm).elim
-        · rename_i h; exact (h 0 vals rfl).elim
-
-set_option maxHeartbeats 4000000 in
-theorem func1_terminates (env : HostEnv Unit) (st1 : Store Unit) (a b : UInt64)
-    (tail : List Value)
-    (hpg : st1.mem.pages = 16)
-    (hg0 : st1.globals.globals[0]? = some (.i32 1048560))
-    (ha : st1.mem.read64 1048560 = a)
-    (hb : st1.mem.read64 1048568 = b) :
-    TerminatesWith env «module» 1 st1 ([.i32 1048568, .i32 1048560] ++ tail)
-      (fun st' vs => st'.globals = st1.globals ∧
-        vs = .i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) :: tail) := by
-  apply TerminatesWith.of_wp_entry_for
-    (f := ⟨[.i32, .i32], [.i32, .i32, .i32, .i32, .i64, .i32, .i64, .i32], func1, [.i64], some 1⟩) rfl
-  unfold func1
-  wp_run
-  rw [hg0]
-  -- After frame setup + the two argument copies the memory is
-  -- `(st1.mem.write64 1048520 a).write64 1048528 b`, the frame pointer is
-  -- `local2 = 1048512`, and the bound checks are discharged by `hpg`.
-  simp [ha, hb, Mem.read64_write64_disjoint, hpg]
-  -- Memory now holds `a` at slot 1048520 and `b` at slot 1048528; frame
-  -- pointer (local 2) is 1048512. Abbreviate the in-frame store.
-  set M0 : Mem := (st1.mem.write64 1048520 a).write64 1048528 b with hM0
-  have hM0a : M0.read64 1048520 = a := by
-    rw [hM0, Mem.read64_write64_disjoint _ _ _ _ (by decide), Mem.read64_write64_same]
-  have hM0b : M0.read64 1048528 = b := by
-    rw [hM0, Mem.read64_write64_same]
-  have hM0pg : M0.pages = 16 := by rw [hM0]; simp [hpg]
-  -- Recognize the OUTER block body as `MIDDLE_block :: meatLoopProg` (defeq),
-  -- keeping the giant meat opaque to `simp` during the zero-checks.
-  show wp «module»
-    (.block 0 0
-      (.block 0 0
-        (.block 0 0
-          [.localGet 2, .load64 8, .constI64 0, .eqI64, .const 1, .and, .br_if 0,
-           .localGet 2, .load64 16, .constI64 0, .eqI64, .const 1, .and, .eqz, .br_if 1]
-         :: .localGet 2 :: .localGet 2 :: .load64 8 :: .localGet 2 :: .load64 16
-            :: .orI64 :: .store64 0 :: .br 1 :: [])
-       :: meatLoopProg)
-     :: .localGet 2 :: .load64 0 :: .ret :: [])
-    _ _ _ env
-  apply wp_block_cons
-  apply wp_block_cons
-  apply wp_block_cons
-  -- INNER body: the two zero-checks.
-  simp only [wp_simp, Locals.get, List.length_cons, List.length_nil,
-    List.getElem?_cons_zero, List.getElem?_cons_succ,
-    Nat.reduceLT, Nat.reduceAdd, Nat.reduceMul, Nat.reduceSub, reduceIte,
-    UInt32.reduceAdd, UInt32.reduceToNat, gt_iff_lt, hM0a, hM0b, hM0pg]
-  -- The result slot read after the recombine-as-OR store.
-  have horRead : (M0.write64 1048512 (a ||| b)).read64 1048512 = a ||| b :=
-    Mem.read64_write64_same _ _ _
-  have horPg : (M0.write64 1048512 (a ||| b)).pages = 16 := by rw [Mem.write64_pages]; exact hM0pg
-  by_cases ha0 : a = 0
-  · -- a = 0: result is `0 ||| b = b = gcd 0 b`.
-    subst ha0
-    simp only [if_true,
-      show (1 : UInt32) &&& 1 = 1 from rfl]
-    simp only [horRead, horPg, Nat.reduceMul]
-    rw [show (0 : UInt64) ||| b = b from by
-          apply UInt64.toNat.inj; rw [UInt64.toNat_or]; simp]
-    refine ⟨trivial, ?_⟩
-    simp [Nat.gcd_zero_left]
-  · by_cases hb0 : b = 0
-    · -- b = 0: result is `a ||| 0 = a = gcd a 0`.
-      subst hb0
-      simp only [ha0, if_false, if_true,
-        show (1 : UInt32) &&& 0 = 0 from rfl, show (1 : UInt32) &&& 1 = 1 from rfl]
-      simp only [horRead, horPg, Nat.reduceMul]
-      rw [show a ||| (0 : UInt64) = a from by
-            apply UInt64.toNat.inj; rw [UInt64.toNat_or]; simp]
-      refine ⟨trivial, ?_⟩
-      simp [Nat.gcd_zero_right]
-    · -- both nonzero: run the Stein meat+loop.
-      simp only [ha0, hb0, if_false, show (1 : UInt32) &&& 0 = 0 from rfl,
-        if_true]
-      apply meatLoop_wp (a := a) (b := b)
-      · exact hM0pg
-      · exact ha0
-      · exact hb0
-      · exact hM0a
-      · exact hM0b
-      · rintro stf sf hfr hfpg hfglob hfl2
-        have hg2 : (if 2 < sf.params.length then sf.params[2]?
-            else if 2 < sf.params.length + sf.locals.length then sf.locals[2 - sf.params.length]?
-            else none) = some (.i32 1048512) := hfl2
-        simp only [hg2, hfpg, List.take, List.nil_append,
-          Nat.reduceMul, List.cons_append]
-        rw [show (1048512 : UInt32) + 0 = 1048512 from rfl, hfr,
-          show UInt32.toNat 1048512 = 1048512 from rfl]
-        refine ⟨hfglob, ?_⟩
-        norm_num
 
 /-! ## `func0`: the wrapper that spills the operands and calls `func1` -/
 
@@ -4073,8 +3806,8 @@ through authoritative physical ownership. -/
 theorem func0_callPrefix_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldOuterA oldOuterB : UInt64)
     (hcontinue :
@@ -4171,8 +3904,8 @@ pointer global, and return the GCD from the top-level invocation. -/
 theorem func0_afterCall_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64)
     (hreturn :
@@ -4215,7 +3948,7 @@ theorem func0_afterCall_smallStep_wp_to_return
 theorem func0_afterCall_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (a b : UInt64) :
     R ∗ globalPointsTo 0 (.i32 1048560) ⊢
     WP (Wasm.SmallStep.Expr.running
@@ -4241,8 +3974,8 @@ theorem func0_afterCall_smallStep_wp
 
 def func0FramePost
     [WasmHeapGS Unit] [WasmGlobalGS Unit]
-    (R : IProp (WasmHeapGF Unit)) (a b : UInt64) (rs : List Value) :
-    IProp (WasmHeapGF Unit) :=
+    (R : IProp WasmHeapGF) (a b : UInt64) (rs : List Value) :
+    IProp WasmHeapGF :=
   iprop(
     ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
     ∃ result x y outerA outerB : UInt64,
@@ -4259,7 +3992,7 @@ def func0FramePost
 postcondition used by callers of `func0`. -/
 theorem func0_exactFrame_entails_post
     [WasmHeapGS Unit] [WasmGlobalGS Unit]
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (a b result x y outerA outerB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32) :
     R ∗ globalPointsTo 0 (.i32 1048576) ∗
@@ -4295,7 +4028,7 @@ under existential ownership in the shared caller postcondition. -/
 theorem func0_afterCall_frame_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (a b returned result x y outerA outerB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (hreturned :
@@ -4371,8 +4104,8 @@ caller. -/
 theorem func0_resumeCaller_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (calls : List Wasm.SmallStep.CallFrame)
     (calleeLocals : Locals)
     (a b returned result x y outerA outerB : UInt64)
@@ -4439,8 +4172,8 @@ final explicit return to an arbitrary outer call stack. -/
 theorem func0_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp (WasmHeapGF Unit)}
-    (R : IProp (WasmHeapGF Unit))
+    {Φ : List Value → IProp WasmHeapGF}
+    (R : IProp WasmHeapGF)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
@@ -4576,7 +4309,7 @@ top-level return. -/
 theorem func0_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32) :
     R ∗ runtimeModuleOwn «module» ∗
@@ -4710,7 +4443,7 @@ def func2CallerFrame (a b : UInt64) : Wasm.SmallStep.CallFrame :=
 theorem func2_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp (WasmHeapGF Unit))
+    (R : IProp WasmHeapGF)
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32) :
     R ∗ runtimeModuleOwn «module» ∗
@@ -4834,7 +4567,7 @@ def func2Config (a b : UInt64) : Wasm.SmallStep.Config Unit :=
 /-! ## Total weakest precondition versions of non-loop theorems -/
 
 theorem twp_func1_spillPrefix_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -4926,7 +4659,7 @@ theorem twp_func1_spillPrefix_smallStep_wp
   iframe
 
 theorem twp_func1_spillPrefix_frame_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (calls : List Wasm.SmallStep.CallFrame)
@@ -4976,7 +4709,7 @@ theorem twp_func1_spillPrefix_frame_smallStep_wp
   · iframe
 
 theorem twp_func1_leftZero_core_smallStep_wp_to_return
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -5091,7 +4824,7 @@ theorem twp_func1_leftZero_core_smallStep_wp_to_return
   iframe
 
 theorem twp_func1_leftZero_core_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (result b : UInt64) :
@@ -5121,7 +4854,7 @@ theorem twp_func1_leftZero_core_smallStep_wp
   · iexact Hresources
 
 theorem twp_func1_leftZero_smallStep_wp_to_return
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -5158,7 +4891,7 @@ theorem twp_func1_leftZero_smallStep_wp_to_return
   · iframe
 
 theorem twp_func1_leftZero_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (result oldX oldY b : UInt64) :
@@ -5188,7 +4921,7 @@ theorem twp_func1_leftZero_smallStep_wp
   · iframe
 
 theorem twp_func1_rightZero_core_smallStep_wp_to_return
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -5318,7 +5051,7 @@ theorem twp_func1_rightZero_core_smallStep_wp_to_return
   iframe
 
 theorem twp_func1_rightZero_core_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (result a : UInt64) (ha : a ≠ 0) :
@@ -5348,7 +5081,7 @@ theorem twp_func1_rightZero_core_smallStep_wp
   · iexact Hresources
 
 theorem twp_func1_rightZero_smallStep_wp_to_return
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -5385,7 +5118,7 @@ theorem twp_func1_rightZero_smallStep_wp_to_return
   · iframe
 
 theorem twp_func1_rightZero_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (result oldX oldY a : UInt64) (ha : a ≠ 0) :
@@ -5415,7 +5148,7 @@ theorem twp_func1_rightZero_smallStep_wp
   · iframe
 
 theorem twp_func1_zero_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (result oldX oldY a b : UInt64) (hz : a = 0 ∨ b = 0) :
@@ -5443,7 +5176,7 @@ theorem twp_func1_zero_smallStep_wp
     · simpa using twp_func1_rightZero_smallStep_wp R result oldX oldY a ha
 
 theorem twp_func1_zero_frame_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (result oldX oldY : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
@@ -5480,7 +5213,7 @@ theorem twp_func1_zero_frame_smallStep_wp
   iframe
 
 theorem twp_func1_sharedShift_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -5578,7 +5311,7 @@ theorem twp_func1_sharedShift_smallStep_wp
   iframe
 
 theorem twp_func1_normalizeX_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -5692,7 +5425,7 @@ theorem twp_func1_normalizeX_smallStep_wp
   iframe
 
 theorem twp_func1_normalizeY_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -5807,7 +5540,7 @@ theorem twp_func1_normalizeY_smallStep_wp
   iframe
 
 theorem twp_func1_normalization_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -5863,7 +5596,7 @@ theorem twp_func1_normalization_smallStep_wp
   · iframe
 
 theorem twp_func1_equalRecombine_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -5943,7 +5676,7 @@ theorem twp_func1_equalRecombine_smallStep_wp
   iframe
 
 theorem twp_func1_equalBlock_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -6032,7 +5765,7 @@ theorem twp_func1_equalBlock_smallStep_wp
   · iframe
 
 theorem twp_func1_nonzeroGuards_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -6109,7 +5842,7 @@ theorem twp_func1_nonzeroGuards_smallStep_wp
   iframe
 
 theorem twp_func1_nonzeroFinish_smallStep_wp_to_return
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -6168,7 +5901,7 @@ theorem twp_func1_nonzeroFinish_smallStep_wp_to_return
   iframe
 
 theorem twp_func1_nonzeroFinish_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (outerBody : Program)
@@ -6203,7 +5936,7 @@ theorem twp_func1_nonzeroFinish_smallStep_wp
   · iexact Hresources
 
 theorem twp_func1_loopNormalizeY_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -6320,7 +6053,7 @@ theorem twp_func1_loopNormalizeY_smallStep_wp
   iframe
 
 theorem twp_func1_loopDecreaseY_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -6424,7 +6157,7 @@ theorem twp_func1_loopDecreaseY_smallStep_wp
   · iframe
 
 theorem twp_func1_loopNormalizeX_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -6541,7 +6274,7 @@ theorem twp_func1_loopNormalizeX_smallStep_wp
   iframe
 
 theorem twp_func1_loopDecreaseX_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -6645,7 +6378,7 @@ theorem twp_func1_loopDecreaseX_smallStep_wp
   · iframe
 
 theorem twp_func1_loopEqualityDispatch_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -6742,7 +6475,7 @@ theorem twp_func1_loopEqualityDispatch_smallStep_wp
     iframe
 
 theorem twp_func1_loopDecreaseDispatch_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -6908,7 +6641,7 @@ theorem twp_func1_loopDecreaseDispatch_smallStep_wp
     · iframe
 
 theorem twp_func1_loopBodyDispatch_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -7027,8 +6760,7 @@ structure SteinLoopState where
   c9 : UInt32
 
 private theorem twp_stein_loop_wf_family_from
-    {α : Type}
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     {ι : Type} (measure : ι → Nat)
@@ -7044,20 +6776,20 @@ private theorem twp_stein_loop_wf_family_from
     (hbelow : belowStack = (locals initial).values.drop paramArity)
     (body_closes : ∀ i,
       (∀ (j : ι), measure j < measure i →
-        I j ⊢ WP (Wasm.SmallStep.loopBodyExpr (α := α) (locals j)
+        I j ⊢ WP (Wasm.SmallStep.loopBodyExpr (α := Unit) (locals j)
             paramArity resultArity arity body code remainder belowStack
             controls calls) @ s; E [{ Φ }]) →
-      I i ⊢ WP (Wasm.SmallStep.loopBodyExpr (α := α) (locals i)
+      I i ⊢ WP (Wasm.SmallStep.loopBodyExpr (α := Unit) (locals i)
             paramArity resultArity arity body code remainder belowStack
             controls calls) @ s; E [{ Φ }]) :
     I initial ⊢
       WP (.running
         ⟨initialLocals, .loop paramArity resultArity body :: code,
-          arity, remainder, controls, calls⟩ : Wasm.SmallStep.Expr α)
+          arity, remainder, controls, calls⟩ : Wasm.SmallStep.Expr Unit)
         @ s; E [{ Φ }] := by
   have closes : ∀ i,
       I i ⊢
-        WP (Wasm.SmallStep.loopBodyExpr (α := α) (locals i)
+        WP (Wasm.SmallStep.loopBodyExpr (α := Unit) (locals i)
           paramArity resultArity arity body code remainder belowStack
           controls calls) @ s; E [{ Φ }] := by
     intro current
@@ -7072,13 +6804,13 @@ private theorem twp_stein_loop_wf_family_from
   simp only [Wasm.SmallStep.loopBodyExpr] at closes
   subst initialLocals
   iintro HI
-  iapply Wasm.SmallStep.twp_loop (α := α)
+  iapply Wasm.SmallStep.twp_loop (α := Unit)
   rw [← hbelow]
   ihave Hbody := closes initial $$ HI
   iexact Hbody
 
 theorem twp_func1_loopEntry_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -7121,7 +6853,7 @@ theorem twp_func1_loopEntry_smallStep_wp
     R ∗ pointsTo_u64 1048520 st.x ∗ pointsTo_u64 1048528 st.y ∗
     pointsTo_u64 1048512 oldResult ∗
     pointsTo_u32 1048540 st.oldShiftX ∗ pointsTo_u32 1048544 st.oldShiftY)
-  iapply twp_stein_loop_wf_family_from (α := Unit)
+  iapply twp_stein_loop_wf_family_from
     (measure := fun st : SteinLoopState => st.x.toNat + st.y.toNat)
     (locals := fun st =>
       ⟨[.i32 1048560, .i32 1048568],
@@ -7244,7 +6976,7 @@ theorem twp_func1_loopEntry_smallStep_wp
     iframe
 
 theorem twp_func1_nonzeroCore_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -7302,7 +7034,7 @@ theorem twp_func1_nonzeroCore_smallStep_wp
   · iframe
 
 theorem twp_func1_nonzeroOuterCore_smallStep_wp_to_return
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -7353,7 +7085,7 @@ theorem twp_func1_nonzeroOuterCore_smallStep_wp_to_return
   · iexact Hresources
 
 theorem twp_func1_nonzeroOuterCore_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (outerBody : Program)
@@ -7433,7 +7165,7 @@ theorem twp_func1_nonzeroOuterCore_smallStep_wp
   · iexact Hresources
 
 theorem twp_func1_nonzero_smallStep_wp_to_return
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -7514,7 +7246,7 @@ theorem twp_func1_nonzero_smallStep_wp_to_return
   · iframe
 
 theorem twp_func1_nonzero_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (result oldX oldY a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
@@ -7587,7 +7319,7 @@ theorem twp_func1_nonzero_smallStep_wp
   · iframe
 
 theorem twp_func1_nonzero_frame_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (result oldX oldY : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
@@ -7631,7 +7363,7 @@ theorem twp_func1_nonzero_frame_smallStep_wp
   · iframe
 
 theorem twp_func0_callPrefix_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -7709,7 +7441,7 @@ theorem twp_func0_callPrefix_smallStep_wp
   iframe
 
 theorem twp_func0_afterCall_smallStep_wp_to_return
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -7746,7 +7478,7 @@ theorem twp_func0_afterCall_smallStep_wp_to_return
   iframe
 
 theorem twp_func0_afterCall_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (a b : UInt64) :
@@ -7772,7 +7504,7 @@ theorem twp_func0_afterCall_smallStep_wp
   · iexact Hresources
 
 theorem twp_func0_afterCall_frame_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (a b returned result x y outerA outerB : UInt64)
@@ -7845,7 +7577,7 @@ theorem twp_func0_afterCall_frame_smallStep_wp
   iframe
 
 theorem twp_func0_resumeCaller_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -7910,7 +7642,7 @@ theorem twp_func0_resumeCaller_smallStep_wp
     iframe
 
 theorem twp_func0_smallStep_wp_to_return
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp WasmHeapGF}
     (R : IProp WasmHeapGF)
@@ -8043,7 +7775,7 @@ theorem twp_func0_smallStep_wp_to_return
   · iframe
 
 theorem twp_func0_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
@@ -8167,7 +7899,7 @@ theorem twp_func0_smallStep_wp
   · iframe
 
 theorem twp_func2_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (R : IProp WasmHeapGF)
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
@@ -8351,35 +8083,6 @@ theorem func2_smallStep_partiallyMeets (a b : UInt64) :
       trivial
     · iframe
 
-/- `func0` allocates a 16-byte frame at `global0 − 16 = 1048560`, spills
-`a` to `[1048560]` and `b` to `[1048568]`, calls `func1` with those two
-pointers, restores the stack pointer and returns `gcd a b`. -/
-set_option maxHeartbeats 1000000 in
-theorem func0_terminates (env : HostEnv Unit) (a b : UInt64) :
-    TerminatesWith env «module» 0 «module».initialStore [.i64 b, .i64 a]
-      (fun _ rs => rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]) := by
-  have hg : («module».initialStore : Store Unit).globals.globals[0]? = some (.i32 1048576) := by rfl
-  have hp : («module».initialStore : Store Unit).mem.pages = 16 := by rfl
-  apply TerminatesWith.of_wp_entry_for
-    (f := ⟨[.i64, .i64], [.i32, .i64], func0, [.i64], some 0⟩) rfl
-  unfold func0
-  wp_run
-  rw [hg]
-  simp [hp]
-  -- At the call point: memory holds `a` at 1048560, `b` at 1048568, global0
-  -- is 1048560.  Discharge `func1` via its `TerminatesWith`.
-  apply wp_call_tw
-    (func1_terminates env _ a b []
-      (by rw [Mem.write64_pages, Mem.write64_pages]; exact hp)
-      (by rfl)
-      (by rw [Mem.read64_write64_disjoint _ _ _ _ (by decide), Mem.read64_write64_same])
-      (by rw [Mem.read64_write64_same]))
-  -- The call returns `gcd a b`; restore the stack pointer and `ret`.
-  rintro stA vsA ⟨hAglob, rfl⟩
-  wp_run
-  -- `globalSet 0` is in-bounds because `func1` preserved the globals.
-  rw [hAglob]
-  rfl
 
 /-! ## Public small-step specification -/
 
@@ -8399,26 +8102,5 @@ def GcdU64Spec : Prop :=
 theorem gcd_u64_correct : GcdU64Spec :=
   func2_terminatesWith
 
-/-! ## Legacy total-correctness compatibility -/
-
-/-- Fuel-abstracted big-step statement retained for the old equivalence API
-until its opt0 termination proof is ported to finite `SmallStep.Steps`. -/
-def LegacyGcdU64Spec : Prop :=
-  ∀ (env : HostEnv Unit) (initial : Store Unit) (a b : UInt64),
-    initial = «module».initialStore →
-    TerminatesWith env «module» 2 initial [.i64 b, .i64 a]
-      (fun _ rs => rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))])
-
-theorem gcd_u64_legacy_correct : LegacyGcdU64Spec := by
-  intro env initial a b hinit
-  subst hinit
-  -- `func2` is the exported wrapper: pushes both args and calls `func0`.
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.i64, .i64], [], func2, [.i64], some 0⟩) rfl
-  unfold func2
-  wp_run
-  apply wp_call_tw (func0_terminates env a b)
-  rintro st' vs rfl
-  wp_run
-  rfl
 
 end Project.NumInteger.Spec
