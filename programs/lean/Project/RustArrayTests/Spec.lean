@@ -92,52 +92,53 @@ def EmptyPlusThreeSpec : Prop := ∀ (ptr len : UInt32),
 @[proves Project.RustArrayTests.Spec.EmptyPlusThreeSpec]
 theorem empty_plus_three_correct : EmptyPlusThreeSpec := by
   intro ptr len
-  apply SmallStep.wasm_smallStep_runtime_partiallyMeets (α := Unit)
-  intro gs
-  simp only [bodyConfig, func4, SmallStep.RuntimeEnv.currentModule_mk1]
-  iintro Hruntime
-  iapply SmallStep.wp_localGet rfl
-  inext
-  iapply SmallStep.wp_localGet rfl
-  inext
-  iapply SmallStep.wp_call «module» 3 func3Def
-    (by simp [«module»]) (by simp [«module»]) $$ Hruntime
-  inext
-  iintro %_ri Hruntime
-  simp [func3Def, Function.toLocals, Function.numParams, func3]
-  iapply SmallStep.wp_localGet rfl
-  inext
-  iapply SmallStep.wp_const
-  inext
-  iapply SmallStep.wp_eq (result := isEmptyValue len) (by rfl)
-  inext
-  iapply SmallStep.wp_const
-  inext
-  iapply SmallStep.wp_and
-  inext
-  rw [show isEmptyValue len &&& 1 = isEmptyValue len by
-    unfold isEmptyValue
-    by_cases h : len = 0 <;> simp [h]]
-  iapply SmallStep.wp_returnFromCallExplicit
-  inext
-  simp only [List.take, List.singleton_append]
-  iapply SmallStep.wp_const
-  inext
-  iapply SmallStep.wp_and
-  inext
-  rw [show isEmptyValue len &&& 1 = isEmptyValue len by
-    unfold isEmptyValue
-    by_cases h : len = 0 <;> simp [h]]
-  iapply SmallStep.wp_const
-  inext
-  iapply SmallStep.wp_add
-  inext
-  rw [UInt32.add_comm 3 (isEmptyValue len)]
-  iapply SmallStep.wp_returnFromFunction
-  inext
-  iapply wp_value'
-  ipureintro
-  rfl
+  apply SmallStep.wasm_smallStep_runtime_instance_partiallyMeets (α := Unit)
+  · simp [bodyConfig]
+  · intro gs
+    simp only [bodyConfig, func4, SmallStep.RuntimeEnv.currentModule_mk1]
+    iintro ⟨Hruntime, -⟩
+    iapply SmallStep.wp_localGet rfl
+    inext
+    iapply SmallStep.wp_localGet rfl
+    inext
+    iapply SmallStep.wp_call «module» 3 func3Def
+      (by simp [«module»]) (by simp [«module»]) $$ Hruntime
+    inext
+    iintro Hruntime
+    simp [func3Def, Function.toLocals, Function.numParams, func3]
+    iapply SmallStep.wp_localGet rfl
+    inext
+    iapply SmallStep.wp_const
+    inext
+    iapply SmallStep.wp_eq (result := isEmptyValue len) (by rfl)
+    inext
+    iapply SmallStep.wp_const
+    inext
+    iapply SmallStep.wp_and
+    inext
+    rw [show isEmptyValue len &&& 1 = isEmptyValue len by
+      unfold isEmptyValue
+      by_cases h : len = 0 <;> simp [h]]
+    iapply SmallStep.wp_returnFromCallExplicit $$ Hruntime
+    inext
+    simp only [List.take, List.singleton_append]
+    iapply SmallStep.wp_const
+    inext
+    iapply SmallStep.wp_and
+    inext
+    rw [show isEmptyValue len &&& 1 = isEmptyValue len by
+      unfold isEmptyValue
+      by_cases h : len = 0 <;> simp [h]]
+    iapply SmallStep.wp_const
+    inext
+    iapply SmallStep.wp_add
+    inext
+    rw [UInt32.add_comm 3 (isEmptyValue len)]
+    iapply SmallStep.wp_returnFromFunction
+    inext
+    iapply wp_value'
+    ipureintro
+    rfl
 
 @[spec_of "rust-internal" "rust_array_tests::empty_xor_flag"]
 def EmptyXorFlagSpec : Prop := ∀ (ptr len flag : UInt32),
@@ -148,51 +149,52 @@ def EmptyXorFlagSpec : Prop := ∀ (ptr len flag : UInt32),
 @[proves Project.RustArrayTests.Spec.EmptyXorFlagSpec]
 theorem empty_xor_flag_correct : EmptyXorFlagSpec := by
   intro ptr len flag
-  apply SmallStep.wasm_smallStep_runtime_partiallyMeets (α := Unit)
-  intro gs
-  simp only [bodyConfig, func2, SmallStep.RuntimeEnv.currentModule_mk1]
-  iintro Hruntime
-  iapply SmallStep.wp_localGet rfl
-  inext
-  iapply SmallStep.wp_localGet rfl
-  inext
-  iapply SmallStep.wp_call «module» 3 func3Def
-    (by simp [«module»]) (by simp [«module»]) $$ Hruntime
-  inext
-  iintro %_ri Hruntime
-  simp [func3Def, Function.toLocals, Function.numParams, func3]
-  iapply SmallStep.wp_localGet rfl
-  inext
-  iapply SmallStep.wp_const
-  inext
-  iapply SmallStep.wp_eq (result := isEmptyValue len) (by rfl)
-  inext
-  iapply SmallStep.wp_const
-  inext
-  iapply SmallStep.wp_and
-  inext
-  rw [show isEmptyValue len &&& 1 = isEmptyValue len by
-    unfold isEmptyValue
-    by_cases h : len = 0 <;> simp [h]]
-  iapply SmallStep.wp_returnFromCallExplicit
-  inext
-  simp only [List.take, List.singleton_append]
-  iapply SmallStep.wp_const
-  inext
-  iapply SmallStep.wp_and
-  inext
-  rw [show isEmptyValue len &&& 1 = isEmptyValue len by
-    unfold isEmptyValue
-    by_cases h : len = 0 <;> simp [h]]
-  iapply SmallStep.wp_localGet rfl
-  inext
-  iapply SmallStep.wp_xor
-  inext
-  iapply SmallStep.wp_returnFromFunction
-  inext
-  iapply wp_value'
-  ipureintro
-  rfl
+  apply SmallStep.wasm_smallStep_runtime_instance_partiallyMeets (α := Unit)
+  · simp [bodyConfig]
+  · intro gs
+    simp only [bodyConfig, func2, SmallStep.RuntimeEnv.currentModule_mk1]
+    iintro ⟨Hruntime, -⟩
+    iapply SmallStep.wp_localGet rfl
+    inext
+    iapply SmallStep.wp_localGet rfl
+    inext
+    iapply SmallStep.wp_call «module» 3 func3Def
+      (by simp [«module»]) (by simp [«module»]) $$ Hruntime
+    inext
+    iintro Hruntime
+    simp [func3Def, Function.toLocals, Function.numParams, func3]
+    iapply SmallStep.wp_localGet rfl
+    inext
+    iapply SmallStep.wp_const
+    inext
+    iapply SmallStep.wp_eq (result := isEmptyValue len) (by rfl)
+    inext
+    iapply SmallStep.wp_const
+    inext
+    iapply SmallStep.wp_and
+    inext
+    rw [show isEmptyValue len &&& 1 = isEmptyValue len by
+      unfold isEmptyValue
+      by_cases h : len = 0 <;> simp [h]]
+    iapply SmallStep.wp_returnFromCallExplicit $$ Hruntime
+    inext
+    simp only [List.take, List.singleton_append]
+    iapply SmallStep.wp_const
+    inext
+    iapply SmallStep.wp_and
+    inext
+    rw [show isEmptyValue len &&& 1 = isEmptyValue len by
+      unfold isEmptyValue
+      by_cases h : len = 0 <;> simp [h]]
+    iapply SmallStep.wp_localGet rfl
+    inext
+    iapply SmallStep.wp_xor
+    inext
+    iapply SmallStep.wp_returnFromFunction
+    inext
+    iapply wp_value'
+    ipureintro
+    rfl
 
 /-! ## Exported ABI wrappers (fat pointer in memory)
 
@@ -216,11 +218,12 @@ def LenPlusOneExportSpec : Prop :=
 @[proves Project.RustArrayTests.Spec.LenPlusOneExportSpec]
 theorem len_plus_one_export_correct : LenPlusOneExportSpec := by
   intro env st p dataPtr len hfat
-  apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
+  apply SmallStep.wasm_smallStep_heap_runtime_instance_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 (len + 1)])
   · exact fatPtrHeap_agrees _ (by simp [storeResolve, exportConfig]) hfat
   · exact fatPtrHeap_inBounds _ (by simp [storeResolve, exportConfig]) hfat
+  · simp [exportConfig]
   · intro gs
     simp only [exportConfig, SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hruntime⟩
@@ -239,7 +242,7 @@ theorem len_plus_one_export_correct : LenPlusOneExportSpec := by
     iapply SmallStep.wp_call «module» 1 func1Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro %_ri Hruntime
+    iintro Hruntime
     simp [func1Def, Function.toLocals, Function.numParams, func1]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -248,13 +251,12 @@ theorem len_plus_one_export_correct : LenPlusOneExportSpec := by
     iapply SmallStep.wp_add
     inext
     rw [UInt32.add_comm 1 len]
-    iapply SmallStep.wp_returnFromCallExplicit
+    iapply SmallStep.wp_returnFromCallExplicit $$ Hruntime
     inext
     simp only [List.take, List.singleton_append]
     iapply SmallStep.wp_returnFromFunction
     inext
     iapply wp_value'
-    iclear Hruntime
     ipureintro
     rfl
 
@@ -269,11 +271,12 @@ def LenPlusArgExportSpec : Prop :=
 @[proves Project.RustArrayTests.Spec.LenPlusArgExportSpec]
 theorem len_plus_arg_export_correct : LenPlusArgExportSpec := by
   intro env st p dataPtr len n hfat
-  apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
+  apply SmallStep.wasm_smallStep_heap_runtime_instance_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 (len + n)])
   · exact fatPtrHeap_agrees _ (by simp [storeResolve, exportConfig]) hfat
   · exact fatPtrHeap_inBounds _ (by simp [storeResolve, exportConfig]) hfat
+  · simp [exportConfig]
   · intro gs
     simp only [exportConfig, SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hruntime⟩
@@ -294,7 +297,7 @@ theorem len_plus_arg_export_correct : LenPlusArgExportSpec := by
     iapply SmallStep.wp_call «module» 0 func0Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro %_ri Hruntime
+    iintro Hruntime
     simp [func0Def, Function.toLocals, Function.numParams, func0]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -303,13 +306,12 @@ theorem len_plus_arg_export_correct : LenPlusArgExportSpec := by
     iapply SmallStep.wp_add
     inext
     rw [UInt32.add_comm n len]
-    iapply SmallStep.wp_returnFromCallExplicit
+    iapply SmallStep.wp_returnFromCallExplicit $$ Hruntime
     inext
     simp only [List.take, List.singleton_append]
     iapply SmallStep.wp_returnFromFunction
     inext
     iapply wp_value'
-    iclear Hruntime
     ipureintro
     rfl
 
@@ -324,11 +326,12 @@ def EmptyPlusThreeExportSpec : Prop :=
 @[proves Project.RustArrayTests.Spec.EmptyPlusThreeExportSpec]
 theorem empty_plus_three_export_correct : EmptyPlusThreeExportSpec := by
   intro env st p dataPtr len hfat
-  apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
+  apply SmallStep.wasm_smallStep_heap_runtime_instance_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 (isEmptyValue len + 3)])
   · exact fatPtrHeap_agrees _ (by simp [storeResolve, exportConfig]) hfat
   · exact fatPtrHeap_inBounds _ (by simp [storeResolve, exportConfig]) hfat
+  · simp [exportConfig]
   · intro gs
     simp only [exportConfig, SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hruntime⟩
@@ -347,7 +350,7 @@ theorem empty_plus_three_export_correct : EmptyPlusThreeExportSpec := by
     iapply SmallStep.wp_call «module» 4 func4Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro %_ri Hruntime
+    iintro Hruntime
     simp [func4Def, Function.toLocals, Function.numParams, func4]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -356,7 +359,7 @@ theorem empty_plus_three_export_correct : EmptyPlusThreeExportSpec := by
     iapply SmallStep.wp_call «module» 3 func3Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro %_ri Hruntime
+    iintro Hruntime
     simp [func3Def, Function.toLocals, Function.numParams, func3]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -371,8 +374,9 @@ theorem empty_plus_three_export_correct : EmptyPlusThreeExportSpec := by
     rw [show isEmptyValue len &&& 1 = isEmptyValue len by
       unfold isEmptyValue
       by_cases h : len = 0 <;> simp [h]]
-    iapply SmallStep.wp_returnFromCallExplicit
+    iapply SmallStep.wp_returnFromCallExplicit' $$ Hruntime
     inext
+    iintro Hruntime
     simp only [List.take, List.singleton_append]
     iapply SmallStep.wp_const
     inext
@@ -386,13 +390,12 @@ theorem empty_plus_three_export_correct : EmptyPlusThreeExportSpec := by
     iapply SmallStep.wp_add
     inext
     rw [UInt32.add_comm 3 (isEmptyValue len)]
-    iapply SmallStep.wp_returnFromCallExplicit
+    iapply SmallStep.wp_returnFromCallExplicit $$ Hruntime
     inext
     simp only [List.take, List.singleton_append]
     iapply SmallStep.wp_returnFromFunction
     inext
     iapply wp_value'
-    iclear Hruntime
     ipureintro
     rfl
 
@@ -407,11 +410,12 @@ def EmptyXorFlagExportSpec : Prop :=
 @[proves Project.RustArrayTests.Spec.EmptyXorFlagExportSpec]
 theorem empty_xor_flag_export_correct : EmptyXorFlagExportSpec := by
   intro env st p dataPtr len flag hfat
-  apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
+  apply SmallStep.wasm_smallStep_heap_runtime_instance_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 (isEmptyValue len ^^^ flag)])
   · exact fatPtrHeap_agrees _ (by simp [storeResolve, exportConfig]) hfat
   · exact fatPtrHeap_inBounds _ (by simp [storeResolve, exportConfig]) hfat
+  · simp [exportConfig]
   · intro gs
     simp only [exportConfig, SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hruntime⟩
@@ -432,7 +436,7 @@ theorem empty_xor_flag_export_correct : EmptyXorFlagExportSpec := by
     iapply SmallStep.wp_call «module» 2 func2Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro %_ri Hruntime
+    iintro Hruntime
     simp [func2Def, Function.toLocals, Function.numParams, func2]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -441,7 +445,7 @@ theorem empty_xor_flag_export_correct : EmptyXorFlagExportSpec := by
     iapply SmallStep.wp_call «module» 3 func3Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro %_ri Hruntime
+    iintro Hruntime
     simp [func3Def, Function.toLocals, Function.numParams, func3]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -456,8 +460,9 @@ theorem empty_xor_flag_export_correct : EmptyXorFlagExportSpec := by
     rw [show isEmptyValue len &&& 1 = isEmptyValue len by
       unfold isEmptyValue
       by_cases h : len = 0 <;> simp [h]]
-    iapply SmallStep.wp_returnFromCallExplicit
+    iapply SmallStep.wp_returnFromCallExplicit' $$ Hruntime
     inext
+    iintro Hruntime
     simp only [List.take, List.singleton_append]
     iapply SmallStep.wp_const
     inext
@@ -470,13 +475,12 @@ theorem empty_xor_flag_export_correct : EmptyXorFlagExportSpec := by
     inext
     iapply SmallStep.wp_xor
     inext
-    iapply SmallStep.wp_returnFromCallExplicit
+    iapply SmallStep.wp_returnFromCallExplicit $$ Hruntime
     inext
     simp only [List.take, List.singleton_append]
     iapply SmallStep.wp_returnFromFunction
     inext
     iapply wp_value'
-    iclear Hruntime
     ipureintro
     rfl
 

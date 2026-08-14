@@ -25,6 +25,10 @@ def xInst : ModuleInstance Unit where
   host            := { funcs := [] }
   resolvedImports := #[.wasm ⟨1⟩ 0]
 
+@[simp] private theorem xInst_currentModule :
+    ({ instances := #[xInst, xInst], entry := ⟨0⟩ } : RuntimeEnv Unit).currentModule = xInst.module := by
+  simp [RuntimeEnv.currentModule, RuntimeEnv.currentInstance]
+
 def twoModuleConfig : Config Unit :=
   { expr := .running
       { locals          := { params := [], locals := [], values := [] }
@@ -48,28 +52,29 @@ resumes the caller. -/
 theorem twoModule_partiallyMeets :
     PartiallyMeets twoModuleConfig (fun values _store => values = []) := by
   apply wasm_smallStep_runtime_instance_partiallyMeets (α := Unit)
-  intro gs
-  simp only [twoModuleConfig]
-  iintro ⟨_HruntimeMod, HinstanceOwn, HruntimeInstances⟩
-  iclear _HruntimeMod
-  iapply wp_callCrossInstance ⟨0⟩ xInst ⟨1⟩ xInst #[xInst, xInst] 0 xImp 0 xFn
-      rfl rfl rfl (by decide) rfl (Nat.le.refl) rfl rfl
-      $$ [HinstanceOwn] HruntimeInstances
-  · iexact HinstanceOwn
-  · inext
-    iintro ⟨HinstanceOwn', HruntimeInstances'⟩
-    simp only [xFn, xImp, Function.toLocals, List.map_nil, List.length_nil,
-               List.take_zero, List.reverse_nil, List.drop_zero]
-    iapply wp_returnFromCallCrossInstance ⟨1⟩ xInst xInst #[xInst, xInst]
-        (by decide) rfl rfl rfl
-        $$ [HinstanceOwn'] HruntimeInstances'
-    · iexact HinstanceOwn'
+  · decide
+  · intro gs
+    simp only [twoModuleConfig, xInst_currentModule]
+    iintro ⟨Hruntime, HruntimeInstances⟩
+    iapply wp_callCrossInstance ⟨0⟩ xInst ⟨1⟩ xInst #[xInst, xInst] 0 xImp 0 xFn
+        rfl rfl rfl (by decide) rfl (Nat.le.refl) rfl rfl
+        $$ [Hruntime] HruntimeInstances
+    · inext; iexact Hruntime
     · inext
-      simp only [List.take_zero, List.nil_append, List.length_nil, List.drop_zero]
-      iapply wp_finish
-      inext
-      iapply wp_value'
-      ipureintro
-      rfl
+      iintro ⟨HinstanceOwn', HruntimeInstances'⟩
+      simp only [xFn, xImp, Function.toLocals, List.map_nil, List.length_nil,
+                 List.take_zero, List.reverse_nil, List.drop_zero]
+      iapply wp_returnFromCallCrossInstance ⟨1⟩ xInst xInst #[xInst, xInst]
+          (by decide) rfl rfl rfl
+          $$ [HinstanceOwn'] HruntimeInstances'
+      · inext; iexact HinstanceOwn'
+      · inext
+        iintro _HinstanceCaller
+        simp only [List.take_zero, List.nil_append, List.length_nil, List.drop_zero]
+        iapply wp_finish
+        inext
+        iapply wp_value'
+        ipureintro
+        rfl
 
 end Wasm.SmallStep

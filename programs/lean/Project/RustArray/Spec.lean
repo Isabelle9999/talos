@@ -109,11 +109,12 @@ def LenExportSpec : Prop :=
 @[proves Project.RustArray.Spec.LenExportSpec]
 theorem len_export_correct : LenExportSpec := by
   intro env st p dataPtr len hfat
-  apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
+  apply SmallStep.wasm_smallStep_heap_runtime_instance_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 len])
   · exact fatPtrHeap_agrees _ (by simp [storeResolve, exportConfig]) hfat
   · exact fatPtrHeap_inBounds _ (by simp [storeResolve, exportConfig]) hfat
+  · simp [exportConfig]
   · intro gs
     simp only [exportConfig, SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hruntime⟩
@@ -145,17 +146,17 @@ theorem len_export_correct : LenExportSpec := by
     iapply SmallStep.wp_call «module» 0 func0Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro %_ri Hruntime
+    iintro Hruntime
     simp [func0Def, Function.toLocals, Function.numParams, func0]
     iapply SmallStep.wp_localGet rfl
     inext
-    iapply SmallStep.wp_returnFromCallExplicit
+    iapply SmallStep.wp_returnFromCallExplicit $$ Hruntime
     inext
     simp only [List.take, List.singleton_append]
     iapply SmallStep.wp_returnFromFunction
     inext
     iapply wp_value'
-    iclear Hdata Hlen Hruntime
+    iclear Hdata Hlen
     ipureintro
     rfl
 
@@ -169,11 +170,12 @@ def IsEmptyExportSpec : Prop :=
 @[proves Project.RustArray.Spec.IsEmptyExportSpec]
 theorem is_empty_export_correct : IsEmptyExportSpec := by
   intro env st p dataPtr len hfat
-  apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
+  apply SmallStep.wasm_smallStep_heap_runtime_instance_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 (isEmptyValue len)])
   · exact fatPtrHeap_agrees _ (by simp [storeResolve, exportConfig]) hfat
   · exact fatPtrHeap_inBounds _ (by simp [storeResolve, exportConfig]) hfat
+  · simp [exportConfig]
   · intro gs
     simp only [exportConfig, SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hruntime⟩
@@ -205,7 +207,7 @@ theorem is_empty_export_correct : IsEmptyExportSpec := by
     iapply SmallStep.wp_call «module» 1 func1Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro %_ri Hruntime
+    iintro Hruntime
     simp [func1Def, Function.toLocals, Function.numParams, func1]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -214,7 +216,7 @@ theorem is_empty_export_correct : IsEmptyExportSpec := by
     iapply SmallStep.wp_call «module» 2 func2Def
       (by simp [«module»]) (by simp [«module»]) $$ Hruntime
     inext
-    iintro %_ri Hruntime
+    iintro Hruntime
     simp [func2Def, Function.toLocals, Function.numParams, func2]
     iapply SmallStep.wp_localGet rfl
     inext
@@ -229,8 +231,9 @@ theorem is_empty_export_correct : IsEmptyExportSpec := by
     rw [show isEmptyValue len &&& 1 = isEmptyValue len by
       unfold isEmptyValue
       by_cases h : len = 0 <;> simp [h]]
-    iapply SmallStep.wp_returnFromCallExplicit
+    iapply SmallStep.wp_returnFromCallExplicit' $$ Hruntime
     inext
+    iintro Hruntime
     simp only [List.take, List.singleton_append]
     iapply SmallStep.wp_const
     inext
@@ -239,7 +242,7 @@ theorem is_empty_export_correct : IsEmptyExportSpec := by
     rw [show isEmptyValue len &&& 1 = isEmptyValue len by
       unfold isEmptyValue
       by_cases h : len = 0 <;> simp [h]]
-    iapply SmallStep.wp_returnFromCallExplicit
+    iapply SmallStep.wp_returnFromCallExplicit $$ Hruntime
     inext
     simp only [List.take, List.singleton_append]
     iapply SmallStep.wp_const
@@ -252,7 +255,7 @@ theorem is_empty_export_correct : IsEmptyExportSpec := by
     iapply SmallStep.wp_returnFromFunction
     inext
     iapply wp_value'
-    iclear Hdata Hlen Hruntime
+    iclear Hdata Hlen
     ipureintro
     rfl
 

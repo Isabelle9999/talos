@@ -265,6 +265,7 @@ theorem opt3_func0_distinct_store_partiallyMeets
   · exact hagree
   · exact hinBounds
   · exact hglobals
+  · simp only [opt3ConfigFromStore]; decide
   · intro gs
     iintro ⟨Hheap, Hglobals, Hruntime, _Henv⟩
     ihave Hwords := hresources $$ Hheap

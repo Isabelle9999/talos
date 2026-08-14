@@ -572,6 +572,7 @@ theorem func0_smallStep (x : UInt32) :
   · simpa [func0Config] using func0Heap_agrees
   · simpa [func0Config] using func0Heap_inBounds
   · simpa [func0Config] using func0Globals_agree
+  · simp only [func0Config]; decide
   · intro gs
     have hreturn : ∀ word : UInt32,
         word = i32TruncSatF32S x →
@@ -657,6 +658,7 @@ theorem check_smallStep (x : UInt32) :
   · simpa [checkConfig, func0Config] using func0Heap_agrees
   · simpa [checkConfig, func0Config] using func0Heap_inBounds
   · simpa [checkConfig, func0Config] using func0Globals_agree
+  · simp only [checkConfig]; decide
   · intro gs
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hword := func0Heap_pointsTo $$ Hbytes
@@ -672,11 +674,12 @@ theorem check_smallStep (x : UInt32) :
     iintro Hruntime
     simp [func0Def, Function.toLocals, Function.numParams, ValueType.zero]
     iapply func0_body_to_ret_smallStep_wp
-      (runtimeModuleOwn «module») x _
+      (runtimeModuleOwn ⟨0⟩ «module») x _
       (fun word heq => by
         iintro ⟨Hruntime, Hglobal, Hword⟩
-        iapply wp_returnFromCallExplicit
+        iapply wp_returnFromCallExplicit' $$ Hruntime
         inext
+        iintro Hruntime
         iapply wp_localGet rfl
         inext
         iapply wp_call «module» 1 func1Def
@@ -686,8 +689,9 @@ theorem check_smallStep (x : UInt32) :
         simp [func1Def, Function.toLocals, Function.numParams]
         iapply func1_body_smallStep_wp x _
         inext
-        iapply wp_returnFromCallExplicit
+        iapply wp_returnFromCallExplicit' $$ Hruntime
         inext
+        iintro Hruntime
         simp only [List.take, List.singleton_append]
         rw [heq]
         iapply wp_ne (result := 0) (by simp)

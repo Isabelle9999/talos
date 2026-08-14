@@ -265,6 +265,7 @@ abbrev WasmGlobalMap := fun V => ExtTreeMap GlobalKey V compare
 abbrev WasmDataSegmentMap := fun V => ExtTreeMap DataSegmentKey V compare
 abbrev WasmTableMap := fun V => ExtTreeMap TableKey V compare
 abbrev WasmElementSegmentMap := fun V => ExtTreeMap ElementSegmentKey V compare
+abbrev WasmRuntimeModuleMap := fun V => ExtTreeMap Nat V compare
 abbrev WasmHeapGF (α : Type 0) : BundledGFunctors
   | 0 => ⟨InvMapF, by infer_instance⟩
   | 1 => ⟨constOF (DisjointLeibnizSet CoPset), by infer_instance⟩
@@ -275,7 +276,8 @@ abbrev WasmHeapGF (α : Type 0) : BundledGFunctors
   | 6 => ⟨constOF MetaUR, by infer_instance⟩
   | 7 => ⟨constOF (HeapView GlobalKey (Agree (DiscreteO Value)) WasmGlobalMap),
       by infer_instance⟩
-  | 8 => ⟨constOF (Agree (DiscreteO Module)), by infer_instance⟩
+  | 8 => ⟨constOF (HeapView Nat (Agree (DiscreteO Module)) WasmRuntimeModuleMap),
+      by infer_instance⟩
   | 9 => ⟨constOF
       (HeapView DataSegmentKey (Agree (DiscreteO (Option (List UInt8))))
         WasmDataSegmentMap), by infer_instance⟩
@@ -338,12 +340,11 @@ class WasmElementSegmentGS (α : outParam Type) extends
 
 attribute [instance] WasmElementSegmentGS.toGhostMapG
 
-class WasmRuntimeModuleGS (α : outParam Type) where
-  runtimeElem :
-    ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO Module)))
+class WasmRuntimeModuleGS (α : outParam Type) extends
+    GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap where
   runtimeName : GName
 
-attribute [reducible, instance] WasmRuntimeModuleGS.runtimeElem
+attribute [instance] WasmRuntimeModuleGS.toGhostMapG
 
 class WasmRuntimeInstancesGS (α : outParam Type) where
   runtimeInstancesElem :
@@ -525,32 +526,26 @@ theorem elementSegmentPointsTo_update {α : Type} [gs : WasmElementSegmentGS α]
   unfold elementSegmentPointsTo
   iapply ghost_map_update
 
-/-- Persistent knowledge of the immutable instantiated module. Agreement with
-the copy held by `StateInterp` lets call rules justify function-table lookups
-against the actual machine runtime. -/
-def runtimeModuleOwn {α : Type} [gs : WasmRuntimeModuleGS α] (m : Module) :
-    IProp (WasmHeapGF.{0} α) :=
-  iOwn (E := gs.runtimeElem) gs.runtimeName (toAgree ⟨m⟩)
+-- raw ghost_map_elem for a module instance; used internally in stateInterp bigOpL
+def runtimeModuleElem {α : Type} [gs : WasmRuntimeModuleGS α]
+    (id : Nat) (m : Module) : IProp (WasmHeapGF.{0} α) :=
+  ghost_map_elem gs.runtimeName DFrac.discard id m
 
-instance {α : Type} [WasmRuntimeModuleGS α] (m : Module) :
-    BI.Persistent (runtimeModuleOwn m) := by
-  unfold runtimeModuleOwn
-  infer_instance
+instance {α : Type} [WasmRuntimeModuleGS α] (id : Nat) (m : Module) :
+    BI.Persistent (runtimeModuleElem id m) := by
+  unfold runtimeModuleElem; infer_instance
 
-instance {α : Type} [WasmRuntimeModuleGS α] (m : Module) :
-    BI.Timeless (runtimeModuleOwn m) := by
-  unfold runtimeModuleOwn
-  infer_instance
+instance {α : Type} [WasmRuntimeModuleGS α] (id : Nat) (m : Module) :
+    BI.Timeless (runtimeModuleElem id m) := by
+  unfold runtimeModuleElem; infer_instance
 
-theorem runtimeModuleOwn_agree {α : Type} [gs : WasmRuntimeModuleGS α]
-    (actual expected : Module) :
-    runtimeModuleOwn actual ∗ runtimeModuleOwn expected ⊢
-      iprop(⌜actual = expected⌝) := by
-  unfold runtimeModuleOwn
-  iintro ⟨Hactual, Hexpected⟩
-  icombine Hactual Hexpected gives %Hvalid
-  ipureintro
-  exact congrArg DiscreteO.car (toAgree_op_valid_iff_eq.mp Hvalid)
+theorem runtimeModuleElem_lookup {α : Type} [gs : WasmRuntimeModuleGS α]
+    (σ : WasmRuntimeModuleMap Module) (id : Nat) (m : Module) :
+    ghost_map_auth gs.runtimeName (DFrac.own 1) σ -∗
+      runtimeModuleElem id m -∗
+      iprop(⌜get? σ id = some m⌝) := by
+  unfold runtimeModuleElem
+  iapply ghost_map_lookup
 
 /-- Persistent knowledge of the immutable instances array. Agreement with the
 copy held by `StateInterp` lets cross-instance call rules verify instance
@@ -656,6 +651,32 @@ instance {α : Type} [WasmInstanceGS α] (n : Nat) :
 instance {α : Type} [WasmInstanceGS α] (n : Nat) :
     BI.Timeless (currentInstanceOwnN (α := α) n) := by
   unfold currentInstanceOwnN; infer_instance
+
+section
+open Wasm.SmallStep
+
+/-- Module instance ownership: persistent module knowledge paired with exclusive
+current-instance token. The exclusive part lets call rules verify that the
+caller's instance id agrees with the machine's current instance. -/
+def runtimeModuleOwn {α : Type} [gs : WasmRuntimeModuleGS α] [WasmInstanceGS α]
+    (instanceId : ModuleInstanceId) (m : Module) : IProp (WasmHeapGF.{0} α) :=
+  iprop(runtimeModuleElem instanceId.id m ∗ currentInstanceOwnN instanceId.id)
+
+instance {α : Type} [gs : WasmRuntimeModuleGS α] [WasmInstanceGS α]
+    (instanceId : ModuleInstanceId) (m : Module) :
+    BI.Timeless (runtimeModuleOwn (α := α) instanceId m) := by
+  unfold runtimeModuleOwn; infer_instance
+
+theorem runtimeModuleOwn_lookup {α : Type} [gs : WasmRuntimeModuleGS α] [WasmInstanceGS α]
+    (σ : WasmRuntimeModuleMap Module) (instanceId : ModuleInstanceId) (m : Module) :
+    ghost_map_auth gs.runtimeName (DFrac.own 1) σ -∗
+      runtimeModuleOwn instanceId m -∗
+      ⌜get? σ instanceId.id = some m⌝ := by
+  simp only [runtimeModuleOwn]
+  iintro Hauth ⟨Helem, _⟩
+  iapply runtimeModuleElem_lookup $$ Hauth Helem
+
+end
 
 theorem currentInstanceOwnN_agree {α : Type} [gs : WasmInstanceGS α]
     (actual expected : Nat) :
@@ -824,6 +845,23 @@ instance instTimelessPointsToU32 (memId : Nat) (addr v : UInt32) :
     BI.Timeless (pointsTo_u32 memId addr v) := by
   unfold pointsTo_u32
   infer_instance
+
+-- Multi-byte: u16 as 2 consecutive owned bytes (little-endian)
+def pointsTo_u16 (memId : Nat) (addr : UInt32) (v : UInt32) : IProp (WasmHeapGF.{0} α) :=
+  iprop%
+    (⟨memId, addr⟩ ↦w u32Byte v 0) ∗ (⟨memId, addr + 1⟩ ↦w u32Byte v 1)
+
+theorem pointsTo_u16_eq (memId : Nat) (addr v : UInt32) :
+    pointsTo_u16 memId addr v ⊣⊢
+      (iprop% (⟨memId, addr⟩ ↦w u32Byte v 0) ∗
+        (⟨memId, addr + 1⟩ ↦w u32Byte v 1)) :=
+  .rfl
+
+instance instTimelessPointsToU16 (memId : Nat) (addr v : UInt32) :
+    BI.Timeless (pointsTo_u16 memId addr v) := by
+  unfold pointsTo_u16
+  infer_instance
+
 -- Array ownership: n consecutive u32 elements at ptr
 -- arrayAt memId ptr [x₀, x₁, ..., xₙ₋₁] =
 --   pointsTo_u32 memId ptr x₀ ∗ pointsTo_u32 memId (ptr+4) x₁ ∗ ...

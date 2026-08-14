@@ -21,22 +21,10 @@ set_option maxHeartbeats 4000000
 
 /-! ## Authoritative exported footprint -/
 
-private theorem emptyHeap_agrees (memory : Mem) :
-    heapAgreesWithMem (∅ : WasmHeapMap (Option UInt8)) memory := by
-  intro address value hget
-  rw [get?_empty] at hget
-  contradiction
-
-private theorem emptyHeap_inBounds (memory : Mem) :
-    heapAddressesInBounds (∅ : WasmHeapMap (Option UInt8)) memory := by
-  intro address value hget
-  rw [get?_empty] at hget
-  contradiction
-
 def roundHeap : WasmHeapMap (Option UInt8) :=
   store32Heap
-    (store32Heap (store32Heap ∅ 1048540 0) 1048556 0)
-    1048572 0
+    (store32Heap (store32Heap ∅ 0 1048540 0) 0 1048556 0)
+    0 1048572 0
 
 def roundMem (memory : Mem) : Mem :=
   ((memory.write32 1048540 0).write32 1048556 0).write32 1048572 0
@@ -46,30 +34,70 @@ theorem round_initialMem_eq :
       («module».initialStore : Store Unit).mem := by
   simp [roundMem, «module», Module.initialStore, Mem.write32, Mem.empty]
 
+def checkRoundConfig (x : UInt32) : Config Unit :=
+  { expr := .running
+      ⟨⟨[.f32 x], [.i32 0, .i32 0], []⟩,
+        func6, 1, [], [], []⟩
+    store :=
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
+        wasm := «module».initialStore } }
+
 theorem roundHeap_agrees :
-    heapAgreesWithMem roundHeap
-      («module».initialStore : Store Unit).mem := by
-  rw [← round_initialMem_eq]
-  unfold roundHeap roundMem
-  apply store32_sound <;> try rfl
-  apply store32_sound <;> try rfl
-  apply store32_sound <;> try rfl
-  exact emptyHeap_agrees _
+    heapAgreesWithMem roundHeap (storeResolve (checkRoundConfig 0).store) := by
+  unfold roundHeap
+  have h := store32_sound0 (store32Heap (store32Heap ∅ 0 1048540 0) 0 1048556 0)
+      ((«module».initialStore : Store Unit).mem.write32 1048540 0 |>.write32 1048556 0)
+      1048572 0 (by decide) (by decide) (by decide)
+      (store32_sound0 (store32Heap ∅ 0 1048540 0)
+          ((«module».initialStore : Store Unit).mem.write32 1048540 0)
+          1048556 0 (by decide) (by decide) (by decide)
+          (store32_sound0 ∅
+              («module».initialStore : Store Unit).mem
+              1048540 0 (by decide) (by decide) (by decide)
+              (heapAgreesWithMem_empty _)))
+  rw [show (((«module».initialStore : Store Unit).mem.write32 1048540 0).write32 1048556 0).write32 1048572 0
+      = («module».initialStore : Store Unit).mem from by
+    have hrm := round_initialMem_eq
+    unfold roundMem at hrm
+    exact hrm] at h
+  have hresolveEq : (fun id : Nat => if id = 0 then some («module».initialStore : Store Unit).mem else none) =
+      storeResolve (checkRoundConfig 0).store := by
+    funext id; by_cases h0 : id = 0
+    · simp [h0, storeResolve, checkRoundConfig]
+    · simp [h0, storeResolve, checkRoundConfig,
+        show («module».initialStore : Store Unit).extraMems = [] from by native_decide]
+  rw [← hresolveEq]
+  exact h
 
 theorem roundHeap_inBounds :
-    heapAddressesInBounds roundHeap
-      («module».initialStore : Store Unit).mem := by
-  rw [← round_initialMem_eq]
-  unfold roundHeap roundMem
-  apply store32_inBounds <;> try rfl
-  · apply store32_inBounds <;> try rfl
-    · apply store32_inBounds <;> try rfl
-      · exact emptyHeap_inBounds _
-      · decide
-    · decide
+    heapAddressesInBounds roundHeap (storeResolve (checkRoundConfig 0).store) := by
+  unfold roundHeap
+  have h := store32_inBounds0 (store32Heap (store32Heap ∅ 0 1048540 0) 0 1048556 0)
+      ((«module».initialStore : Store Unit).mem.write32 1048540 0 |>.write32 1048556 0)
+      1048572 0 (by decide) (by decide) (by decide) (by decide)
+      (store32_inBounds0 (store32Heap ∅ 0 1048540 0)
+          ((«module».initialStore : Store Unit).mem.write32 1048540 0)
+          1048556 0 (by decide) (by decide) (by decide) (by decide)
+          (store32_inBounds0 ∅
+              («module».initialStore : Store Unit).mem
+              1048540 0 (by decide) (by decide) (by decide) (by decide)
+              (heapAddressesInBounds_empty _)))
+  rw [show (((«module».initialStore : Store Unit).mem.write32 1048540 0).write32 1048556 0).write32 1048572 0
+      = («module».initialStore : Store Unit).mem from by
+    have hrm := round_initialMem_eq
+    unfold roundMem at hrm
+    exact hrm] at h
+  have hresolveEq : (fun id : Nat => if id = 0 then some («module».initialStore : Store Unit).mem else none) =
+      storeResolve (checkRoundConfig 0).store := by
+    funext id; by_cases h0 : id = 0
+    · simp [h0, storeResolve, checkRoundConfig]
+    · simp [h0, storeResolve, checkRoundConfig,
+        show («module».initialStore : Store Unit).extraMems = [] from by native_decide]
+  rw [← hresolveEq]
+  exact h
 
 def roundGlobals : WasmGlobalMap Value :=
-  insert ∅ 0 (.i32 1048576)
+  insert ∅ ⟨0, 0⟩ (.i32 1048576)
 
 theorem roundGlobals_agree :
     globalHeapAgrees roundGlobals
@@ -81,30 +109,30 @@ theorem roundGlobals_agree :
     simp only [get?_insert_eq rfl] at hget
     obtain rfl := Option.some.inj hget
     rfl
-  · rw [get?_insert_ne (Ne.symm hindex), get?_empty] at hget
+  · rw [get?_insert_ne (show (⟨0, 0⟩ : GlobalKey) ≠ ⟨0, index⟩ from fun h => hindex (congrArg GlobalKey.index h).symm), get?_empty] at hget
     contradiction
 
 theorem roundHeap_pointsTo [WasmHeapGS Unit] :
     ([∗map] address ↦ value ∈ roundHeap,
       pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
-      pointsTo_u32 1048540 0 ∗
-        pointsTo_u32 1048556 0 ∗ pointsTo_u32 1048572 0 := by
+      pointsTo_u32 0 1048540 0 ∗
+        pointsTo_u32 0 1048556 0 ∗ pointsTo_u32 0 1048572 0 := by
   unfold roundHeap
   iintro Hheap
   ihave Houter := store32Heap_pointsTo
-    (store32Heap (store32Heap ∅ 1048540 0) 1048556 0)
-    1048572 0
+    (store32Heap (store32Heap ∅ 0 1048540 0) 0 1048556 0)
+    0 1048572 0
     (by decide) (by decide) (by decide) (by decide)
     (by decide) (by decide) (by decide) $$ Hheap
   icases Houter with ⟨Houter, Hheap⟩
   ihave Hmiddle := store32Heap_pointsTo
-    (store32Heap ∅ 1048540 0) 1048556 0
+    (store32Heap ∅ 0 1048540 0) 0 1048556 0
     (by decide) (by decide) (by decide) (by decide)
     (by decide) (by decide) (by decide) $$ Hheap
   icases Hmiddle with ⟨Hmiddle, Hheap⟩
   ihave Hinner := store32Heap_pointsTo
-    (∅ : WasmHeapMap (Option UInt8)) 1048540 0
+    (∅ : WasmHeapMap (Option UInt8)) 0 1048540 0
     (by decide) (by decide) (by decide) (by decide)
     (by decide) (by decide) (by decide) $$ Hheap
   icases Hinner with ⟨Hinner, Hempty⟩
@@ -113,10 +141,12 @@ theorem roundHeap_pointsTo [WasmHeapGS Unit] :
 theorem roundGlobals_pointsTo [WasmGlobalGS Unit] :
     ([∗map] index ↦ value ∈ roundGlobals,
       globalPointsTo index value) ⊢
-      globalPointsTo 0 (.i32 1048576) := by
+      globalPointsToAt 0 0 (.i32 1048576) := by
   unfold roundGlobals
-  rw [(BI.BigSepM.bigSepM_insert (get?_empty 0)).to_eq,
+  rw [(BI.BigSepM.bigSepM_insert (get?_empty (⟨0, 0⟩ : GlobalKey))).to_eq,
     BI.BigSepM.bigSepM_empty.to_eq, BI.sep_emp.to_eq]
+  simp only [globalPointsToAt_eq]
+  rfl
 
 /-! ## Small-step optimized-round path -/
 
@@ -126,13 +156,13 @@ theorem func5_lowered_body_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x oldWord : UInt32)
     (calls : List CallFrame)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u32 1048556 (f32Nearest x) ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u32 0 1048556 (f32Nearest x) ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 1048544], [.f32 (f32Nearest x)]⟩,
           [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u32 1048556 oldWord ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u32 0 1048556 oldWord ⊢
     WP (.running
       ⟨⟨[.f32 x], [.i32 0], []⟩,
         func5, 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }} := by
@@ -157,7 +187,7 @@ theorem func5_lowered_body_smallStep_wp
   iapply wp_scalarFloat1 rfl rfl
   inext
   ihave HwordLater :
-      ▷ pointsTo_u32 ((1048544 : UInt32) + 12) oldWord $$ [Hword]
+      ▷ pointsTo_u32 0 ((1048544 : UInt32) + 12) oldWord $$ [Hword]
   · inext
     rw [show (1048544 : UInt32) + 12 = 1048556 by decide]
     iexact Hword
@@ -168,7 +198,7 @@ theorem func5_lowered_body_smallStep_wp
   iapply wp_localGet rfl
   inext
   ihave HwordLater :
-      ▷ pointsTo_u32 ((1048544 : UInt32) + 12) (f32Nearest x) $$ [Hword]
+      ▷ pointsTo_u32 0 ((1048544 : UInt32) + 12) (f32Nearest x) $$ [Hword]
   · inext
     iexact Hword
   iapply wp_f32Load (f32Nearest x)
@@ -176,10 +206,10 @@ theorem func5_lowered_body_smallStep_wp
   inext
   iintro Hword
   have hWordProp :
-      pointsTo_u32 ((1048544 : UInt32) + 12) (f32Nearest x) =
-        pointsTo_u32 1048556 (f32Nearest x) :=
-    congrArg (fun address => pointsTo_u32 address (f32Nearest x)) (by decide)
-  ihave HwordExact : pointsTo_u32 1048556 (f32Nearest x) $$ [Hword]
+      pointsTo_u32 0 ((1048544 : UInt32) + 12) (f32Nearest x) =
+        pointsTo_u32 0 1048556 (f32Nearest x) :=
+    congrArg (fun address => pointsTo_u32 0 address (f32Nearest x)) (by decide)
+  ihave HwordExact : pointsTo_u32 0 1048556 (f32Nearest x) $$ [Hword]
   · rw [← hWordProp]
     iexact Hword
   iapply hreturn
@@ -191,15 +221,15 @@ theorem func4_lowered_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x oldWord : UInt32)
     (calls : List CallFrame)
     (hreturn :
-      R ∗ runtimeModuleOwn «module» ∗
-        globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u32 1048556 (f32Nearest x) ⊢
+      R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+        globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u32 0 1048556 (f32Nearest x) ⊢
       WP (.running
         ⟨⟨[.f32 x], [], [.f32 (f32Nearest x)]⟩,
           [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u32 1048556 oldWord ⊢
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u32 0 1048556 oldWord ⊢
     WP (.running
       ⟨⟨[.f32 x], [], []⟩,
         func4, 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }} := by
@@ -213,10 +243,11 @@ theorem func4_lowered_smallStep_wp
   iintro Hruntime
   simp [func5Def, Function.toLocals, Function.numParams, ValueType.zero]
   iapply func5_lowered_body_smallStep_wp
-    (iprop(R ∗ runtimeModuleOwn «module»)) x oldWord _ _
+    (iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»)) x oldWord _ _
   · iintro ⟨⟨HR, Hruntime⟩, Hglobal, Hword⟩
-    iapply wp_returnFromCallExplicit
+    iapply wp_returnFromCallExplicit' $$ Hruntime
     inext
+    iintro Hruntime
     simp only [List.take, List.singleton_append]
     iapply hreturn
     iframe
@@ -232,13 +263,13 @@ theorem deepFrameFloat_body_smallStep_wp
       evalScalarFloat1? instruction (.f32 x) = some (.f32 result))
     (calls : List CallFrame)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048544) ∗
-        pointsTo_u32 1048540 result ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048544) ∗
+        pointsTo_u32 0 1048540 result ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 1048528], [.f32 result]⟩,
           [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048544) ∗
-      pointsTo_u32 1048540 oldWord ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048544) ∗
+      pointsTo_u32 0 1048540 oldWord ⊢
     WP (.running
       ⟨⟨[.f32 x], [.i32 0], []⟩,
         [ .globalGet 0, .const 16, .sub, .localSet 1,
@@ -265,7 +296,7 @@ theorem deepFrameFloat_body_smallStep_wp
   iapply wp_scalarFloat1 hzero heval
   inext
   ihave HwordLater :
-      ▷ pointsTo_u32 ((1048528 : UInt32) + 12) oldWord $$ [Hword]
+      ▷ pointsTo_u32 0 ((1048528 : UInt32) + 12) oldWord $$ [Hword]
   · inext
     rw [show (1048528 : UInt32) + 12 = 1048540 by decide]
     iexact Hword
@@ -276,7 +307,7 @@ theorem deepFrameFloat_body_smallStep_wp
   iapply wp_localGet rfl
   inext
   ihave HwordLater :
-      ▷ pointsTo_u32 ((1048528 : UInt32) + 12) result $$ [Hword]
+      ▷ pointsTo_u32 0 ((1048528 : UInt32) + 12) result $$ [Hword]
   · inext
     iexact Hword
   iapply wp_f32Load result
@@ -284,10 +315,10 @@ theorem deepFrameFloat_body_smallStep_wp
   inext
   iintro Hword
   have hWordProp :
-      pointsTo_u32 ((1048528 : UInt32) + 12) result =
-        pointsTo_u32 1048540 result :=
-    congrArg (fun address => pointsTo_u32 address result) (by decide)
-  ihave HwordExact : pointsTo_u32 1048540 result $$ [Hword]
+      pointsTo_u32 0 ((1048528 : UInt32) + 12) result =
+        pointsTo_u32 0 1048540 result :=
+    congrArg (fun address => pointsTo_u32 0 address result) (by decide)
+  ihave HwordExact : pointsTo_u32 0 1048540 result $$ [Hword]
   · rw [← hWordProp]
     iexact Hword
   iapply hreturn
@@ -299,13 +330,13 @@ theorem func1_deep_body_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x oldWord : UInt32)
     (calls : List CallFrame)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048544) ∗
-        pointsTo_u32 1048540 (f32Trunc x) ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048544) ∗
+        pointsTo_u32 0 1048540 (f32Trunc x) ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 1048528], [.f32 (f32Trunc x)]⟩,
           [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048544) ∗
-      pointsTo_u32 1048540 oldWord ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048544) ∗
+      pointsTo_u32 0 1048540 oldWord ⊢
     WP (.running
       ⟨⟨[.f32 x], [.i32 0], []⟩,
         func1, 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }} := by
@@ -319,13 +350,13 @@ theorem func2_deep_body_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x oldWord : UInt32)
     (calls : List CallFrame)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048544) ∗
-        pointsTo_u32 1048540 (f32Ceil x) ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048544) ∗
+        pointsTo_u32 0 1048540 (f32Ceil x) ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 1048528], [.f32 (f32Ceil x)]⟩,
           [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048544) ∗
-      pointsTo_u32 1048540 oldWord ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048544) ∗
+      pointsTo_u32 0 1048540 oldWord ⊢
     WP (.running
       ⟨⟨[.f32 x], [.i32 0], []⟩,
         func2, 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }} := by
@@ -339,13 +370,13 @@ theorem func3_deep_body_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x oldWord : UInt32)
     (calls : List CallFrame)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048544) ∗
-        pointsTo_u32 1048540 (f32Floor x) ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048544) ∗
+        pointsTo_u32 0 1048540 (f32Floor x) ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 1048528], [.f32 (f32Floor x)]⟩,
           [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048544) ∗
-      pointsTo_u32 1048540 oldWord ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048544) ∗
+      pointsTo_u32 0 1048540 oldWord ⊢
     WP (.running
       ⟨⟨[.f32 x], [.i32 0], []⟩,
         func3, 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }} := by
@@ -432,16 +463,16 @@ theorem naive_tail_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x result : UInt32)
     (calls : List CallFrame)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u32 1048556 result ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u32 0 1048556 result ⊢
       WP (.running
         ⟨⟨[.f32 x],
             [.i32 1048544, .f32 (f32Trunc x),
               .f32 (f32Sub x (f32Trunc x)), .f32 result],
             [.f32 result]⟩,
           [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048544) ∗
-      pointsTo_u32 1048556 result ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048544) ∗
+      pointsTo_u32 0 1048556 result ⊢
     WP (.running
       ⟨⟨[.f32 x],
           [.i32 1048544, .f32 (f32Trunc x),
@@ -454,7 +485,7 @@ theorem naive_tail_smallStep_wp
   iapply wp_localGet rfl
   inext
   ihave HwordLater :
-      ▷ pointsTo_u32 ((1048544 : UInt32) + 12) result $$ [Hword]
+      ▷ pointsTo_u32 0 ((1048544 : UInt32) + 12) result $$ [Hword]
   · inext
     rw [show (1048544 : UInt32) + 12 = 1048556 by decide]
     iexact Hword
@@ -474,7 +505,7 @@ theorem naive_tail_smallStep_wp
   inext
   rw [show (16 : UInt32) + 1048544 = 1048560 by decide]
   ihave HglobalLater :
-      ▷ globalPointsTo 0 (.i32 1048544) $$ [Hglobal]
+      ▷ globalPointsToAt 0 0 (.i32 1048544) $$ [Hglobal]
   · inext
     iexact Hglobal
   iapply wp_globalSet $$ HglobalLater
@@ -483,10 +514,10 @@ theorem naive_tail_smallStep_wp
   iapply wp_localGet rfl
   inext
   have hWordProp :
-      pointsTo_u32 ((1048544 : UInt32) + 12) result =
-        pointsTo_u32 1048556 result :=
-    congrArg (fun address => pointsTo_u32 address result) (by decide)
-  ihave HwordExact : pointsTo_u32 1048556 result $$ [Hword]
+      pointsTo_u32 0 ((1048544 : UInt32) + 12) result =
+        pointsTo_u32 0 1048556 result :=
+    congrArg (fun address => pointsTo_u32 0 address result) (by decide)
+  ihave HwordExact : pointsTo_u32 0 1048556 result $$ [Hword]
   · rw [← hWordProp]
     iexact Hword
   iapply hreturn
@@ -498,8 +529,8 @@ theorem naive_storeTrunc_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x oldWord : UInt32)
     (calls : List CallFrame)
     (hnext :
-      R ∗ globalPointsTo 0 (.i32 1048544) ∗
-        pointsTo_u32 1048556 (f32Trunc x) ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048544) ∗
+        pointsTo_u32 0 1048556 (f32Trunc x) ⊢
       WP (.running
         ⟨⟨[.f32 x],
             [.i32 1048544, .f32 (f32Trunc x),
@@ -507,8 +538,8 @@ theorem naive_storeTrunc_smallStep_wp
             []⟩,
           naiveTailProg, 1, [], [], calls⟩ :
           Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048544) ∗
-      pointsTo_u32 1048556 oldWord ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048544) ∗
+      pointsTo_u32 0 1048556 oldWord ⊢
     WP (.running
       ⟨⟨[.f32 x],
           [.i32 1048544, .f32 (f32Trunc x),
@@ -524,7 +555,7 @@ theorem naive_storeTrunc_smallStep_wp
   iapply wp_localGet rfl
   inext
   ihave HwordLater :
-      ▷ pointsTo_u32 ((1048544 : UInt32) + 12) oldWord $$ [Hword]
+      ▷ pointsTo_u32 0 ((1048544 : UInt32) + 12) oldWord $$ [Hword]
   · inext
     rw [show (1048544 : UInt32) + 12 = 1048556 by decide]
     iexact Hword
@@ -536,10 +567,10 @@ theorem naive_storeTrunc_smallStep_wp
   inext
   simp only [naiveAFrame, List.take, List.nil_append]
   have hWordProp :
-      pointsTo_u32 ((1048544 : UInt32) + 12) (f32Trunc x) =
-        pointsTo_u32 1048556 (f32Trunc x) :=
-    congrArg (fun address => pointsTo_u32 address (f32Trunc x)) (by decide)
-  ihave HwordExact : pointsTo_u32 1048556 (f32Trunc x) $$ [Hword]
+      pointsTo_u32 0 ((1048544 : UInt32) + 12) (f32Trunc x) =
+        pointsTo_u32 0 1048556 (f32Trunc x) :=
+    congrArg (fun address => pointsTo_u32 0 address (f32Trunc x)) (by decide)
+  ihave HwordExact : pointsTo_u32 0 1048556 (f32Trunc x) $$ [Hword]
   · rw [← hWordProp]
     iexact Hword
   iapply hnext
@@ -551,10 +582,10 @@ theorem naive_ceil_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
     (hnext :
-      R ∗ runtimeModuleOwn «module» ∗
-        globalPointsTo 0 (.i32 1048544) ∗
-        pointsTo_u32 1048540 (f32Ceil (f32Trunc x)) ∗
-        pointsTo_u32 1048556 (f32Ceil (f32Trunc x)) ⊢
+      R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+        globalPointsToAt 0 0 (.i32 1048544) ∗
+        pointsTo_u32 0 1048540 (f32Ceil (f32Trunc x)) ∗
+        pointsTo_u32 0 1048556 (f32Ceil (f32Trunc x)) ⊢
       WP (.running
         ⟨⟨[.f32 x],
             [.i32 1048544, .f32 (f32Trunc x),
@@ -562,9 +593,9 @@ theorem naive_ceil_smallStep_wp
             []⟩,
           naiveTailProg, 1, [], [], calls⟩ :
           Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048544) ∗
-      pointsTo_u32 1048540 oldDeep ∗ pointsTo_u32 1048556 oldWord ⊢
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048544) ∗
+      pointsTo_u32 0 1048540 oldDeep ∗ pointsTo_u32 0 1048556 oldWord ⊢
     WP (.running
       ⟨⟨[.f32 x],
           [.i32 1048544, .f32 (f32Trunc x),
@@ -585,15 +616,16 @@ theorem naive_ceil_smallStep_wp
   iintro Hruntime
   simp [func2Def, Function.toLocals, Function.numParams, ValueType.zero]
   iapply func2_deep_body_smallStep_wp
-    (iprop(R ∗ runtimeModuleOwn «module» ∗
-      pointsTo_u32 1048556 oldWord))
+    (iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      pointsTo_u32 0 1048556 oldWord))
     (f32Trunc x) oldDeep _ _
   · iintro ⟨⟨HR, Hruntime, Hword⟩, Hglobal, Hdeep⟩
-    iapply wp_returnFromCallExplicit
+    iapply wp_returnFromCallExplicit' $$ Hruntime
     inext
+    iintro Hruntime
     simp only [List.take, List.singleton_append]
     ihave HwordLater :
-        ▷ pointsTo_u32 ((1048544 : UInt32) + 12) oldWord $$ [Hword]
+        ▷ pointsTo_u32 0 ((1048544 : UInt32) + 12) oldWord $$ [Hword]
     · inext
       rw [show (1048544 : UInt32) + 12 = 1048556 by decide]
       iexact Hword
@@ -605,14 +637,14 @@ theorem naive_ceil_smallStep_wp
     inext
     simp only [naiveAFrame, List.take, List.nil_append]
     have hWordProp :
-        pointsTo_u32 ((1048544 : UInt32) + 12)
+        pointsTo_u32 0 ((1048544 : UInt32) + 12)
             (f32Ceil (f32Trunc x)) =
-          pointsTo_u32 1048556 (f32Ceil (f32Trunc x)) :=
+          pointsTo_u32 0 1048556 (f32Ceil (f32Trunc x)) :=
       congrArg
-        (fun address => pointsTo_u32 address (f32Ceil (f32Trunc x)))
+        (fun address => pointsTo_u32 0 address (f32Ceil (f32Trunc x)))
         (by decide)
     ihave HwordExact :
-        pointsTo_u32 1048556 (f32Ceil (f32Trunc x)) $$ [Hword]
+        pointsTo_u32 0 1048556 (f32Ceil (f32Trunc x)) $$ [Hword]
     · rw [← hWordProp]
       iexact Hword
     iapply hnext
@@ -625,10 +657,10 @@ theorem naive_floor_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
     (hnext :
-      R ∗ runtimeModuleOwn «module» ∗
-        globalPointsTo 0 (.i32 1048544) ∗
-        pointsTo_u32 1048540 (f32Floor (f32Trunc x)) ∗
-        pointsTo_u32 1048556 (f32Floor (f32Trunc x)) ⊢
+      R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+        globalPointsToAt 0 0 (.i32 1048544) ∗
+        pointsTo_u32 0 1048540 (f32Floor (f32Trunc x)) ∗
+        pointsTo_u32 0 1048556 (f32Floor (f32Trunc x)) ⊢
       WP (.running
         ⟨⟨[.f32 x],
             [.i32 1048544, .f32 (f32Trunc x),
@@ -636,9 +668,9 @@ theorem naive_floor_smallStep_wp
             []⟩,
           naiveTailProg, 1, [], [], calls⟩ :
           Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048544) ∗
-      pointsTo_u32 1048540 oldDeep ∗ pointsTo_u32 1048556 oldWord ⊢
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048544) ∗
+      pointsTo_u32 0 1048540 oldDeep ∗ pointsTo_u32 0 1048556 oldWord ⊢
     WP (.running
       ⟨⟨[.f32 x],
           [.i32 1048544, .f32 (f32Trunc x),
@@ -658,15 +690,16 @@ theorem naive_floor_smallStep_wp
   iintro Hruntime
   simp [func3Def, Function.toLocals, Function.numParams, ValueType.zero]
   iapply func3_deep_body_smallStep_wp
-    (iprop(R ∗ runtimeModuleOwn «module» ∗
-      pointsTo_u32 1048556 oldWord))
+    (iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      pointsTo_u32 0 1048556 oldWord))
     (f32Trunc x) oldDeep _ _
   · iintro ⟨⟨HR, Hruntime, Hword⟩, Hglobal, Hdeep⟩
-    iapply wp_returnFromCallExplicit
+    iapply wp_returnFromCallExplicit' $$ Hruntime
     inext
+    iintro Hruntime
     simp only [List.take, List.singleton_append]
     ihave HwordLater :
-        ▷ pointsTo_u32 ((1048544 : UInt32) + 12) oldWord $$ [Hword]
+        ▷ pointsTo_u32 0 ((1048544 : UInt32) + 12) oldWord $$ [Hword]
     · inext
       rw [show (1048544 : UInt32) + 12 = 1048556 by decide]
       iexact Hword
@@ -678,14 +711,14 @@ theorem naive_floor_smallStep_wp
     inext
     simp only [naiveAFrame, List.take, List.nil_append]
     have hWordProp :
-        pointsTo_u32 ((1048544 : UInt32) + 12)
+        pointsTo_u32 0 ((1048544 : UInt32) + 12)
             (f32Floor (f32Trunc x)) =
-          pointsTo_u32 1048556 (f32Floor (f32Trunc x)) :=
+          pointsTo_u32 0 1048556 (f32Floor (f32Trunc x)) :=
       congrArg
-        (fun address => pointsTo_u32 address (f32Floor (f32Trunc x)))
+        (fun address => pointsTo_u32 0 address (f32Floor (f32Trunc x)))
         (by decide)
     ihave HwordExact :
-        pointsTo_u32 1048556 (f32Floor (f32Trunc x)) $$ [Hword]
+        pointsTo_u32 0 1048556 (f32Floor (f32Trunc x)) $$ [Hword]
     · rw [← hWordProp]
       iexact Hword
     iapply hnext
@@ -698,10 +731,10 @@ theorem naive_compare_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
     (hceil :
-      R ∗ runtimeModuleOwn «module» ∗
-        globalPointsTo 0 (.i32 1048544) ∗
-        pointsTo_u32 1048540 (f32Ceil (f32Trunc x)) ∗
-        pointsTo_u32 1048556 (f32Ceil (f32Trunc x)) ⊢
+      R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+        globalPointsToAt 0 0 (.i32 1048544) ∗
+        pointsTo_u32 0 1048540 (f32Ceil (f32Trunc x)) ∗
+        pointsTo_u32 0 1048556 (f32Ceil (f32Trunc x)) ⊢
       WP (.running
         ⟨⟨[.f32 x],
             [.i32 1048544, .f32 (f32Trunc x),
@@ -710,10 +743,10 @@ theorem naive_compare_smallStep_wp
           naiveTailProg, 1, [], [], calls⟩ :
           Expr Unit) @ s; E {{ Φ }})
     (hfloor :
-      R ∗ runtimeModuleOwn «module» ∗
-        globalPointsTo 0 (.i32 1048544) ∗
-        pointsTo_u32 1048540 (f32Floor (f32Trunc x)) ∗
-        pointsTo_u32 1048556 (f32Floor (f32Trunc x)) ⊢
+      R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+        globalPointsToAt 0 0 (.i32 1048544) ∗
+        pointsTo_u32 0 1048540 (f32Floor (f32Trunc x)) ∗
+        pointsTo_u32 0 1048556 (f32Floor (f32Trunc x)) ⊢
       WP (.running
         ⟨⟨[.f32 x],
             [.i32 1048544, .f32 (f32Trunc x),
@@ -722,10 +755,10 @@ theorem naive_compare_smallStep_wp
           naiveTailProg, 1, [], [], calls⟩ :
           Expr Unit) @ s; E {{ Φ }})
     (htrunc :
-      R ∗ runtimeModuleOwn «module» ∗
-        pointsTo_u32 1048540 oldDeep ∗
-        globalPointsTo 0 (.i32 1048544) ∗
-        pointsTo_u32 1048556 (f32Trunc x) ⊢
+      R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+        pointsTo_u32 0 1048540 oldDeep ∗
+        globalPointsToAt 0 0 (.i32 1048544) ∗
+        pointsTo_u32 0 1048556 (f32Trunc x) ⊢
       WP (.running
         ⟨⟨[.f32 x],
             [.i32 1048544, .f32 (f32Trunc x),
@@ -733,9 +766,9 @@ theorem naive_compare_smallStep_wp
             []⟩,
           naiveTailProg, 1, [], [], calls⟩ :
           Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048544) ∗
-      pointsTo_u32 1048540 oldDeep ∗ pointsTo_u32 1048556 oldWord ⊢
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048544) ∗
+      pointsTo_u32 0 1048540 oldDeep ∗ pointsTo_u32 0 1048556 oldWord ⊢
     WP (.running
       ⟨⟨[.f32 x],
           [.i32 1048544, .f32 (f32Trunc x),
@@ -820,8 +853,8 @@ theorem naive_compare_smallStep_wp
       inext
       simp only [naiveCFrame, List.take, List.nil_append]
       iapply naive_storeTrunc_smallStep_wp
-        (iprop(R ∗ runtimeModuleOwn «module» ∗
-          pointsTo_u32 1048540 oldDeep))
+        (iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+          pointsTo_u32 0 1048540 oldDeep))
         x oldWord calls _
       · iintro ⟨⟨HR, Hruntime, Hdeep⟩, Hglobal, Hword⟩
         iapply htrunc
@@ -834,10 +867,10 @@ theorem func0_lowered_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x oldDeep oldWord : UInt32)
     (calls : List CallFrame)
     (hreturn : ∀ result : UInt32,
-      R ∗ runtimeModuleOwn «module» ∗
-        globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u32 1048540 result ∗
-        pointsTo_u32 1048556 result ⊢
+      R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+        globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u32 0 1048540 result ∗
+        pointsTo_u32 0 1048556 result ⊢
       WP (.running
         ⟨⟨[.f32 x],
             [.i32 1048544, .f32 (f32Trunc x),
@@ -845,9 +878,9 @@ theorem func0_lowered_smallStep_wp
               .f32 result],
             [.f32 result]⟩,
           [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u32 1048540 oldDeep ∗ pointsTo_u32 1048556 oldWord ⊢
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u32 0 1048540 oldDeep ∗ pointsTo_u32 0 1048556 oldWord ⊢
     WP (.running
       ⟨⟨[.f32 x], [.i32 0, .f32 0, .f32 0, .f32 0], []⟩,
         func0, 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }} := by
@@ -867,7 +900,7 @@ theorem func0_lowered_smallStep_wp
     List.set]
   iapply wp_localGet rfl
   inext
-  ihave HglobalLater : ▷ globalPointsTo 0 (.i32 1048560) $$ [Hglobal]
+  ihave HglobalLater : ▷ globalPointsToAt 0 0 (.i32 1048560) $$ [Hglobal]
   · inext
     iexact Hglobal
   iapply wp_globalSet $$ HglobalLater
@@ -881,12 +914,13 @@ theorem func0_lowered_smallStep_wp
   iintro Hruntime
   simp [func1Def, Function.toLocals, Function.numParams, ValueType.zero]
   iapply func1_deep_body_smallStep_wp
-    (iprop(R ∗ runtimeModuleOwn «module» ∗
-      pointsTo_u32 1048556 oldWord))
+    (iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      pointsTo_u32 0 1048556 oldWord))
     x oldDeep _ _
   · iintro ⟨⟨HR, Hruntime, Hword⟩, Hglobal, Hdeep⟩
-    iapply wp_returnFromCallExplicit
+    iapply wp_returnFromCallExplicit' $$ Hruntime
     inext
+    iintro Hruntime
     simp only [List.take, List.singleton_append]
     iapply wp_localSet rfl
     inext
@@ -958,8 +992,8 @@ theorem func0_lowered_smallStep_wp
       R x (f32Trunc x) oldWord calls _ _ _
     · iintro ⟨HR, Hruntime, Hglobal, Hdeep, Hword⟩
       iapply naive_tail_smallStep_wp
-        (iprop(R ∗ runtimeModuleOwn «module» ∗
-          pointsTo_u32 1048540 (f32Ceil (f32Trunc x))))
+        (iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+          pointsTo_u32 0 1048540 (f32Ceil (f32Trunc x))))
         x (f32Ceil (f32Trunc x)) calls _
       · iintro ⟨⟨HR, Hruntime, Hdeep⟩, Hglobal, Hword⟩
         iapply hreturn (f32Ceil (f32Trunc x))
@@ -967,8 +1001,8 @@ theorem func0_lowered_smallStep_wp
       · iframe
     · iintro ⟨HR, Hruntime, Hglobal, Hdeep, Hword⟩
       iapply naive_tail_smallStep_wp
-        (iprop(R ∗ runtimeModuleOwn «module» ∗
-          pointsTo_u32 1048540 (f32Floor (f32Trunc x))))
+        (iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+          pointsTo_u32 0 1048540 (f32Floor (f32Trunc x))))
         x (f32Floor (f32Trunc x)) calls _
       · iintro ⟨⟨HR, Hruntime, Hdeep⟩, Hglobal, Hword⟩
         iapply hreturn (f32Floor (f32Trunc x))
@@ -976,8 +1010,8 @@ theorem func0_lowered_smallStep_wp
       · iframe
     · iintro ⟨HR, Hruntime, Hdeep, Hglobal, Hword⟩
       iapply naive_tail_smallStep_wp
-        (iprop(R ∗ runtimeModuleOwn «module» ∗
-          pointsTo_u32 1048540 (f32Trunc x)))
+        (iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+          pointsTo_u32 0 1048540 (f32Trunc x)))
         x (f32Trunc x) calls _
       · iintro ⟨⟨HR, Hruntime, Hdeep⟩, Hglobal, Hword⟩
         iapply hreturn (f32Trunc x)
@@ -1023,8 +1057,8 @@ def roundCheckInnerFrame : ControlFrame :=
 theorem roundCheck_tail_result_smallStep_wp
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     (R : IProp (WasmHeapGF Unit)) (x result : UInt32) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u32 1048572 result ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u32 0 1048572 result ⊢
     WP (.running
       ⟨⟨[.f32 x], [.i32 1048560, .i32 0], []⟩,
         roundCheckTailProg, 1, [], [], []⟩ :
@@ -1034,7 +1068,7 @@ theorem roundCheck_tail_result_smallStep_wp
   iapply wp_localGet rfl
   inext
   ihave HresultLater :
-      ▷ pointsTo_u32 ((1048560 : UInt32) + 12) result $$ [Hresult]
+      ▷ pointsTo_u32 0 ((1048560 : UInt32) + 12) result $$ [Hresult]
   · inext
     rw [show (1048560 : UInt32) + 12 = 1048572 by decide]
     iexact Hresult
@@ -1054,7 +1088,7 @@ theorem roundCheck_tail_result_smallStep_wp
   inext
   rw [show (16 : UInt32) + 1048560 = 1048576 by decide]
   ihave HglobalLater :
-      ▷ globalPointsTo 0 (.i32 1048560) $$ [Hglobal]
+      ▷ globalPointsToAt 0 0 (.i32 1048560) $$ [Hglobal]
   · inext
     iexact Hglobal
   iapply wp_globalSet $$ HglobalLater
@@ -1074,24 +1108,24 @@ theorem roundCheck_comparison_smallStep_wp
     {Φ : List Value → IProp (WasmHeapGF Unit)}
     (x oldDeep oldWord oldResult : UInt32)
     (hzero : ∀ deep word : UInt32,
-      pointsTo_u32 1048540 deep ∗ pointsTo_u32 1048556 word ∗
-        runtimeModuleOwn «module» ∗
-        globalPointsTo 0 (.i32 1048560) ∗ pointsTo_u32 1048572 0 ⊢
+      pointsTo_u32 0 1048540 deep ∗ pointsTo_u32 0 1048556 word ∗
+        runtimeModuleOwn ⟨0⟩ «module» ∗
+        globalPointsToAt 0 0 (.i32 1048560) ∗ pointsTo_u32 0 1048572 0 ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 1048560, .i32 0], []⟩,
           roundCheckTailProg, 1, [], [], []⟩ :
           Expr Unit) @ s; E {{ Φ }})
     (hone : ∀ deep word : UInt32,
-      pointsTo_u32 1048540 deep ∗ pointsTo_u32 1048556 word ∗
-        runtimeModuleOwn «module» ∗
-        globalPointsTo 0 (.i32 1048560) ∗ pointsTo_u32 1048572 1 ⊢
+      pointsTo_u32 0 1048540 deep ∗ pointsTo_u32 0 1048556 word ∗
+        runtimeModuleOwn ⟨0⟩ «module» ∗
+        globalPointsToAt 0 0 (.i32 1048560) ∗ pointsTo_u32 0 1048572 1 ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 1048560, .i32 0], []⟩,
           roundCheckTailProg, 1, [], [], []⟩ :
           Expr Unit) @ s; E {{ Φ }}) :
-    pointsTo_u32 1048540 oldDeep ∗ pointsTo_u32 1048556 oldWord ∗
-      runtimeModuleOwn «module» ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u32 1048572 oldResult ⊢
+    pointsTo_u32 0 1048540 oldDeep ∗ pointsTo_u32 0 1048556 oldWord ∗
+      runtimeModuleOwn ⟨0⟩ «module» ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u32 0 1048572 oldResult ⊢
     WP (.running
       ⟨⟨[.f32 x], [.i32 1048560, .i32 0], []⟩,
         roundCheckInnerBody, 1, [],
@@ -1107,12 +1141,13 @@ theorem roundCheck_comparison_smallStep_wp
   iintro Hruntime
   simp [func0Def, Function.toLocals, Function.numParams, ValueType.zero]
   iapply func0_lowered_smallStep_wp
-    (iprop(pointsTo_u32 1048572 oldResult))
+    (iprop(pointsTo_u32 0 1048572 oldResult))
     x oldDeep oldWord _ _
   · intro naive
     iintro ⟨Hresult, Hruntime, Hglobal, Hdeep, Hword⟩
-    iapply wp_returnFromCallExplicit
+    iapply wp_returnFromCallExplicit' $$ Hruntime
     inext
+    iintro Hruntime
     simp only [List.take, List.singleton_append]
     iapply wp_localGet rfl
     inext
@@ -1122,12 +1157,13 @@ theorem roundCheck_comparison_smallStep_wp
     iintro Hruntime
     simp [func4Def, Function.toLocals, Function.numParams]
     iapply func4_lowered_smallStep_wp
-      (iprop(pointsTo_u32 1048540 naive ∗
-        pointsTo_u32 1048572 oldResult))
+      (iprop(pointsTo_u32 0 1048540 naive ∗
+        pointsTo_u32 0 1048572 oldResult))
       x naive _ _
     · iintro ⟨⟨Hdeep, Hresult⟩, Hruntime, Hglobal, Hword⟩
-      iapply wp_returnFromCallExplicit
+      iapply wp_returnFromCallExplicit' $$ Hruntime
       inext
+      iintro Hruntime
       simp only [List.take, List.singleton_append]
       by_cases heq : f32Eq naive (f32Nearest x) = true
       · iapply wp_scalarFloat2 (value := .i32 1) rfl rfl
@@ -1147,7 +1183,7 @@ theorem roundCheck_comparison_smallStep_wp
         iapply wp_const
         inext
         ihave HresultLater :
-            ▷ pointsTo_u32 ((1048560 : UInt32) + 12) oldResult $$ [Hresult]
+            ▷ pointsTo_u32 0 ((1048560 : UInt32) + 12) oldResult $$ [Hresult]
         · inext
           rw [show (1048560 : UInt32) + 12 = 1048572 by decide]
           iexact Hresult
@@ -1159,10 +1195,10 @@ theorem roundCheck_comparison_smallStep_wp
         inext
         simp only [roundCheckOuterFrame, List.take, List.nil_append]
         have hResultProp :
-            pointsTo_u32 ((1048560 : UInt32) + 12) 1 =
-              pointsTo_u32 1048572 1 :=
-          congrArg (fun address => pointsTo_u32 address 1) (by decide)
-        ihave HresultExact : pointsTo_u32 1048572 1 $$ [Hresult]
+            pointsTo_u32 0 ((1048560 : UInt32) + 12) 1 =
+              pointsTo_u32 0 1048572 1 :=
+          congrArg (fun address => pointsTo_u32 0 address 1) (by decide)
+        ihave HresultExact : pointsTo_u32 0 1048572 1 $$ [Hresult]
         · rw [← hResultProp]
           iexact Hresult
         iapply hone naive (f32Nearest x)
@@ -1184,7 +1220,7 @@ theorem roundCheck_comparison_smallStep_wp
         iapply wp_const
         inext
         ihave HresultLater :
-            ▷ pointsTo_u32 ((1048560 : UInt32) + 12) oldResult $$ [Hresult]
+            ▷ pointsTo_u32 0 ((1048560 : UInt32) + 12) oldResult $$ [Hresult]
         · inext
           rw [show (1048560 : UInt32) + 12 = 1048572 by decide]
           iexact Hresult
@@ -1196,10 +1232,10 @@ theorem roundCheck_comparison_smallStep_wp
         inext
         simp only [roundCheckOuterFrame, List.take, List.nil_append]
         have hResultProp :
-            pointsTo_u32 ((1048560 : UInt32) + 12) 0 =
-              pointsTo_u32 1048572 0 :=
-          congrArg (fun address => pointsTo_u32 address 0) (by decide)
-        ihave HresultExact : pointsTo_u32 1048572 0 $$ [Hresult]
+            pointsTo_u32 0 ((1048560 : UInt32) + 12) 0 =
+              pointsTo_u32 0 1048572 0 :=
+          congrArg (fun address => pointsTo_u32 0 address 0) (by decide)
+        ihave HresultExact : pointsTo_u32 0 1048572 0 $$ [Hresult]
         · rw [← hResultProp]
           iexact Hresult
         iapply hzero naive (f32Nearest x)
@@ -1209,9 +1245,9 @@ theorem roundCheck_comparison_smallStep_wp
 
 theorem func6_body_smallStep_wp
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset} :
-    pointsTo_u32 1048540 0 ∗ pointsTo_u32 1048556 0 ∗
-      pointsTo_u32 1048572 0 ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048576) ⊢
+    pointsTo_u32 0 1048540 0 ∗ pointsTo_u32 0 1048556 0 ∗
+      pointsTo_u32 0 1048572 0 ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048576) ⊢
     WP (.running
       ⟨⟨[.f32 x], [.i32 0, .i32 0], []⟩,
         func6, 1, [], [], []⟩ : Expr Unit) @ s; E
@@ -1232,7 +1268,7 @@ theorem func6_body_smallStep_wp
     List.set]
   iapply wp_localGet rfl
   inext
-  ihave HglobalLater : ▷ globalPointsTo 0 (.i32 1048576) $$ [Hglobal]
+  ihave HglobalLater : ▷ globalPointsToAt 0 0 (.i32 1048576) $$ [Hglobal]
   · inext
     iexact Hglobal
   iapply wp_globalSet $$ HglobalLater
@@ -1270,26 +1306,18 @@ theorem func6_body_smallStep_wp
   · intro deep word
     iintro ⟨Hdeep, Hword, Hruntime, Hglobal, Hresult⟩
     iapply roundCheck_tail_result_smallStep_wp
-      (iprop(pointsTo_u32 1048540 deep ∗
-        pointsTo_u32 1048556 word ∗ runtimeModuleOwn «module»))
+      (iprop(pointsTo_u32 0 1048540 deep ∗
+        pointsTo_u32 0 1048556 word ∗ runtimeModuleOwn ⟨0⟩ «module»))
       x 0
     iframe
   · intro deep word
     iintro ⟨Hdeep, Hword, Hruntime, Hglobal, Hresult⟩
     iapply roundCheck_tail_result_smallStep_wp
-      (iprop(pointsTo_u32 1048540 deep ∗
-        pointsTo_u32 1048556 word ∗ runtimeModuleOwn «module»))
+      (iprop(pointsTo_u32 0 1048540 deep ∗
+        pointsTo_u32 0 1048556 word ∗ runtimeModuleOwn ⟨0⟩ «module»))
       x 1
     iframe
   · iframe
-
-def checkRoundConfig (x : UInt32) : Config Unit :=
-  { expr := .running
-      ⟨⟨[.f32 x], [.i32 0, .i32 0], []⟩,
-        func6, 1, [], [], []⟩
-    store :=
-      { runtime := { module := «module», host := {} }
-        wasm := «module».initialStore } }
 
 theorem checkRound_smallStep (x : UInt32) :
     PartiallyMeets (checkRoundConfig x)
@@ -1300,12 +1328,13 @@ theorem checkRound_smallStep (x : UInt32) :
   · simpa [checkRoundConfig] using roundHeap_agrees
   · simpa [checkRoundConfig] using roundHeap_inBounds
   · simpa [checkRoundConfig] using roundGlobals_agree
+  · simp only [checkRoundConfig]; decide
   · intro gs
+    simp only [checkRoundConfig, RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hmemory := roundHeap_pointsTo $$ Hbytes
     icases Hmemory with ⟨Hdeep, Hword, Hresult⟩
     ihave Hglobal := roundGlobals_pointsTo $$ Hglobals
-    simp only [checkRoundConfig]
     iapply func6_body_smallStep_wp
     iframe
 
@@ -1337,7 +1366,7 @@ private theorem func1_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 1 st ([.f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func1, [.f32], some 0⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func1, [.f32], none⟩) rfl
   unfold func1; wp_run
   simp [hg, hp]
   have hle : (16 : UInt32) ≤ sp := UInt32.le_iff_toNat_le.mpr h16
@@ -1351,7 +1380,7 @@ private theorem func2_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 2 st ([.f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func2, [.f32], some 0⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func2, [.f32], none⟩) rfl
   unfold func2; wp_run
   simp [hg, hp]
   have hle : (16 : UInt32) ≤ sp := UInt32.le_iff_toNat_le.mpr h16
@@ -1365,7 +1394,7 @@ private theorem func3_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 3 st ([.f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func3, [.f32], some 0⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func3, [.f32], none⟩) rfl
   unfold func3; wp_run
   simp [hg, hp]
   have hle : (16 : UInt32) ≤ sp := UInt32.le_iff_toNat_le.mpr h16
@@ -1379,7 +1408,7 @@ private theorem func5_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 5 st ([.f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func5, [.f32], some 0⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func5, [.f32], none⟩) rfl
   unfold func5; wp_run
   simp [hg, hp]
   have hle : (16 : UInt32) ≤ sp := UInt32.le_iff_toNat_le.mpr h16
@@ -1395,7 +1424,7 @@ private theorem func4_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 4 st ([.f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func4, [.f32], some 0⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func4, [.f32], none⟩) rfl
   unfold func4; wp_run
   apply wp_call_tw (func5_term env st sp x [] hg hp h16 hb)
   rintro st5 vs5 ⟨v5, rfl, hg5, hp5⟩
@@ -1410,7 +1439,7 @@ private theorem func0_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 0 st [.f32 x]
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32, .f32, .f32, .f32], func0, [.f32], some 0⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32, .f32, .f32, .f32], func0, [.f32], none⟩) rfl
   unfold func0; wp_run; simp only [hg]
   -- frame setup: sp -> sp-16, local[1] = sp-16
   have hle32 : (16 : UInt32) <= sp := UInt32.le_iff_toNat_le.mpr (by simpa using (show 16 ≤ sp.toNat from by omega))
@@ -1484,7 +1513,7 @@ theorem check_round_terminates : FloatRoundSpec := by
   intro env x
   have hg : («module».initialStore : Store Unit).globals.globals[0]? = some (.i32 1048576) := rfl
   have hp : («module».initialStore : Store Unit).mem.pages = 16 := rfl
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32, .i32], func6, [.i32], some 1⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32, .i32], func6, [.i32], none⟩) rfl
   unfold func6; wp_run; simp only [hg]
   -- frame: sp = 1048576 -> 1048560
   have hg6 : ({«module».initialStore with globals := {globals := «module».initialStore.globals.globals.set 0 (.i32 (1048576 - 16))}} : Store Unit).globals.globals[0]? = some (.i32 (1048576 - 16)) :=

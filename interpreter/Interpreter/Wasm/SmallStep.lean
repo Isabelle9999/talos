@@ -287,10 +287,10 @@ private def canonicalMemoryIndex (store : MachineStore α) (index : Nat) : Nat :
   | some id => (store.wasm.memoryIds.findIdx? (· = id)).getD index
   | none => index
 
-private def memoryAt? (store : MachineStore α) (index : Nat) : Option Mem :=
+def memoryAt? (store : MachineStore α) (index : Nat) : Option Mem :=
   rawMemoryAt? store (canonicalMemoryIndex store index)
 
-private def setMemoryAt
+def setMemoryAt
     (store : MachineStore α) (index : Nat) (memory : Mem) : MachineStore α :=
   let index := canonicalMemoryIndex store index
   if index = 0 then setMemory store memory
@@ -420,8 +420,14 @@ private def extendUnsigned32To64 (value : UInt32) : UInt64 :=
 private def extend8To32 (value : UInt32) : UInt32 :=
   (Int32.ofInt (signExtend (value.toNat % 256) 8)).toUInt32
 
+theorem extend8To32_eq (value : UInt32) :
+    extend8To32 value = (Int32.ofInt (signExtend (value.toNat % 256) 8)).toUInt32 := rfl
+
 private def extend16To32 (value : UInt32) : UInt32 :=
   (Int32.ofInt (signExtend (value.toNat % 65536) 16)).toUInt32
+
+theorem extend16To32_eq (value : UInt32) :
+    extend16To32 value = (Int32.ofInt (signExtend (value.toNat % 65536) 16)).toUInt32 := rfl
 
 private def extend8To64 (value : UInt64) : UInt64 :=
   (Int64.ofInt (signExtend (value.toNat % 256) 8)).toUInt64
@@ -569,6 +575,18 @@ private def writeLaneNat
   | 16 => memory.write16 address (UInt32.ofNat value)
   | 32 => memory.write32 address (UInt32.ofNat value)
   | _ => memory.write64 address (UInt64.ofNat value)
+
+theorem writeLaneNat_eq_8 (memory : Mem) (address : UInt32) (value : Nat) :
+    writeLaneNat memory address 8 value = memory.write8 address (UInt8.ofNat value) := rfl
+
+theorem writeLaneNat_eq_16 (memory : Mem) (address : UInt32) (value : Nat) :
+    writeLaneNat memory address 16 value = memory.write16 address (UInt32.ofNat value) := rfl
+
+theorem writeLaneNat_eq_32 (memory : Mem) (address : UInt32) (value : Nat) :
+    writeLaneNat memory address 32 value = memory.write32 address (UInt32.ofNat value) := rfl
+
+theorem writeLaneNat_eq_64 (memory : Mem) (address : UInt32) (value : Nat) :
+    writeLaneNat memory address 64 value = memory.write64 address (UInt64.ofNat value) := rfl
 
 private def loadV128Ext
     (memory : Mem) (address : UInt32) (srcBits : Nat) (signed : Bool) :

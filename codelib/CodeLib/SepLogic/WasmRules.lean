@@ -471,6 +471,78 @@ theorem copy2_zero_four_eq_write64 (mem : Mem)
     simp [h2, h3, h4, h5]
     omega
 
+def store16Heap (σ : WasmHeapMap (Option UInt8)) (memId : Nat) (addr value : UInt32) :
+    WasmHeapMap (Option UInt8) :=
+  insert
+    (insert σ ⟨memId, addr⟩ (some (u32Byte value 0)))
+    ⟨memId, addr + 1⟩ (some (u32Byte value 1))
+
+theorem store16_sound (σ : WasmHeapMap (Option UInt8)) (resolve : Nat → Option Mem)
+    (memId : Nat) (mem : Mem) (addr value : UInt32)
+    (h_resolve : resolve memId = some mem)
+    (h1 : (addr + 1).toNat = addr.toNat + 1)
+    (h_agree : heapAgreesWithMem σ resolve) :
+    heapAgreesWithMem (store16Heap σ memId addr value)
+      (fun id => if id = memId then some (mem.write16 addr value) else resolve id) := by
+  intro key byte h_get
+  by_cases e1 : key = ⟨memId, addr + 1⟩
+  · subst key
+    simp [store16Heap, get?_insert_eq] at h_get
+    rw [← h_get]
+    refine ⟨mem.write16 addr value, ?_, ?_⟩
+    · simp
+    · simp [Mem.write16, Mem.read8, h1, u32Byte]; bv_decide
+  by_cases e0 : key = ⟨memId, addr⟩
+  · subst key
+    simp [store16Heap, get?_insert_ne (Ne.symm e1), get?_insert_eq] at h_get
+    rw [← h_get]
+    refine ⟨mem.write16 addr value, ?_, ?_⟩
+    · simp
+    · simp [Mem.write16, Mem.read8, u32Byte]; bv_decide
+  · simp [store16Heap, get?_insert_ne (Ne.symm e1),
+      get?_insert_ne (Ne.symm e0)] at h_get
+    obtain ⟨m, hm, hread⟩ := h_agree key byte h_get
+    by_cases hid : key.memId = memId
+    · have hm_eq : m = mem := Option.some.inj ((hid ▸ hm).symm.trans h_resolve)
+      have n0 : key.addr.toNat ≠ addr.toNat :=
+        fun h => e0 (show key = ⟨memId, addr⟩ from by
+          cases key; simp only [MemoryKey.mk.injEq]; exact ⟨hid, UInt32.toNat_inj.mp h⟩)
+      have n1 : key.addr.toNat ≠ addr.toNat + 1 := by
+        rw [← h1]
+        exact fun h => e1 (show key = ⟨memId, addr + 1⟩ from by
+          cases key; simp only [MemoryKey.mk.injEq]; exact ⟨hid, UInt32.toNat_inj.mp h⟩)
+      refine ⟨mem.write16 addr value, ?_, ?_⟩
+      · simp [hid]
+      · simpa [Mem.write16, Mem.read8, n0, n1, hm_eq] using hread
+    · exact ⟨m, by simp [if_neg hid, hm], hread⟩
+
+theorem store16_inBounds (σ : WasmHeapMap (Option UInt8)) (resolve : Nat → Option Mem)
+    (memId : Nat) (mem : Mem) (addr value : UInt32)
+    (h_resolve : resolve memId = some mem)
+    (h1 : (addr + 1).toNat = addr.toNat + 1)
+    (h_addresses : heapAddressesInBounds σ resolve)
+    (h_addr : addr.toNat + 2 ≤ mem.pages * 65536) :
+    heapAddressesInBounds (store16Heap σ memId addr value)
+      (fun id => if id = memId then some (mem.write16 addr value) else resolve id) := by
+  intro key h_get
+  by_cases e1 : key = ⟨memId, addr + 1⟩
+  · subst key
+    refine ⟨mem.write16 addr value, ?_, ?_⟩; · simp
+    · simp [Mem.write16, h1]; omega
+  by_cases e0 : key = ⟨memId, addr⟩
+  · subst key
+    refine ⟨mem.write16 addr value, ?_, ?_⟩; · simp
+    · simp [Mem.write16]; omega
+  · simp [store16Heap, get?_insert_ne (Ne.symm e1),
+      get?_insert_ne (Ne.symm e0)] at h_get
+    obtain ⟨m, hm, hlt⟩ := h_addresses key h_get
+    by_cases hid : key.memId = memId
+    · have hm_eq : m = mem := Option.some.inj ((hid ▸ hm).symm.trans h_resolve)
+      refine ⟨mem.write16 addr value, ?_, ?_⟩
+      · simp [hid]
+      · simpa [Mem.write16, hm_eq] using hlt
+    · exact ⟨m, by simp [if_neg hid, hm], hlt⟩
+
 def store32Heap (σ : WasmHeapMap (Option UInt8)) (memId : Nat) (addr value : UInt32) :
     WasmHeapMap (Option UInt8) :=
   insert

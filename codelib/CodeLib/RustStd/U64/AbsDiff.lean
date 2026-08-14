@@ -437,6 +437,7 @@ theorem absDiff_smallStep_partiallyMeets_of_store
   · exact absDiffBodyHeap_agrees runtimeModule initial a b oldScratch
   · exact absDiffBodyHeap_inBounds runtimeModule initial a b oldScratch hpages
   · exact absDiffBodyGlobals_agree runtimeModule initial a b oldScratch hglobal
+  · simp [absDiffBodyConfig]
   · intro gs
     iintro ⟨Hbytes, Hglobals⟩
     ihave Hscratch := absDiffHeap_pointsTo oldScratch $$ Hbytes

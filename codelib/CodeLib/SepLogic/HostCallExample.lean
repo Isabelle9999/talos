@@ -62,6 +62,7 @@ theorem writeByte_partiallyMeets :
     · rw [get?_insert_ne (Ne.symm h), get?_empty] at hget
       contradiction
   · exact globalHeapAgrees_empty _
+  · decide
   · intro gs
     simp only [(BI.BigSepM.bigSepM_insert (get?_empty (⟨0, 0⟩ : MemoryKey))).to_eq,
                BI.BigSepM.bigSepM_empty.to_eq, BI.sep_emp.to_eq]
@@ -91,6 +92,7 @@ theorem writeByte_partiallyMeets :
           ⟨0, 0⟩ (DFrac.own 1) (some (42 : UInt8))))
         (iprop(False))
         (iprop(False))
+        ⟨0⟩
         -- ghost write: pointsTo 0 (some 0) ∗ stateInterp ==∗ pointsTo 0 (some 42) ∗ stateInterp'
         (fun store ns obs nt _ results postWasm h => by
           simp [writeByteHost] at h
@@ -119,7 +121,7 @@ theorem writeByte_partiallyMeets :
         $$ [$Hpt] Hruntime Henv
     -- return: QRet [] = pointsTo 0 (some 42); close Φ_simple
     · inext
-      iintro %preWasm %results %postWasm %h HQ
+      iintro %preWasm %results %postWasm %h ⟨HQ, _⟩
       simp only [List.take_zero, List.nil_append, List.length_cons,
                  List.length_nil, List.drop]
       iapply wp_finish

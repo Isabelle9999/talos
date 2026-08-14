@@ -1029,6 +1029,7 @@ theorem func1_zero_smallStep_partiallyMeets
   · apply gcdFrameHeap_inBounds
     rfl
   · exact func1GlobalHeap_agrees
+  · simp only [func1ZeroConfig]; decide
   · intro gs
     iintro ⟨Hframe, Hglobals, Hruntime⟩
     ihave Hglobal := func1GlobalHeap_pointsTo $$ Hglobals
@@ -3738,6 +3739,7 @@ theorem func1_nonzero_smallStep_partiallyMeets
   · apply gcdFrameHeap_inBounds
     rfl
   · exact func1GlobalHeap_agrees
+  · simp only [func1ZeroConfig]; decide
   · intro gs
     iintro ⟨Hframe, Hglobals, Hruntime⟩
     ihave Hglobal := func1GlobalHeap_pointsTo $$ Hglobals
@@ -3976,7 +3978,7 @@ theorem func1_terminates (env : HostEnv Unit) (st1 : Store Unit) (a b : UInt64)
       (fun st' vs => st'.globals = st1.globals ∧
         vs = .i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) :: tail) := by
   apply TerminatesWith.of_wp_entry_for
-    (f := ⟨[.i32, .i32], [.i32, .i32, .i32, .i32, .i64, .i32, .i64, .i32], func1, [.i64], some 1⟩) rfl
+    (f := ⟨[.i32, .i32], [.i32, .i32, .i32, .i32, .i64, .i32, .i64, .i32], func1, [.i64], none⟩) rfl
   unfold func1
   wp_run
   rw [hg0]
@@ -4069,12 +4071,13 @@ def func0AfterCallProg : Program :=
   [.localSet 3, .localGet 2, .const 16, .add, .globalSet 0,
     .localGet 3, .ret]
 
-def func0CallerFrame (a b : UInt64) : Wasm.SmallStep.CallFrame :=
+def func0CallerFrame (a b : UInt64) (ri : Wasm.SmallStep.ModuleInstanceId) : Wasm.SmallStep.CallFrame :=
   { locals := ⟨[.i64 a, .i64 b], func0CallLocals, []⟩
     continuation := func0AfterCallProg
     resultArity := 1
     callerRemainder := []
-    control := [] }
+    control := []
+    returningInstance := ri }
 
 /-- Execute the generated `func0` stack-frame prologue up to its direct call
 of `func1`. The stack-pointer global and both caller-frame words are updated
@@ -4382,6 +4385,7 @@ theorem func0_resumeCaller_smallStep_wp
     {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp (WasmHeapGF Unit)}
     (R : IProp (WasmHeapGF Unit))
+    {ri : Wasm.SmallStep.ModuleInstanceId}
     (calls : List Wasm.SmallStep.CallFrame)
     (calleeLocals : Locals)
     (a b returned result x y outerA outerB : UInt64)
@@ -4389,7 +4393,7 @@ theorem func0_resumeCaller_smallStep_wp
     (hreturned :
       returned = UInt64.ofNat (Nat.gcd a.toNat b.toNat))
     (hreturn :
-      func0FramePost R a b
+      runtimeModuleOwn ri «module» ∗ func0FramePost R a b
           [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))] ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i64 a, .i64 b],
@@ -4398,7 +4402,7 @@ theorem func0_resumeCaller_smallStep_wp
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+    runtimeModuleOwn ri «module» ∗ R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
       pointsTo_u64 0 1048512 result ∗
       pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
       pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
@@ -4409,17 +4413,21 @@ theorem func0_resumeCaller_smallStep_wp
       ⟨{ calleeLocals with
           values := [.i64 returned] },
         [.ret], 1, [], [],
-        func0CallerFrame a b :: calls⟩ :
+        func0CallerFrame a b ri :: calls⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }} := by
   subst returned
-  iintro Hresources
-  iapply Wasm.SmallStep.wp_returnFromCallExplicit
+  simp only [func0CallerFrame]
+  iintro ⟨Hruntime, Hresources⟩
+  iapply Wasm.SmallStep.wp_returnFromCallExplicit' $$ Hruntime
   inext
-  simp only [func0CallerFrame, func0CallLocals, func0AfterCallProg,
+  iintro Hruntime'
+  simp only [func0CallLocals, func0AfterCallProg,
     List.take, List.append_nil]
+  icombine Hresources Hruntime' as Hresources
   have hafter := func0_afterCall_smallStep_wp_to_return
     (s := s) (E := E) (Φ := Φ)
-    (R := iprop(R ∗ pointsTo_u64 0 1048512 result ∗
+    (R := iprop(R ∗ runtimeModuleOwn ri «module» ∗
+      pointsTo_u64 0 1048512 result ∗
       pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
       pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
       pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
@@ -4429,16 +4437,19 @@ theorem func0_resumeCaller_smallStep_wp
   simp only [func0CallLocals, func0AfterCallProg] at hafter
   iapply hafter
   · iintro Hresources
-    iapply hreturn
-    iapply func0_exactFrame_entails_post
-      R a b result x y outerA outerB
-      shiftXY shiftX shiftY nextY nextX
     icases Hresources with ⟨Hframe, Hglobal⟩
     icases Hframe with
-      ⟨HR, Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY,
+      ⟨HR, Hruntime'', Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY,
         HnextY, HnextX, HouterA, HouterB⟩
-    iframe
-  · icases Hresources with
+    iapply hreturn
+    isplitl [Hruntime'']
+    · iexact Hruntime''
+    · iapply func0_exactFrame_entails_post
+        R a b result x y outerA outerB
+        shiftXY shiftX shiftY nextY nextX
+      iframe
+  · icases Hresources with ⟨HRstuff, Hruntime_b⟩
+    icases HRstuff with
       ⟨HR, Hglobal, Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY,
         HnextY, HnextX, HouterA, HouterB⟩
     iframe
@@ -4454,7 +4465,7 @@ theorem func0_smallStep_wp_to_return
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (hreturn :
-      func0FramePost (iprop(R ∗ runtimeModuleOwn «module»)) a b
+      runtimeModuleOwn ⟨0⟩ «module» ∗ func0FramePost R a b
           [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))] ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i64 a, .i64 b],
@@ -4463,7 +4474,7 @@ theorem func0_smallStep_wp_to_return
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ runtimeModuleOwn «module» ∗
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
       globalPointsToAt 0 0 (.i32 1048576) ∗
       pointsTo_u64 0 1048512 result ∗
       pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
@@ -4480,7 +4491,7 @@ theorem func0_smallStep_wp_to_return
     ⟨HR, Hruntime, Hglobal, Hresult, Hx, Hy, HshiftXY, HshiftX,
       HshiftY, HnextY, HnextX, HouterA, HouterB⟩
   iapply func0_callPrefix_smallStep_wp
-    (R := iprop(R ∗ runtimeModuleOwn «module» ∗
+    (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
       pointsTo_u64 0 1048512 result ∗
       pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
       pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
@@ -4506,16 +4517,17 @@ theorem func0_smallStep_wp_to_return
          continuation := func0AfterCallProg
          resultArity := 1
          callerRemainder := []
-         control := [] } : Wasm.SmallStep.CallFrame) =
-        func0CallerFrame a b from rfl]
+         control := []
+         returningInstance := ⟨0⟩ } : Wasm.SmallStep.CallFrame) =
+        func0CallerFrame a b ⟨0⟩ from rfl]
     by_cases ha : a = 0
     · subst a
       iapply func1_leftZero_smallStep_wp_to_return
-        (R := iprop(R ∗ runtimeModuleOwn «module» ∗
+        (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
           pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
           pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
           pointsTo_u32 0 1048540 nextX))
-        (func0CallerFrame 0 b :: calls) result oldX oldY b
+        (func0CallerFrame 0 b ⟨0⟩ :: calls) result oldX oldY b
       · iintro Hresources
         icases Hresources with
           ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
@@ -4523,21 +4535,21 @@ theorem func0_smallStep_wp_to_return
           ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
             HnextY'', HnextX''⟩
         iapply func0_resumeCaller_smallStep_wp
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
+          (R := R)
           calls
           ⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩
           0 b b b 0 b 0 b shiftXY shiftX shiftY nextY nextX
-          (by simp) hreturn
+          (by simp [Nat.gcd_zero_left, Nat.gcd_zero_right]) hreturn
         iframe
       · iframe
     · by_cases hb : b = 0
       · subst b
         iapply func1_rightZero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module» ∗
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
             pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
             pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
             pointsTo_u32 0 1048540 nextX))
-          (func0CallerFrame a 0 :: calls) result oldX oldY a ha
+          (func0CallerFrame a 0 ⟨0⟩ :: calls) result oldX oldY a ha
         · iintro Hresources
           icases Hresources with
             ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
@@ -4545,16 +4557,16 @@ theorem func0_smallStep_wp_to_return
             ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
               HnextY'', HnextX''⟩
           iapply func0_resumeCaller_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := R)
             calls
             ⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩
             a 0 a a a 0 a 0 shiftXY shiftX shiftY nextY nextX
-            (by simp) hreturn
+            (by simp [Nat.gcd_zero_left, Nat.gcd_zero_right]) hreturn
           iframe
         · iframe
       · iapply func1_nonzero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
-          (func0CallerFrame a b :: calls)
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»))
+          (func0CallerFrame a b ⟨0⟩ :: calls)
           result oldX oldY a b ha hb
           shiftXY shiftX shiftY nextX nextY
         · intro g loopX loopY d6 d8 d7 d9 hg
@@ -4567,7 +4579,7 @@ theorem func0_smallStep_wp_to_return
             ⟨HRruntime, Hglobal'', HouterA'', HouterB''⟩
           icases HRruntime with ⟨HR'', Hruntime''⟩
           iapply func0_resumeCaller_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := R)
             calls
             ⟨[.i32 1048560, .i32 1048568],
               func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩
@@ -4588,7 +4600,7 @@ theorem func0_smallStep_wp
     (R : IProp (WasmHeapGF Unit))
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32) :
-    R ∗ runtimeModuleOwn «module» ∗
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
       globalPointsToAt 0 0 (.i32 1048576) ∗
       pointsTo_u64 0 1048512 result ∗
       pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
@@ -4601,12 +4613,12 @@ theorem func0_smallStep_wp
       ⟨⟨[.i64 a, .i64 b], func0InitialLocals, []⟩,
         func0, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
-      {{ rs, func0FramePost (iprop(R ∗ runtimeModuleOwn «module»)) a b rs }} := by
+      {{ rs, func0FramePost R a b rs }} := by
   iintro
     ⟨HR, Hruntime, Hglobal, Hresult, Hx, Hy, HshiftXY, HshiftX,
       HshiftY, HnextY, HnextX, HouterA, HouterB⟩
   iapply func0_callPrefix_smallStep_wp
-    (R := iprop(R ∗ runtimeModuleOwn «module» ∗
+    (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
       pointsTo_u64 0 1048512 result ∗
       pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
       pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
@@ -4632,27 +4644,29 @@ theorem func0_smallStep_wp
          continuation := func0AfterCallProg
          resultArity := 1
          callerRemainder := []
-         control := [] } : Wasm.SmallStep.CallFrame) =
-        func0CallerFrame a b from rfl]
+         control := []
+         returningInstance := ⟨0⟩ } : Wasm.SmallStep.CallFrame) =
+        func0CallerFrame a b ⟨0⟩ from rfl]
     by_cases ha : a = 0
     · subst a
       iapply func1_leftZero_smallStep_wp_to_return
-        (R := iprop(R ∗ runtimeModuleOwn «module» ∗
+        (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
           pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
           pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
           pointsTo_u32 0 1048540 nextX))
-        [func0CallerFrame 0 b] result oldX oldY b
+        [func0CallerFrame 0 b ⟨0⟩] result oldX oldY b
       · iintro Hresources
         icases Hresources with
           ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
         icases HRscratch with
           ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
             HnextY'', HnextX''⟩
-        iapply Wasm.SmallStep.wp_returnFromCallExplicit
+        simp only [func0CallerFrame]
+        iapply Wasm.SmallStep.wp_returnFromCallExplicit $$ Hruntime''
         inext
-        simp [func0CallerFrame, func0CallLocals, func0AfterCallProg]
+        simp [func0CallLocals, func0AfterCallProg]
         iapply func0_afterCall_frame_smallStep_wp
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
+          (R := R)
           0 b b b 0 b 0 b shiftXY shiftX shiftY nextY nextX
           (by simp [Nat.gcd_zero_left])
         iframe
@@ -4660,29 +4674,30 @@ theorem func0_smallStep_wp
     · by_cases hb : b = 0
       · subst b
         iapply func1_rightZero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module» ∗
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
             pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
             pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
             pointsTo_u32 0 1048540 nextX))
-          [func0CallerFrame a 0] result oldX oldY a ha
+          [func0CallerFrame a 0 ⟨0⟩] result oldX oldY a ha
         · iintro Hresources
           icases Hresources with
             ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
           icases HRscratch with
             ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
               HnextY'', HnextX''⟩
-          iapply Wasm.SmallStep.wp_returnFromCallExplicit
+          simp only [func0CallerFrame]
+          iapply Wasm.SmallStep.wp_returnFromCallExplicit $$ Hruntime''
           inext
-          simp [func0CallerFrame, func0CallLocals, func0AfterCallProg]
+          simp [func0CallLocals, func0AfterCallProg]
           iapply func0_afterCall_frame_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := R)
             a 0 a a a 0 a 0 shiftXY shiftX shiftY nextY nextX
             (by simp [Nat.gcd_zero_right])
           iframe
         · iframe
       · iapply func1_nonzero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
-          [func0CallerFrame a b]
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»))
+          [func0CallerFrame a b ⟨0⟩]
           result oldX oldY a b ha hb
           shiftXY shiftX shiftY nextX nextY
         · intro g loopX loopY d6 d8 d7 d9 hg
@@ -4694,12 +4709,13 @@ theorem func0_smallStep_wp
           icases HRouter with
             ⟨HRruntime, Hglobal'', HouterA'', HouterB''⟩
           icases HRruntime with ⟨HR'', Hruntime''⟩
-          iapply Wasm.SmallStep.wp_returnFromCallExplicit
+          simp only [func0CallerFrame]
+          iapply Wasm.SmallStep.wp_returnFromCallExplicit $$ Hruntime''
           inext
-          simp only [func0CallerFrame, func0CallLocals, func0AfterCallProg,
+          simp only [func0CallLocals, func0AfterCallProg,
             List.take, List.append_nil]
           iapply func0_afterCall_frame_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := R)
             a b (UInt64.ofNat (Nat.gcd a.toNat b.toNat))
             (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) g g a b
             (sharedShiftWord a b) (operandShiftWord a) (operandShiftWord b)
@@ -4708,12 +4724,13 @@ theorem func0_smallStep_wp
         · iframe
   · iframe
 
-def func2CallerFrame (a b : UInt64) : Wasm.SmallStep.CallFrame :=
+def func2CallerFrame (a b : UInt64) (ri : Wasm.SmallStep.ModuleInstanceId) : Wasm.SmallStep.CallFrame :=
   { locals := ⟨[.i64 a, .i64 b], [], []⟩
     continuation := [.ret]
     resultArity := 1
     callerRemainder := []
-    control := [] }
+    control := []
+    returningInstance := ri }
 
 /-- Complete small-step Iris rule for the exported `func2` wrapper. -/
 theorem func2_smallStep_wp
@@ -4722,7 +4739,7 @@ theorem func2_smallStep_wp
     (R : IProp (WasmHeapGF Unit))
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32) :
-    R ∗ runtimeModuleOwn «module» ∗
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
       globalPointsToAt 0 0 (.i32 1048576) ∗
       pointsTo_u64 0 1048512 result ∗
       pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
@@ -4735,7 +4752,7 @@ theorem func2_smallStep_wp
       ⟨⟨[.i64 a, .i64 b], [], []⟩,
         func2, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
-      {{ rs, func0FramePost (iprop(R ∗ runtimeModuleOwn «module»)) a b rs }} := by
+      {{ rs, func0FramePost R a b rs }} := by
   iintro Hresources
   simp only [func2]
   iapply Wasm.SmallStep.wp_localGet rfl
@@ -4756,16 +4773,18 @@ theorem func2_smallStep_wp
        continuation := [.ret]
        resultArity := 1
        callerRemainder := []
-       control := [] } : Wasm.SmallStep.CallFrame) =
-      func2CallerFrame a b from rfl]
+       control := []
+       returningInstance := ⟨0⟩ } : Wasm.SmallStep.CallFrame) =
+      func2CallerFrame a b ⟨0⟩ from rfl]
   iapply func0_smallStep_wp_to_return
-    R [func2CallerFrame a b]
+    R [func2CallerFrame a b ⟨0⟩]
     a b result oldX oldY oldOuterA oldOuterB
     shiftXY shiftX shiftY nextY nextX
-  · iintro Hpost
-    iapply Wasm.SmallStep.wp_returnFromCallExplicit
+  · iintro ⟨Hruntime, Hpost⟩
+    simp only [func2CallerFrame]
+    iapply Wasm.SmallStep.wp_returnFromCallExplicit $$ Hruntime
     inext
-    simp only [func2CallerFrame, List.take, List.append_nil]
+    simp only [List.take, List.append_nil]
     iapply Wasm.SmallStep.wp_returnFromFunction
     inext
     simp only [List.take, List.append_nil]
@@ -4856,6 +4875,7 @@ theorem func0_smallStep_partiallyMeets (a b : UInt64) :
   · exact func0InitialHeap_agrees
   · exact func0InitialHeap_inBounds
   · exact func0GlobalHeap_agrees
+  · simp only [func0Config]; decide
   · intro gs
     unfold func0InitialHeap
     simp only [func0Config, Wasm.SmallStep.RuntimeEnv.currentModule_mk1]
@@ -4867,7 +4887,7 @@ theorem func0_smallStep_partiallyMeets (a b : UInt64) :
       ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
         HouterA, HouterB⟩
     have hpost : ∀ rs : List Value,
-        func0FramePost (iprop(⌜True⌝ ∗ runtimeModuleOwn «module»))
+        func0FramePost (iprop(⌜True⌝))
             a b rs ⊢
           (iprop(⌜rs =
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
@@ -4900,6 +4920,7 @@ theorem func2_smallStep_partiallyMeets (a b : UInt64) :
   · exact func0InitialHeap_agrees
   · exact func0InitialHeap_inBounds
   · exact func0GlobalHeap_agrees
+  · simp only [func2Config]; decide
   · intro gs
     unfold func0InitialHeap
     simp only [func2Config, Wasm.SmallStep.RuntimeEnv.currentModule_mk1]
@@ -4911,7 +4932,7 @@ theorem func2_smallStep_partiallyMeets (a b : UInt64) :
       ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
         HouterA, HouterB⟩
     have hpost : ∀ rs : List Value,
-        func0FramePost (iprop(⌜True⌝ ∗ runtimeModuleOwn «module»))
+        func0FramePost (iprop(⌜True⌝))
             a b rs ⊢
           (iprop(⌜rs =
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
@@ -4939,7 +4960,7 @@ theorem func0_terminates (env : HostEnv Unit) (a b : UInt64) :
   have hg : («module».initialStore : Store Unit).globals.globals[0]? = some (.i32 1048576) := by rfl
   have hp : («module».initialStore : Store Unit).mem.pages = 16 := by rfl
   apply TerminatesWith.of_wp_entry_for
-    (f := ⟨[.i64, .i64], [.i32, .i64], func0, [.i64], some 0⟩) rfl
+    (f := ⟨[.i64, .i64], [.i32, .i64], func0, [.i64], none⟩) rfl
   unfold func0
   wp_run
   rw [hg]
@@ -4991,7 +5012,7 @@ theorem gcd_u64_legacy_correct : LegacyGcdU64Spec := by
   intro env initial a b hinit
   subst hinit
   -- `func2` is the exported wrapper: pushes both args and calls `func0`.
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.i64, .i64], [], func2, [.i64], some 0⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.i64, .i64], [], func2, [.i64], none⟩) rfl
   unfold func2
   wp_run
   apply wp_call_tw (func0_terminates env a b)

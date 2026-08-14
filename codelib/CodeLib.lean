@@ -44,6 +44,10 @@ import CodeLib.Examples.Quicksort.TotalProof
 import CodeLib.Examples.SelectionSort.StdIOProof
 import CodeLib.SepLogic.HostCallExample
 import CodeLib.SepLogic.TwoModuleExample
+import CodeLib.SepLogic.CrossInstanceExample
+import CodeLib.SepLogic.CounterHostExample
+import CodeLib.SepLogic.ImportChainExample
+import CodeLib.SepLogic.SharedMemoryExample
 
 /-!
 # CodeLib — umbrella import for downstream code

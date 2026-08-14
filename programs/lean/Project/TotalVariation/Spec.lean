@@ -47,6 +47,7 @@ theorem total_variation_correct : TotalVariationSpec := by
     decide
   · simpa [totalVariationConfig, absDiffBodyConfig] using
       absDiffBodyGlobals_agree «module» «module».initialStore a b 0 rfl
+  · simp only [totalVariationConfig]; decide
   · intro gs
     simp only [totalVariationConfig, RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
@@ -60,14 +61,15 @@ theorem total_variation_correct : TotalVariationSpec := by
     iapply wp_call «module» 0 func0Def (by simp [«module»]) (by simp [«module»]) $$
       Hruntime
     inext
-    iintro %_ri Hruntime
+    iintro Hruntime
     simp [func0Def, Function.toLocals, Function.numParams, ValueType.zero]
     rw [show func0 = absDiffBody by rfl]
     iapply absDiff_smallStep_wp_to_return
-      (runtimeModuleOwn «module») _ 1048576 a b 0 (by decide) (by decide)
+      (runtimeModuleOwn ⟨0⟩ «module») _ 1048576 a b 0 (by decide) (by decide)
     · iintro ⟨Hruntime, Hglobal, Hscratch⟩
-      iapply wp_returnFromCallExplicit
+      iapply wp_returnFromCallExplicit' $$ Hruntime
       inext
+      iintro Hruntime
       iapply wp_localGet rfl
       inext
       iapply wp_localGet rfl
@@ -76,14 +78,14 @@ theorem total_variation_correct : TotalVariationSpec := by
       iapply wp_call «module» 0 func0Def (by simp [«module»]) (by simp [«module»]) $$
         Hruntime
       inext
-      iintro %_ri Hruntime
+      iintro Hruntime
       simp [func0Def, Function.toLocals, Function.numParams, ValueType.zero]
       rw [show func0 = absDiffBody by rfl]
       iapply absDiff_smallStep_wp_to_return
-        (runtimeModuleOwn «module») _ 1048576 b c
+        (runtimeModuleOwn ⟨0⟩ «module») _ 1048576 b c
         (if a < b then b - a else a - b) (by decide) (by decide)
       · iintro ⟨Hruntime, Hglobal, Hscratch⟩
-        iapply wp_returnFromCallExplicit
+        iapply wp_returnFromCallExplicit $$ Hruntime
         inext
         simp only [List.take, List.singleton_append]
         iapply wp_addI64
