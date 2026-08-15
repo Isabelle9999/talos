@@ -57,7 +57,7 @@ theorem twoModule_partiallyMeets :
     simp only [twoModuleConfig, xInst_currentModule]
     iintro ⟨Hruntime, HruntimeInstances⟩
     iapply wp_callCrossInstance ⟨0⟩ xInst ⟨1⟩ xInst #[xInst, xInst] 0 xImp 0 xFn
-        rfl rfl rfl (by decide) rfl (Nat.le.refl) rfl rfl
+        rfl rfl (by decide) rfl (Nat.le.refl) rfl rfl
         $$ [Hruntime] HruntimeInstances
     · inext; iexact Hruntime
     · inext
@@ -65,7 +65,7 @@ theorem twoModule_partiallyMeets :
       simp only [xFn, Function.toLocals, List.map_nil, List.length_nil,
                  List.take_zero, List.reverse_nil, List.drop_zero]
       iapply wp_returnFromCallCrossInstance ⟨1⟩ xInst xInst #[xInst, xInst]
-          (by decide) rfl rfl rfl
+          (by decide) rfl rfl
           $$ [HinstanceOwn'] HruntimeInstances'
       · inext; iexact HinstanceOwn'
       · inext

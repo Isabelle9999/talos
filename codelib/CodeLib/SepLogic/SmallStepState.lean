@@ -709,9 +709,7 @@ so the `hostEnvOwn` resource remains valid. -/
 theorem stateInterp_currentInstance_update [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
-    (newId : ModuleInstanceId)
-    (_hch : { store.runtime with entry := newId }.currentHost =
-        store.runtime.currentHost) :
+    (newId : ModuleInstanceId) :
     stateInterp (GF := WasmHeapGF.{0} α) store steps observations threads ∗
       currentInstanceOwn store.runtime.entry ==∗
       stateInterp (GF := WasmHeapGF.{0} α)
@@ -739,9 +737,7 @@ theorem stateInterp_currentInstance_update [WasmSmallStepGS hlc α]
 theorem stateInterp_currentInstance_update_of_any [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
-    (calleeId newId : ModuleInstanceId)
-    (_hch : { store.runtime with entry := newId }.currentHost =
-        store.runtime.currentHost) :
+    (calleeId newId : ModuleInstanceId) :
     stateInterp (GF := WasmHeapGF.{0} α) store steps observations threads ∗
       currentInstanceOwn calleeId ==∗
       stateInterp (GF := WasmHeapGF.{0} α)

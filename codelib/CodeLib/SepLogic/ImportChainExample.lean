@@ -5,7 +5,6 @@ namespace Wasm.SmallStep
 open Iris Iris.BI Iris.ProgramLogic OFE COFE Iris.Algebra
   Language.Notation Std Wasm.SepLogic
 
--- analogues of currentModule_mk1/currentHost_mk1 for two-instance runtimes
 @[simp] private theorem RuntimeEnv.currentModule_mk2 {α : Type} (inst1 inst2 : ModuleInstance α) :
     ({ instances := #[inst1, inst2], entry := ⟨0⟩ } : RuntimeEnv α).currentModule = inst1.module := by
   simp [RuntimeEnv.currentModule, RuntimeEnv.currentInstance]
@@ -32,32 +31,42 @@ private abbrev logImp : ImportDecl :=
 private abbrev nopImp : ImportDecl :=
   { module := "chain", name := "nop", params := [], results := [] }
 
--- local index 1: no-op (exercises cross-instance call path)
-def nopFn : Function where
-  params  := []
-  locals  := []
-  results := []
-  body    := [.ret]
-
--- local index 0: calls nop (cross-instance), then logs v twice via logHost
+-- module A: calls nop (cross-instance) then logs v twice; index 0 = host log, index 1 = nop
 def mainFn : Function where
   params  := [.i32]
   locals  := []
   results := []
   body    := [.call 1, .localGet 0, .call 0, .localGet 0, .call 0, .ret]
 
-def chainModule : Module where
+def chainModuleA : Module where
   imports := [logImp, nopImp]
-  funcs   := [mainFn, nopFn]
+  funcs   := [mainFn]
 
--- used at both instance 0 and instance 1
-def chainInst : ModuleInstance (List UInt32) where
-  module          := chainModule
+-- module B: pure no-op, no imports, no host
+def nopFn : Function where
+  params  := []
+  locals  := []
+  results := []
+  body    := [.ret]
+
+def chainModuleB : Module where
+  imports := []
+  funcs   := [nopFn]
+
+-- instance 0 (entry): has logHost, resolvedImports[1] dispatches to chainInstB's nopFn
+def chainInstA : ModuleInstance (List UInt32) where
+  module          := chainModuleA
   host            := chainHostEnv
-  resolvedImports := #[.wasm ⟨0⟩ 0, .wasm ⟨1⟩ 1]
+  resolvedImports := #[.wasm ⟨0⟩ 0, .wasm ⟨1⟩ 0]
 
-@[simp] private theorem chainInst_module : chainInst.module = chainModule := rfl
-@[simp] private theorem chainInst_host : chainInst.host = chainHostEnv := rfl
+-- instance 1: empty host, just nopFn
+def chainInstB : ModuleInstance (List UInt32) where
+  module          := chainModuleB
+  host            := { funcs := [] }
+  resolvedImports := #[]
+
+@[simp] private theorem chainInstA_module : chainInstA.module = chainModuleA := rfl
+@[simp] private theorem chainInstA_host : chainInstA.host = chainHostEnv := rfl
 
 def importChainConfig (v : UInt32) (initial : List UInt32) : Config (List UInt32) :=
   { expr := .running
@@ -69,7 +78,7 @@ def importChainConfig (v : UInt32) (initial : List UInt32) : Config (List UInt32
         calls           := [] }
     store :=
       { runtime :=
-          { instances := #[chainInst, chainInst]
+          { instances := #[chainInstA, chainInstB]
             entry     := ⟨0⟩ }
         wasm :=
           { globals := { globals := [] }
@@ -80,7 +89,7 @@ def importChainConfig (v : UInt32) (initial : List UInt32) : Config (List UInt32
 private theorem logTransfer (v : UInt32) (n : List UInt32)
     [WasmSmallStepGS .hasLC (List UInt32)]
     (store : MachineStore (List UInt32)) (ns : Nat) (obs : List StepKind) (nt : Nat)
-    (_ : store.runtime.currentModule = chainModule)
+    (_ : store.runtime.currentModule = chainModuleA)
     (results : List Value) (postWasm : Store (List UInt32))
     (h : logHost.invoke store.wasm [.i32 v] = .Return results postWasm) :
     hostStateOwn n ∗
@@ -118,18 +127,18 @@ theorem importChain_partiallyMeets (v : UInt32) (initial : List UInt32) :
   · simp only [importChainConfig]; decide
   · intro gs
     simp only [importChainConfig, RuntimeEnv.currentModule_mk2, RuntimeEnv.currentHost_mk2,
-               chainInst_module, chainInst_host]
+               chainInstA_module, chainInstA_host]
     iintro ⟨Hruntime, Henv, Hhost, HruntimeInstances⟩
     simp only [runtimeModuleOwn]
     icases Hruntime with ⟨HruntimeElem, HinstanceOwn⟩
     iintuitionistic HruntimeElem
     iintuitionistic Henv
-    -- call 1: cross-instance call to nopFn at instance ⟨1⟩ (no args consumed)
-    iapply wp_callCrossInstance ⟨0⟩ chainInst ⟨1⟩ chainInst #[chainInst, chainInst]
-        1 nopImp 1 nopFn
-        rfl rfl rfl (by decide) rfl (Nat.le.refl) rfl rfl
+    -- call 1: cross-instance to nopFn in chainInstB (instance 1)
+    iapply wp_callCrossInstance ⟨0⟩ chainInstA ⟨1⟩ chainInstB #[chainInstA, chainInstB]
+        1 nopImp 0 nopFn
+        rfl rfl (by decide) rfl (Nat.le.refl) rfl rfl
         $$ [HinstanceOwn] HruntimeInstances
-    · simp only [runtimeModuleOwn, chainInst_module]
+    · simp only [runtimeModuleOwn, chainInstA_module]
       inext
       isplitl []
       · iexact HruntimeElem
@@ -138,23 +147,23 @@ theorem importChain_partiallyMeets (v : UInt32) (initial : List UInt32) :
       iintro ⟨HinstanceOwn', HruntimeInstances'⟩
       simp only [nopFn, Function.toLocals, List.map_nil]
       -- inside nopFn: body = [.ret], return immediately
-      iapply wp_returnFromCallCrossInstance ⟨1⟩ chainInst chainInst #[chainInst, chainInst]
-          (by decide) rfl rfl rfl
+      iapply wp_returnFromCallCrossInstance ⟨1⟩ chainInstB chainInstA #[chainInstA, chainInstB]
+          (by decide) rfl rfl
           $$ [HinstanceOwn'] HruntimeInstances'
       · inext; iexact HinstanceOwn'
       · inext
         iintro HinstanceCaller
         simp only [List.length_nil, List.take_zero, List.drop_zero, List.nil_append]
-        -- back in mainFn: [localGet 0, call 0, localGet 0, call 0, ret], calls=[]
+        -- back in mainFn: [localGet 0, call 0, localGet 0, call 0, ret]
         iapply wp_localGet rfl
         inext
-        -- first logHost call: rebundle runtimeModuleOwn from HruntimeElem + HinstanceCaller
-        ihave Hruntime1 : runtimeModuleOwn ⟨0⟩ chainModule $$ [HinstanceCaller]
+        -- first logHost call: rebuild runtimeModuleOwn from HruntimeElem + HinstanceCaller
+        ihave Hruntime1 : runtimeModuleOwn ⟨0⟩ chainModuleA $$ [HinstanceCaller]
         · simp only [runtimeModuleOwn]
           isplitl []
           · iexact HruntimeElem
           · iexact HinstanceCaller
-        iapply wp_callHost chainModule 0 logImp logHost
+        iapply wp_callHost chainModuleA 0 logImp logHost
             (by decide) rfl chainHostEnv rfl
             (iprop(hostStateOwn initial))
             (fun _ => iprop(hostStateOwn (initial ++ [v])))
@@ -176,7 +185,7 @@ theorem importChain_partiallyMeets (v : UInt32) (initial : List UInt32) :
           -- second logHost call
           iapply wp_localGet rfl
           inext
-          iapply wp_callHost chainModule 0 logImp logHost
+          iapply wp_callHost chainModuleA 0 logImp logHost
               (by decide) rfl chainHostEnv rfl
               (iprop(hostStateOwn (initial ++ [v])))
               (fun _ => iprop(hostStateOwn (initial ++ [v] ++ [v])))

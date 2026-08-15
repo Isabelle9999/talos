@@ -5,49 +5,60 @@ namespace Wasm.SmallStep
 open Iris Iris.BI Iris.ProgramLogic OFE COFE Iris.Algebra
   Language.Notation Std Wasm.SepLogic
 
-def sharedMemFn : Function where
+-- module B (writer): writes a byte to address 0
+def writeFn : Function where
   params  := [.i32]
   locals  := []
   results := []
   body    := [.const 0, .localGet 0, .store8 0, .ret]
 
-def readBackFn : Function where
-  params  := [.i32]
-  locals  := []
-  results := [.i32]
-  body    := [.localGet 0, .call 0, .const 0, .load8U 0, .ret]
-
-def sharedMemModule : Module where
+def moduleW : Module where
+  funcs   := [writeFn]
   imports := []
-  funcs   := [sharedMemFn, readBackFn]
 
-def sharedMemRuntime : RuntimeEnv Unit :=
-  { instances := #[{ module := sharedMemModule, host := HostEnv.empty }]
-    entry     := ⟨0⟩ }
+def instanceW : ModuleInstance Unit where
+  module          := moduleW
+  host            := { funcs := [] }
+  resolvedImports := #[]
 
+-- module A (reader): imports write from B, calls it, reads back
+private abbrev writeImport : ImportDecl :=
+  { module := "W", name := "write", params := [.i32], results := [] }
+
+def moduleR : Module where
+  funcs   := []
+  imports := [writeImport]
+
+def instanceR : ModuleInstance Unit where
+  module          := moduleR
+  host            := { funcs := [] }
+  resolvedImports := #[.wasm ⟨0⟩ 0]
+
+@[simp] private theorem sharedMem_currentModule :
+    ({ instances := #[instanceW, instanceR], entry := ⟨1⟩ } : RuntimeEnv Unit).currentModule =
+        instanceR.module := by
+  simp [RuntimeEnv.currentModule, RuntimeEnv.currentInstance]
+
+-- entry = instance 1 (moduleR); v on top ready for cross-instance write
 def sharedMemConfig (v : UInt8) : Config Unit :=
   { expr := .running
-      { locals          := { params := [.i32 v.toUInt32], locals := [], values := [] }
-        code            := [.localGet 0, .call 0, .const 0, .load8U 0, .ret]
+      { locals          := { params := [], locals := [], values := [.i32 v.toUInt32] }
+        code            := [.call 0, .const 0, .load8U 0, .ret]
         resultArity     := 1
         callerRemainder := []
         control         := []
         calls           := [] }
     store :=
-      { runtime := sharedMemRuntime
-        wasm    :=
+      { runtime :=
+          { instances := #[instanceW, instanceR]
+            entry     := ⟨1⟩ }
+        wasm :=
           { globals := { globals := [] }
             mem     := Mem.empty 1
             host    := () } } }
 
 def sharedMemHeap : WasmHeapMap (Option UInt8) :=
   insert ∅ (⟨0, 0⟩ : MemoryKey) (some (0 : UInt8))
-
-@[simp] private theorem RuntimeEnv.currentModule_sharedMem :
-    sharedMemRuntime.currentModule = sharedMemModule := rfl
-
-@[simp] private theorem RuntimeEnv.entry_sharedMem :
-    sharedMemRuntime.entry = ⟨0⟩ := rfl
 
 private theorem sharedMemHeap_agrees (v : UInt8) :
     heapAgreesWithMem sharedMemHeap (storeResolve (sharedMemConfig v).store) := by
@@ -58,7 +69,7 @@ private theorem sharedMemHeap_agrees (v : UInt8) :
     simp only [get?_insert_eq rfl, Option.some.injEq] at hget
     subst hget
     exact ⟨Mem.empty 1,
-      by simp [storeResolve, sharedMemConfig, sharedMemRuntime],
+      by simp [storeResolve, sharedMemConfig],
       by simp [Mem.read8, Mem.empty]⟩
   · rw [get?_insert_ne (Ne.symm h), get?_empty] at hget
     contradiction
@@ -69,7 +80,7 @@ private theorem sharedMemHeap_inBounds (v : UInt8) :
   simp only [sharedMemHeap] at hne
   by_cases h : key = ⟨0, 0⟩
   · subst h
-    refine ⟨Mem.empty 1, by simp [storeResolve, sharedMemConfig, sharedMemRuntime], ?_⟩
+    refine ⟨Mem.empty 1, by simp [storeResolve, sharedMemConfig], ?_⟩
     simp [Mem.empty]
   · rw [get?_insert_ne (Ne.symm h), get?_empty] at hne
     simp at hne
@@ -87,55 +98,62 @@ private theorem sharedMemHeap_pointsTo [WasmHeapGS α] :
 theorem sharedMem_partiallyMeets (v : UInt8) :
     PartiallyMeets (sharedMemConfig v)
       (fun values _ => values = [.i32 v.toUInt32]) := by
-  apply wasm_smallStep_heap_runtime_instance_partiallyMeets
+  apply wasm_smallStep_heap_runtime_instances_partiallyMeets
       (α := Unit) (σ := sharedMemHeap)
       (φ := fun values => values = [.i32 v.toUInt32])
   · exact sharedMemHeap_agrees v
   · exact sharedMemHeap_inBounds v
   · simp only [sharedMemConfig]; decide
   · intro gs
-    simp only [sharedMemConfig, RuntimeEnv.currentModule_sharedMem,
-               RuntimeEnv.entry_sharedMem]
-    iintro ⟨Hpoints, Hruntime⟩
+    simp only [sharedMemConfig, sharedMem_currentModule]
+    iintro ⟨Hpoints, Hruntime, HruntimeInstances⟩
     ihave Hpt := sharedMemHeap_pointsTo $$ Hpoints
-    iapply wp_localGet rfl
-    inext
-    iapply wp_call sharedMemModule 0 sharedMemFn
-        (by simp [sharedMemModule]) rfl ⟨0⟩
-        $$ Hruntime
-    inext
-    iintro Hruntime'
-    simp only [sharedMemFn, Function.toLocals, Function.numParams, List.map_nil]
-    iapply wp_const
-    inext
-    iapply wp_localGet rfl
-    inext
-    ihave HptLater :
-        ▷ pointsTo (GF := WasmHeapGF.{0} Unit) (H := WasmHeapMap)
-          ⟨0, 0 + 0⟩ (DFrac.own 1) (some 0) $$ [Hpt]
+    -- cross-instance call to writeFn in instanceW
+    iapply wp_callCrossInstance ⟨1⟩ instanceR ⟨0⟩ instanceW #[instanceW, instanceR]
+        0 writeImport 0 writeFn
+        rfl rfl (by decide) rfl (Nat.le.refl) rfl rfl
+        $$ [Hruntime] HruntimeInstances
+    · inext; iexact Hruntime
     · inext
-      rw [UInt32.add_zero]
-      iexact Hpt
-    iapply wp_store8 (0 : UInt8) rfl $$ HptLater
-    inext
-    iintro Hpt'
-    iapply wp_returnFromCallExplicit $$ Hruntime'
-    inext
-    iapply wp_const
-    inext
-    ihave HptLater2 :
-        ▷ pointsTo (GF := WasmHeapGF.{0} Unit) (H := WasmHeapMap)
-          ⟨0, 0 + 0⟩ (DFrac.own 1) (some v.toUInt32.toUInt8) $$ [Hpt']
-    · inext
-      iexact Hpt'
-    iapply wp_load8U v.toUInt32.toUInt8 rfl $$ HptLater2
-    inext
-    iintro _Hpt_back
-    iapply wp_returnFromFunction
-    inext
-    iapply wp_value'
-    ipureintro
-    simp [List.take]
+      iintro ⟨HinstanceOwn', HruntimeInstances'⟩
+      simp only [writeFn, Function.toLocals, List.map_nil]
+      -- inside writeFn: [.const 0, .localGet 0, .store8 0, .ret]
+      iapply wp_const
+      inext
+      iapply wp_localGet rfl
+      inext
+      ihave HptLater :
+          ▷ pointsTo (GF := WasmHeapGF.{0} Unit) (H := WasmHeapMap)
+            ⟨0, 0 + 0⟩ (DFrac.own 1) (some 0) $$ [Hpt]
+      · inext
+        rw [UInt32.add_zero]
+        iexact Hpt
+      iapply wp_store8 (0 : UInt8) rfl $$ HptLater
+      inext
+      iintro Hpt'
+      -- return from writeFn to instanceR
+      iapply wp_returnFromCallCrossInstance ⟨0⟩ instanceW instanceR #[instanceW, instanceR]
+          (by decide) rfl rfl
+          $$ [HinstanceOwn'] HruntimeInstances'
+      · inext; iexact HinstanceOwn'
+      · inext
+        iintro _HinstanceCaller
+        -- back in instanceR: [.const 0, .load8U 0, .ret]
+        iapply wp_const
+        inext
+        ihave HptLater2 :
+            ▷ pointsTo (GF := WasmHeapGF.{0} Unit) (H := WasmHeapMap)
+              ⟨0, 0 + 0⟩ (DFrac.own 1) (some v.toUInt32.toUInt8) $$ [Hpt']
+        · inext
+          iexact Hpt'
+        iapply wp_load8U v.toUInt32.toUInt8 rfl $$ HptLater2
+        inext
+        iintro _Hpt_back
+        iapply wp_returnFromFunction
+        inext
+        iapply wp_value'
+        ipureintro
+        simp [List.take]
 
 theorem sharedMem_terminates :
     TerminatesWith (sharedMemConfig 0) (fun _ _ => True) :=
