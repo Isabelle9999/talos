@@ -1133,6 +1133,42 @@ private def stepPlainChecked?
                   else
                     .ok (some (.instruction instr,
                       ⟨.trapped .indirectCallTypeMismatch, store⟩))
+                | some imp, none, some signature, some expected =>
+                  match store.runtime.currentInstance.resolvedImports[functionIndex]? with
+                  | some (.wasm calleeId localIdx) =>
+                    if store.runtime.currentModule.indirectCallTypeOk
+                        functionIndex typeIndex signature expected = true then
+                      match store.runtime.instances[calleeId.id]? with
+                      | some calleeInstance =>
+                        match calleeInstance.module.funcs[localIdx]? with
+                        | some fn =>
+                          let args := (values.take imp.params.length).reverse
+                          let remaining := values.drop imp.params.length
+                          let caller : CallFrame :=
+                            { locals := { thread.locals with values := remaining }
+                              continuation := rest
+                              resultArity := thread.resultArity
+                              callerRemainder := thread.callerRemainder
+                              control := thread.control
+                              returningInstance := store.runtime.entry }
+                          .ok (some (.administrative .callCrossInstance,
+                            ⟨.running
+                              { locals := fn.toLocals args
+                                code := fn.body
+                                resultArity := fn.results.length
+                                callerRemainder := []
+                                control := []
+                                calls := caller :: thread.calls },
+                              { store with runtime :=
+                                  { store.runtime with entry := calleeId } }⟩))
+                        | none =>
+                          .error ⟨s!"callIndirect cross-instance: function {localIdx} not found"⟩
+                      | none =>
+                        .error ⟨s!"callIndirect cross-instance: instance {calleeId.id} not found"⟩
+                    else
+                      .ok (some (.instruction instr,
+                        ⟨.trapped .indirectCallTypeMismatch, store⟩))
+                  | _ => .error ⟨s!"callIndirect: unresolved import {functionIndex}"⟩
                 | _, _, _, _ =>
                   .error ⟨"indirect host call has an invalid function or type index"⟩
               else
@@ -3514,6 +3550,54 @@ inductive Step : Config α → StepKind → Config α → Prop where
               belowStack := [] } :: controls,
             calls⟩,
           { store with wasm }⟩
+  | callIndirectCrossInstanceTypeMismatch
+      (hselector : selector.addrNat? = some elementIndex)
+      (htable : store.wasm.tables[tableIndex]? = some table)
+      (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hnoHost : store.runtime.currentHost.funcs.length ≤ functionIndex)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (hresolved : store.runtime.currentInstance.resolvedImports[functionIndex]? =
+          some (.wasm calleeId localIdx))
+      (htype : store.runtime.currentModule.indirectCallTypeOk
+        functionIndex typeIndex signature expected = false) :
+      Step ⟨.running ⟨⟨params, localValues, selector :: values⟩,
+          .callIndirect typeIndex tableIndex :: code,
+          arity, remainder, controls, calls⟩, store⟩
+        (.instruction (.callIndirect typeIndex tableIndex))
+        ⟨.trapped .indirectCallTypeMismatch, store⟩
+  | callIndirectCrossInstance
+      (hselector : selector.addrNat? = some elementIndex)
+      (htable : store.wasm.tables[tableIndex]? = some table)
+      (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hnoHost : store.runtime.currentHost.funcs.length ≤ functionIndex)
+      (hsignature : store.runtime.currentModule.funcSig? functionIndex = some signature)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (hresolved : store.runtime.currentInstance.resolvedImports[functionIndex]? =
+          some (.wasm calleeId localIdx))
+      (htype : store.runtime.currentModule.indirectCallTypeOk
+        functionIndex typeIndex signature expected = true)
+      (hcallee : store.runtime.instances[calleeId.id]? = some calleeInstance)
+      (hfn : calleeInstance.module.funcs[localIdx]? = some fn) :
+      Step ⟨.running ⟨⟨params, localValues, selector :: values⟩,
+          .callIndirect typeIndex tableIndex :: code,
+          arity, remainder, controls, calls⟩, store⟩
+        (.administrative .callCrossInstance)
+        ⟨.running
+          ⟨fn.toLocals (values.take imp.params.length).reverse,
+            fn.body, fn.results.length, [], [],
+            { locals := ⟨params, localValues, values.drop imp.params.length⟩
+              continuation := code
+              resultArity := arity
+              callerRemainder := remainder
+              control := controls
+              returningInstance := store.runtime.entry } :: calls⟩,
+          { runtime := { instances := store.runtime.instances, entry := calleeId }
+            wasm := store.wasm }⟩
   | callIndirectTypeMismatch
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
@@ -6004,6 +6088,9 @@ by
         | (apply Step.callIndirectHostReturn <;> assumption)
         | (apply Step.callIndirectHostTrap <;> assumption)
         | (apply Step.callIndirectHostThrow <;> assumption)
+        | (apply Step.callIndirectCrossInstanceTypeMismatch <;> assumption)
+        | (apply Step.callIndirectCrossInstance <;>
+            (first | assumption | simp_all [getElem?_eq_getElem]))
         | (apply Step.returnCallIndirectHostTypeMismatch <;> assumption)
         | (apply Step.returnCallIndirectHostReturn <;> assumption)
         | (apply Step.returnCallIndirectHostTrap <;> assumption)
@@ -6391,6 +6478,8 @@ by
     simp_all [stepChecked?] <;> omega
   case callIndirectHostThrow =>
     simp_all [stepChecked?] <;> omega
+  case callIndirectCrossInstanceTypeMismatch => simp_all [stepChecked?]
+  case callIndirectCrossInstance => simp_all [stepChecked?]
   case callIndirectTypeMismatch hselector htable helement himports
       hfn hsignature hexpected htype =>
     simp_all [stepChecked?]
@@ -6474,6 +6563,7 @@ theorem runtime_preserved {config config' : Config α} {kind}
     config'.store.runtime = config.store.runtime := by
   cases h <;> try rfl
   case callCrossInstance => exact absurd rfl hnot2
+  case callIndirectCrossInstance => exact absurd rfl hnot2
   case returnFromCallCrossInstanceFallthrough => exact absurd rfl hnot
   case returnFromCallCrossInstanceExplicit => exact absurd rfl hnot
   case catchException => apply prepareCatch_runtime
