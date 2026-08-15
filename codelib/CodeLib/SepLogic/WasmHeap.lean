@@ -266,6 +266,7 @@ abbrev WasmDataSegmentMap := fun V => ExtTreeMap DataSegmentKey V compare
 abbrev WasmTableMap := fun V => ExtTreeMap TableKey V compare
 abbrev WasmElementSegmentMap := fun V => ExtTreeMap ElementSegmentKey V compare
 abbrev WasmRuntimeModuleMap := fun V => ExtTreeMap Nat V compare
+abbrev WasmHostEnvMap := fun V => ExtTreeMap Nat V compare
 abbrev WasmHeapGF (α : Type 0) : BundledGFunctors
   | 0 => ⟨InvMapF, by infer_instance⟩
   | 1 => ⟨constOF (DisjointLeibnizSet CoPset), by infer_instance⟩
@@ -287,7 +288,7 @@ abbrev WasmHeapGF (α : Type 0) : BundledGFunctors
   | 11 => ⟨constOF
       (HeapView ElementSegmentKey (Agree (DiscreteO (Option (List (Option Nat)))))
         WasmElementSegmentMap), by infer_instance⟩
-  | 12 => ⟨constOF (Agree (DiscreteO (HostEnv α))), by infer_instance⟩
+  | 12 => ⟨constOF (HeapView Nat (Agree (DiscreteO (HostEnv α))) WasmHostEnvMap), by infer_instance⟩
   | 13 => ⟨Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α)))), by infer_instance⟩
   | 14 => ⟨Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat)))), by infer_instance⟩
   | 15 => ⟨constOF (Agree (DiscreteO (Array (ModuleInstance α)))), by infer_instance⟩
@@ -353,12 +354,11 @@ class WasmRuntimeInstancesGS (α : outParam Type) where
 
 attribute [reducible, instance] WasmRuntimeInstancesGS.runtimeInstancesElem
 
-class WasmHostEnvGS (α : outParam Type) where
-  hostEnvElem :
-    ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (HostEnv α))))
+class WasmHostEnvGS (α : outParam Type) extends
+    GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap where
   hostEnvName : GName
 
-attribute [reducible, instance] WasmHostEnvGS.hostEnvElem
+attribute [instance] WasmHostEnvGS.toGhostMapG
 
 class WasmHostStateGS (α : outParam Type) where
   hostStateElem :
@@ -574,28 +574,26 @@ theorem runtimeInstancesOwn_agree {α : Type} [gs : WasmRuntimeInstancesGS α]
   ipureintro
   exact congrArg DiscreteO.car (toAgree_op_valid_iff_eq.mp Hvalid)
 
-/-- Persistent knowledge of the immutable host environment. -/
-def hostEnvOwn {α : Type} [gs : WasmHostEnvGS α] (env : HostEnv α) :
+/-- Persistent knowledge of the host environment for a given instance. -/
+def hostEnvOwn {α : Type} [gs : WasmHostEnvGS α] (instanceId : Nat) (env : HostEnv α) :
     IProp (WasmHeapGF.{0} α) :=
-  iOwn (E := gs.hostEnvElem) gs.hostEnvName (toAgree ⟨env⟩)
+  ghost_map_elem gs.hostEnvName DFrac.discard instanceId env
 
-instance {α : Type} [WasmHostEnvGS α] (env : HostEnv α) :
-    BI.Persistent (hostEnvOwn env) := by
+instance {α : Type} [WasmHostEnvGS α] (instanceId : Nat) (env : HostEnv α) :
+    BI.Persistent (hostEnvOwn instanceId env) := by
   unfold hostEnvOwn; infer_instance
 
-instance {α : Type} [WasmHostEnvGS α] (env : HostEnv α) :
-    BI.Timeless (hostEnvOwn env) := by
+instance {α : Type} [WasmHostEnvGS α] (instanceId : Nat) (env : HostEnv α) :
+    BI.Timeless (hostEnvOwn instanceId env) := by
   unfold hostEnvOwn; infer_instance
 
-theorem hostEnvOwn_agree {α : Type} [gs : WasmHostEnvGS α]
-    (actual expected : HostEnv α) :
-    hostEnvOwn actual ∗ hostEnvOwn expected ⊢
-      iprop(⌜actual = expected⌝) := by
+theorem hostEnvOwn_lookup {α : Type} [gs : WasmHostEnvGS α]
+    (σ : WasmHostEnvMap (HostEnv α)) (instanceId : Nat) (env : HostEnv α) :
+    ghost_map_auth gs.hostEnvName (DFrac.own 1) σ -∗
+      hostEnvOwn instanceId env -∗
+      iprop(⌜get? σ instanceId = some env⌝) := by
   unfold hostEnvOwn
-  iintro ⟨Hactual, Hexpected⟩
-  icombine Hactual Hexpected gives %Hvalid
-  ipureintro
-  exact congrArg DiscreteO.car (toAgree_op_valid_iff_eq.mp Hvalid)
+  iapply ghost_map_lookup
 
 /-- Authoritative ownership of the mutable host state. Held by `StateInterp`. -/
 def hostStateAuth {α : Type} [gs : WasmHostStateGS α] (st : α) :

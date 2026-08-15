@@ -4539,7 +4539,7 @@ theorem func0_smallStep_wp_to_return
           calls
           ⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩
           0 b b b 0 b 0 b shiftXY shiftX shiftY nextY nextX
-          (by simp [Nat.gcd_zero_left, Nat.gcd_zero_right]) hreturn
+          (by simp [Nat.gcd_zero_left]) hreturn
         iframe
       · iframe
     · by_cases hb : b = 0
@@ -4561,7 +4561,7 @@ theorem func0_smallStep_wp_to_return
             calls
             ⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩
             a 0 a a a 0 a 0 shiftXY shiftX shiftY nextY nextX
-            (by simp [Nat.gcd_zero_left, Nat.gcd_zero_right]) hreturn
+            (by simp [Nat.gcd_zero_right]) hreturn
           iframe
         · iframe
       · iapply func1_nonzero_smallStep_wp_to_return

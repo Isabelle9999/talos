@@ -92,7 +92,7 @@ private theorem logTransfer (v : UInt32) (n : List UInt32)
   obtain ⟨h1, h2⟩ := h; subst h1; subst h2
   iintro ⟨HP, Hσ⟩
   icases (stateInterp_eq store ns obs nt).mp $$ Hσ with
-    ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ, %runtimeModuleσ,
+    ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ, %runtimeModuleσ, %hostEnvσ,
       Hheap, Hglobals, Hsegments, Htables, HelementSegments, HruntimeModuleAuth, HruntimeModuleBigSep,
       HruntimeInstances, HinstanceAuth, Henv, Hauth, %Hfacts⟩
   ihave %heq : ⌜store.wasm.host = n⌝ $$ [Hauth HP]
@@ -106,7 +106,7 @@ private theorem logTransfer (v : UInt32) (n : List UInt32)
         { store with wasm := { store.wasm with host := n ++ [v] } }
         ns obs nt).mpr
     iexists σ; iexists globalσ; iexists dataSegmentσ
-    iexists tableσ; iexists elementSegmentσ; iexists runtimeModuleσ
+    iexists tableσ; iexists elementSegmentσ; iexists runtimeModuleσ; iexists hostEnvσ
     iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeModuleBigSep
       HruntimeInstances HinstanceAuth Henv Hauth'
     ipureintro

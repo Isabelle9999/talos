@@ -70,7 +70,7 @@ private theorem incrTransfer (n : Nat) [WasmSmallStepGS .hasLC Nat]
   obtain ⟨h1, h2⟩ := h; subst h1; subst h2
   iintro ⟨HP, Hσ⟩
   icases (stateInterp_eq store ns obs nt).mp $$ Hσ with
-    ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ, %runtimeModuleσ,
+    ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ, %runtimeModuleσ, %hostEnvσ,
       Hheap, Hglobals, Hsegments, Htables, HelementSegments, HruntimeModuleAuth, HruntimeModuleBigSep,
       HruntimeInstances, HinstanceAuth, Henv, Hauth, %Hfacts⟩
   -- auth and frag: derive store.wasm.host = n; specialize_dup_context retains Hauth HP
@@ -88,7 +88,7 @@ private theorem incrTransfer (n : Nat) [WasmSmallStepGS .hasLC Nat]
         { store with wasm := { store.wasm with host := n + 1 } }
         ns obs nt).mpr
     iexists σ; iexists globalσ; iexists dataSegmentσ
-    iexists tableσ; iexists elementSegmentσ; iexists runtimeModuleσ
+    iexists tableσ; iexists elementSegmentσ; iexists runtimeModuleσ; iexists hostEnvσ
     iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeModuleBigSep
       HruntimeInstances HinstanceAuth Henv Hauth'
     ipureintro
@@ -109,7 +109,7 @@ private theorem readTransfer (initial : Nat) [WasmSmallStepGS .hasLC Nat]
   iintro ⟨HP, Hσ⟩
   -- decompose stateInterp to get Hauth; read-only so reconstruct at the end
   icases (stateInterp_eq store ns obs nt).mp $$ Hσ with
-    ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ, %runtimeModuleσ,
+    ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ, %runtimeModuleσ, %hostEnvσ,
       Hheap, Hglobals, Hsegments, Htables, HelementSegments, HruntimeModuleAuth, HruntimeModuleBigSep,
       HruntimeInstances, HinstanceAuth, Henv, Hauth, %Hfacts⟩
   -- derive store.wasm.host = initial + 3; retains Hauth HP (pure conclusion)
@@ -122,7 +122,7 @@ private theorem readTransfer (initial : Nat) [WasmSmallStepGS .hasLC Nat]
   · -- reconstruct stateInterp store (= { store with wasm := store.wasm } definitionally)
     iapply (stateInterp_eq store ns obs nt).mpr
     iexists σ; iexists globalσ; iexists dataSegmentσ
-    iexists tableσ; iexists elementSegmentσ; iexists runtimeModuleσ
+    iexists tableσ; iexists elementSegmentσ; iexists runtimeModuleσ; iexists hostEnvσ
     iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeModuleBigSep
       HruntimeInstances HinstanceAuth Henv Hauth
     ipureintro; exact Hfacts

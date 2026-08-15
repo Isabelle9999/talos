@@ -1282,7 +1282,7 @@ theorem wp_callHost
         arity, remainder, controls, calls⟩
     P -∗
     ▷ runtimeModuleOwn callerId runtimeModule -∗
-    ▷ hostEnvOwn hostEnv -∗
+    ▷ hostEnvOwn callerId.id hostEnv -∗
     ▷ (∀ preWasm results postWasm
           (_h : hostFn.invoke preWasm (values.take imp.params.length).reverse =
             .Return results postWasm),
@@ -1329,9 +1329,9 @@ theorem wp_callHost
     simpa only [Hmodule] using himports
   have himp' : store.runtime.currentModule.imports[functionIndex] = imp := by
     simpa only [Hmodule] using himp
-  ihave %Hhost : ⌜store.runtime.currentHost = hostEnv⌝ $$ [Hσ Henv]
+  ihave %Hhost : ⌜store.runtime.currentHost = hostEnv⌝ $$ [Hσ HinstanceOwn Henv]
   · imod stateInterp_hostEnv store ns (obs ++ obs') nt
-        hostEnv $$ [$Hσ $Henv] with %Hhost
+        callerId.id hostEnv $$ [$Hσ $HinstanceOwn $Henv] with %Hhost
     ipureintro
     exact Hhost
   have hhost' : store.runtime.currentHost.funcs[functionIndex]? = some hostFn := by
@@ -6099,9 +6099,9 @@ theorem wp_v128StoreLane64
     iexact Hword
   · itrivial
 
-private def trapStuckPrf {reason : TrapReason} {σ : MachineStore α} :
+private theorem trapStuckPrf {reason : TrapReason} {σ : MachineStore α} :
     PrimStep.Stuck (Expr.trapped reason, σ) :=
-  ⟨rfl, fun obs e' σ' eₜ ⟨_, _, _, hstep⟩ => trapped_terminal hstep⟩
+  ⟨rfl, fun _obs _e' _σ' _eₜ ⟨_, _, _, hstep⟩ => trapped_terminal hstep⟩
 
 local macro "wp_trap_tail" hclose:ident hσ:ident : tactic =>
   `(tactic|
