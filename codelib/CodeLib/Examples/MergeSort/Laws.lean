@@ -86,9 +86,9 @@ theorem arrayAddress_toNat (base : UInt32) {index length : Nat}
   omega
 
 theorem wp_lessLocal
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {lhsIndex rhsIndex : Nat} {lhs rhs : UInt32}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -117,9 +117,9 @@ theorem wp_lessLocal
   iexact Hwp
 
 theorem wp_address
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {baseIndex elementIndex : Nat} {base element : UInt32}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -151,9 +151,9 @@ theorem wp_address
   iexact Hwp
 
 theorem wp_increment
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {index : Nat} {value : UInt32} {updated : Locals}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -180,9 +180,9 @@ theorem wp_increment
   iexact Hwp
 
 theorem wp_increment_nil
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {index : Nat} {value : UInt32} {updated : Locals}
     {arity : Nat} {remainder : List Value}
@@ -202,10 +202,10 @@ theorem wp_increment_nil
       (code := []) hget hset)
 
 theorem wp_loop_löb_family_from
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {ι : Type} (locals : ι → Locals) (I : ι → IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    {ι : Type} (locals : ι → Locals) (I : ι → IProp (WasmHeapGF α))
     (initial : ι) (initialLocals : Locals)
     {paramArity resultArity arity : Nat}
     {body code : Program} {remainder belowStack : List Value}
@@ -213,7 +213,7 @@ theorem wp_loop_löb_family_from
     (hinitial : locals initial = initialLocals)
     (hbelow : belowStack = (locals initial).values.drop paramArity)
     (body_closes : ∀ i,
-      ⊢@{IProp WasmHeapGF} (iprop%
+      ⊢@{IProp (WasmHeapGF α)} (iprop%
         ▷ (∀ (j : ι), I j -∗
           WP (loopBodyExpr (α := α) (locals j)
             paramArity resultArity arity body code remainder belowStack
@@ -231,9 +231,9 @@ theorem wp_loop_löb_family_from
   exact wp_loop_löb_family locals I initial hbelow body_closes
 
 theorem wp_loadAt_cell
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {baseIndex elementIndex : Nat} {base element address word : UInt32}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -284,9 +284,9 @@ theorem wp_loadAt_cell
 
 set_option maxHeartbeats 2000000 in
 theorem wp_loadAt
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {baseIndex elementIndex : Nat} {base : UInt32}
     {input : List UInt32} {k : Nat} (hk : k < input.length)
@@ -343,9 +343,9 @@ theorem wp_loadAt
   iexact Hword
 
 theorem wp_store32_cell
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {address oldWord newWord : UInt32}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -387,9 +387,9 @@ theorem wp_store32_cell
 
 set_option maxHeartbeats 2000000 in
 theorem wp_copyAt
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {sourceIndex sourceElement temporaryIndex temporaryElement : Nat}
     {source temporary : UInt32}
@@ -489,9 +489,9 @@ theorem wp_copyAt
 /-! ## Total-WP derived laws -/
 
 theorem twp_lessLocal
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {lhsIndex rhsIndex : Nat} {lhs rhs : UInt32}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -518,9 +518,9 @@ theorem twp_lessLocal
   iexact Hwp
 
 theorem twp_address
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {baseIndex elementIndex : Nat} {base element : UInt32}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -548,9 +548,9 @@ theorem twp_address
   iexact Hwp
 
 theorem twp_increment
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {index : Nat} {value : UInt32} {updated : Locals}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -574,9 +574,9 @@ theorem twp_increment
   iexact Hwp
 
 theorem twp_increment_nil
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {index : Nat} {value : UInt32} {updated : Locals}
     {arity : Nat} {remainder : List Value}
@@ -596,9 +596,9 @@ theorem twp_increment_nil
       (code := []) hget hset)
 
 theorem twp_loadAt_cell
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {baseIndex elementIndex : Nat} {base element address word : UInt32}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -647,9 +647,9 @@ theorem twp_loadAt_cell
 
 set_option maxHeartbeats 2000000 in
 theorem twp_loadAt
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {baseIndex elementIndex : Nat} {base : UInt32}
     {input : List UInt32} {k : Nat} (hk : k < input.length)
@@ -706,9 +706,9 @@ theorem twp_loadAt
   iexact Hword
 
 theorem twp_store32_cell
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {address oldWord newWord : UInt32}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -749,9 +749,9 @@ theorem twp_store32_cell
 
 set_option maxHeartbeats 2000000 in
 theorem twp_copyAt
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {params localValues stack : List Value}
     {sourceIndex sourceElement temporaryIndex temporaryElement : Nat}
     {source temporary : UInt32}

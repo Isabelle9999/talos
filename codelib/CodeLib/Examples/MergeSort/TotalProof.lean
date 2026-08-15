@@ -20,11 +20,11 @@ open Wasm.SmallStep
 available only at strictly smaller measures, reflecting TWP's inductive
 semantics. -/
 theorem twp_loop_wf_family_from
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     {ι : Type} (measure : ι → Nat)
-    (locals : ι → Locals) (I : ι → IProp WasmHeapGF)
+    (locals : ι → Locals) (I : ι → IProp (WasmHeapGF α))
     (initial : ι) (initialLocals : Locals)
     {paramArity resultArity arity : Nat}
     {body code : Program} {remainder belowStack : List Value}
@@ -32,7 +32,7 @@ theorem twp_loop_wf_family_from
     (hinitial : locals initial = initialLocals)
     (hbelow : belowStack = (locals initial).values.drop paramArity)
     (body_closes : ∀ i,
-      ⊢@{IProp WasmHeapGF} (iprop%
+      ⊢@{IProp (WasmHeapGF α)} (iprop%
         (∀ (j : ι), ⌜measure j < measure i⌝ -∗ I j -∗
           WP (loopBodyExpr (α := α) (locals j)
             paramArity resultArity arity body code remainder belowStack
@@ -72,9 +72,9 @@ theorem twp_loop_wf_family_from
 
 set_option maxHeartbeats 4000000 in
 theorem twp_mergeMainStep
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat) (emitted : List UInt32)
     (hinv : MergeLoopInvariant input scratch left mid right i j k emitted)
@@ -232,9 +232,9 @@ theorem twp_mergeMainStep
 
 set_option maxHeartbeats 4000000 in
 theorem twp_mergeMainLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat) (emitted : List UInt32)
     (hinv : MergeLoopInvariant input scratch left mid right i j k emitted)
@@ -259,7 +259,7 @@ theorem twp_mergeMainLoop
         whileDo mergeMainCondition mergeMainStep ++ code,
         arity, remainder, controls, calls⟩ : Expr α)
       @ s; E [{ Φ }] := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF α) := iprop%
     ∀ (scratch' : List UInt32) (i' j' k' : Nat)
         (emitted' : List UInt32),
       ⌜MergeLoopInvariant input scratch' left mid right
@@ -271,7 +271,7 @@ theorem twp_mergeMainLoop
             i' j' k' stack,
           code, arity, remainder, controls, calls⟩ : Expr α)
         @ s; E [{ Φ }]
-  let Inv : MergeLoopState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : MergeLoopState → IProp (WasmHeapGF α) := fun state => iprop%
     ⌜MergeLoopInvariant input state.scratch left mid right
       state.i state.j state.k state.emitted⌝ ∗
     arrayAt source input ∗ arrayAt temporary state.scratch ∗ Finish
@@ -431,9 +431,9 @@ theorem twp_mergeMainLoop
     iframe
 
 theorem twp_mergeMainLoop_from
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (actualLocals : Locals) (stack : List Value)
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat) (emitted : List UInt32)
@@ -466,9 +466,9 @@ theorem twp_mergeMainLoop_from
 
 set_option maxHeartbeats 3000000 in
 theorem twp_mergeLeftStep
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat)
     (hiLen : i < input.length) (hkLen : k < scratch.length)
@@ -541,9 +541,9 @@ theorem twp_mergeLeftStep
 
 set_option maxHeartbeats 3000000 in
 theorem twp_mergeRightStep
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat)
     (hjLen : j < input.length) (hkLen : k < scratch.length)
@@ -616,9 +616,9 @@ theorem twp_mergeRightStep
 
 set_option maxHeartbeats 4000000 in
 theorem twp_mergeLeftLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat) (emitted : List UInt32)
     (hinv : MergeLoopInvariant input scratch left mid right i j k emitted)
@@ -643,7 +643,7 @@ theorem twp_mergeLeftLoop
         whileDo mergeLeftCondition mergeLeftStep ++ code,
         arity, remainder, controls, calls⟩ : Expr α)
       @ s; E [{ Φ }] := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF α) := iprop%
     ∀ (scratch' : List UInt32) (j' k' : Nat)
         (emitted' : List UInt32),
       ⌜MergeLoopInvariant input scratch' left mid right
@@ -654,7 +654,7 @@ theorem twp_mergeLeftLoop
             mid j' k' stack,
           code, arity, remainder, controls, calls⟩ : Expr α)
         @ s; E [{ Φ }]
-  let Inv : MergeLoopState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : MergeLoopState → IProp (WasmHeapGF α) := fun state => iprop%
     ⌜MergeLoopInvariant input state.scratch left mid right
       state.i state.j state.k state.emitted⌝ ∗
     ⌜state.i = mid ∨ state.j = right⌝ ∗
@@ -766,9 +766,9 @@ theorem twp_mergeLeftLoop
 
 set_option maxHeartbeats 4000000 in
 theorem twp_mergeRightLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right j k : Nat) (emitted : List UInt32)
     (hinv :
@@ -793,7 +793,7 @@ theorem twp_mergeRightLoop
         whileDo mergeRightCondition mergeRightStep ++ code,
         arity, remainder, controls, calls⟩ : Expr α)
       @ s; E [{ Φ }] := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF α) := iprop%
     ∀ (scratch' : List UInt32) (k' : Nat)
         (emitted' : List UInt32),
       ⌜MergeLoopInvariant input scratch' left mid right
@@ -804,7 +804,7 @@ theorem twp_mergeRightLoop
             mid right k' stack,
           code, arity, remainder, controls, calls⟩ : Expr α)
         @ s; E [{ Φ }]
-  let Inv : MergeLoopState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : MergeLoopState → IProp (WasmHeapGF α) := fun state => iprop%
     ⌜MergeLoopInvariant input state.scratch left mid right
       mid state.j state.k state.emitted⌝ ∗
     arrayAt source input ∗ arrayAt temporary state.scratch ∗ Finish
@@ -900,9 +900,9 @@ theorem twp_mergeRightLoop
 
 set_option maxHeartbeats 3000000 in
 theorem twp_mergeCopyStep
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (source temporary : UInt32) (current scratch : List UInt32)
     (left mid right k : Nat)
     (hkCurrent : k < current.length) (hkScratch : k < scratch.length)
@@ -959,9 +959,9 @@ theorem twp_mergeCopyStep
 
 set_option maxHeartbeats 5000000 in
 theorem twp_mergeCopyLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (source temporary : UInt32)
     (input current scratch merged copied : List UInt32)
     (left mid right k : Nat)
@@ -988,7 +988,7 @@ theorem twp_mergeCopyLoop
         whileDo mergeCopyCondition mergeCopyStep ++ code,
         arity, remainder, controls, calls⟩ : Expr α)
       @ s; E [{ Φ }] := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF α) := iprop%
     ∀ output : List UInt32,
       ⌜CopyLoopInvariant input output left right right merged⌝ -∗
       arrayAt source output -∗ arrayAt temporary scratch -∗
@@ -997,7 +997,7 @@ theorem twp_mergeCopyLoop
             mid right right stack,
           code, arity, remainder, controls, calls⟩ : Expr α)
         @ s; E [{ Φ }]
-  let Inv : CopyLoopState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : CopyLoopState → IProp (WasmHeapGF α) := fun state => iprop%
     ⌜CopyLoopInvariant input state.current left right
       state.k state.copied⌝ ∗
     ⌜state.copied = merged.take (state.k - left)⌝ ∗
@@ -1124,9 +1124,9 @@ theorem twp_mergeCopyLoop
     iframe
 
 theorem twp_mergeCopyLoop_from
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (actualLocals : Locals) (stack : List Value)
     (source temporary : UInt32)
     (input current scratch merged copied : List UInt32)
@@ -1162,9 +1162,9 @@ theorem twp_mergeCopyLoop_from
 
 set_option maxHeartbeats 8000000 in
 theorem twp_mergeBody
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right : Nat)
     {calls : List CallFrame} :
@@ -1265,9 +1265,9 @@ theorem twp_mergeBody
     %hmergeRange %hscratchFinalLength Hsource Htemporary
 
 theorem twp_mergeBody_from
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (actualLocals : Locals)
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right : Nat)
@@ -1293,9 +1293,9 @@ theorem twp_mergeBody_from
 
 set_option maxHeartbeats 4000000 in
 theorem twp_merge
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (runtimeModule : Module) (mergeIndex : Nat)
     (himports : ¬mergeIndex < runtimeModule.imports.length)
     (hfunction :
@@ -1356,9 +1356,9 @@ theorem twp_merge
 
 set_option maxHeartbeats 3000000 in
 theorem twp_mergeSortPrepareRight
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (source temporary : UInt32)
     (count width left mid oldRight : Nat)
     (_htwoWidth : width * 2 < UInt32.size)
@@ -1438,9 +1438,9 @@ theorem twp_mergeSortPrepareRight
     iexact Hcont
 
 theorem twp_mergeSortPrepareRight_from
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (actualLocals : Locals) (stack : List Value)
     (source temporary : UInt32)
     (count width left mid oldRight : Nat)
@@ -1489,9 +1489,9 @@ theorem twp_mergeSortPrepareRight_from
 
 set_option maxHeartbeats 5000000 in
 theorem twp_mergeSortPrepare
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (source temporary : UInt32)
     (count width left oldMid oldRight : Nat)
     (hleftWidth : left + width < UInt32.size)
@@ -1575,9 +1575,9 @@ theorem twp_mergeSortPrepare
 
 set_option maxHeartbeats 4000000 in
 theorem twp_mergeSortCallAdvance
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (runtimeModule : Module) (mergeIndex : Nat)
     (himports : ¬mergeIndex < runtimeModule.imports.length)
     (hfunction :
@@ -1655,9 +1655,9 @@ theorem twp_mergeSortCallAdvance
 
 set_option maxHeartbeats 8000000 in
 theorem twp_mergeSortInnerLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (runtimeModule : Module) (mergeIndex : Nat)
     (himports : ¬mergeIndex < runtimeModule.imports.length)
     (hfunction :
@@ -1696,7 +1696,7 @@ theorem twp_mergeSortInnerLoop
           (mergeSortInnerStep mergeIndex) ++ code,
         arity, remainder, controls, calls⟩ : Expr α)
       @ s; E [{ Φ }] := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF α) := iprop%
     ∀ (output scratch' : List UInt32) (pass' mid' right' : Nat),
       ⌜MergePassInvariant original output width pass'⌝ -∗
       ⌜output.length = count⌝ -∗
@@ -1709,7 +1709,7 @@ theorem twp_mergeSortInnerLoop
             (pass' * (2 * width)) mid' right' stack,
           code, arity, remainder, controls, calls⟩ : Expr α)
         @ s; E [{ Φ }]
-  let Inv : SortInnerState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : SortInnerState → IProp (WasmHeapGF α) := fun state => iprop%
     ⌜MergePassInvariant original state.current width state.pass⌝ ∗
     ⌜state.current.length = count⌝ ∗
     ⌜state.scratch.length = count⌝ ∗
@@ -1904,9 +1904,9 @@ theorem twp_mergeSortInnerLoop
 
 set_option maxHeartbeats 10000000 in
 theorem twp_mergeSortOuterLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (runtimeModule : Module) (mergeIndex : Nat)
     (himports : ¬mergeIndex < runtimeModule.imports.length)
     (hfunction :
@@ -1947,7 +1947,7 @@ theorem twp_mergeSortOuterLoop
           (mergeSortOuterStep mergeIndex) ++ code,
         arity, remainder, controls, calls⟩ : Expr α)
       @ s; E [{ Φ }] := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF α) := iprop%
     ∀ (output scratch' : List UInt32)
         (width' left' mid' right' : Nat),
       ⌜SortedRuns output width'⌝ -∗
@@ -1962,7 +1962,7 @@ theorem twp_mergeSortOuterLoop
             left' mid' right' stack,
           code, arity, remainder, controls, calls⟩ : Expr α)
         @ s; E [{ Φ }]
-  let Inv : SortOuterState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : SortOuterState → IProp (WasmHeapGF α) := fun state => iprop%
     ⌜SortedRuns state.current state.width⌝ ∗
     ⌜List.Perm input state.current⌝ ∗
     ⌜state.current.length = count⌝ ∗
@@ -2157,9 +2157,9 @@ theorem twp_mergeSortOuterLoop
 
 set_option maxHeartbeats 6000000 in
 theorem twp_mergeSortBody
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (runtimeModule : Module) (mergeIndex : Nat)
     (himports : ¬mergeIndex < runtimeModule.imports.length)
     (hfunction :
@@ -2226,9 +2226,9 @@ theorem twp_mergeSortBody
 
 set_option maxHeartbeats 5000000 in
 theorem twp_mergeSort
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (runtimeModule : Module) (sortIndex mergeIndex : Nat)
     (hsortImports : ¬sortIndex < runtimeModule.imports.length)
     (hsortFunction :
@@ -2294,7 +2294,7 @@ theorem twp_mergeSort
 Because this is a TWP, the conclusion includes termination as well as the
 `mergeSortPost` functional-correctness assertion. -/
 theorem twp_mergeSort_total
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
     (source temporary : UInt32) (input scratch : List UInt32) :
     runtimeModuleOwn mergeSortModule ∗

@@ -518,7 +518,7 @@ theorem Mem.write32_eq_self {m : Mem} {addr value : UInt32}
       bv_decide
     · rfl
 
-theorem store32Heap_pointsTo [WasmHeapGS]
+theorem store32Heap_pointsTo [WasmHeapGS α]
     (σ : WasmHeapMap (Option UInt8)) (addr value : UInt32)
     (h0 : get? σ addr = none)
     (h1 : get? σ (addr + 1) = none)
@@ -528,11 +528,11 @@ theorem store32Heap_pointsTo [WasmHeapGS]
     (hn2 : (addr + 2).toNat = addr.toNat + 2)
     (hn3 : (addr + 3).toNat = addr.toNat + 3) :
     ([∗map] address ↦ byte ∈ store32Heap σ addr value,
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) byte) ⊢
       pointsTo_u32 addr value ∗
       ([∗map] address ↦ byte ∈ σ,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
           address (DFrac.own 1) byte) := by
   have h01 : addr + 1 ≠ addr := by
     intro h
@@ -670,7 +670,7 @@ def store64Heap (σ : WasmHeapMap (Option UInt8)) (addr : UInt32)
       (addr + 6) (some (u64Byte value 6)))
     (addr + 7) (some (u64Byte value 7))
 
-theorem store64Heap_pointsTo [WasmHeapGS]
+theorem store64Heap_pointsTo [WasmHeapGS α]
     (σ : WasmHeapMap (Option UInt8)) (addr : UInt32) (value : UInt64)
     (h0 : get? σ addr = none)
     (h1 : get? (insert σ addr (some (u64Byte value 0))) (addr + 1) = none)
@@ -723,11 +723,11 @@ theorem store64Heap_pointsTo [WasmHeapGS]
           (addr + 5) (some (u64Byte value 5)))
         (addr + 6) (some (u64Byte value 6))) (addr + 7) = none) :
     ([∗map] address ↦ byte ∈ store64Heap σ addr value,
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) byte) ⊢
       pointsTo_u64 addr value ∗
       ([∗map] address ↦ byte ∈ σ,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
           address (DFrac.own 1) byte) := by
   unfold store64Heap
   rw [(BI.BigSepM.bigSepM_insert h7).to_eq]

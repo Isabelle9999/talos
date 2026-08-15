@@ -56,10 +56,10 @@ set_option maxHeartbeats 4000000 in
 to physical memory through authoritative byte ownership; no legacy
 interpreter or custom WP definition occurs in this theorem. -/
 theorem absDiff_smallStep_wp_to_return
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (sp : UInt32) (a b oldScratch : UInt64)
     (hlo : 16 ≤ sp.toNat)
@@ -224,7 +224,7 @@ theorem absDiff_smallStep_wp_to_return
 set_option maxHeartbeats 4000000 in
 /-- Top-level corollary of the contextual body rule. -/
 theorem absDiff_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (sp : UInt32) (a b oldScratch : UInt64)
     (hlo : 16 ≤ sp.toNat)
@@ -289,9 +289,9 @@ def absDiffHeap (oldScratch : UInt64) :
 def absDiffGlobals : WasmGlobalMap Value :=
   insert ∅ 0 (.i32 1048576)
 
-theorem absDiffHeap_pointsTo (oldScratch : UInt64) [WasmHeapGS] :
+theorem absDiffHeap_pointsTo (oldScratch : UInt64) [WasmHeapGS Unit] :
     ([∗map] address ↦ value ∈ absDiffHeap oldScratch,
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u64 1048568 oldScratch := by
   let σ0 : WasmHeapMap (Option UInt8) := ∅
@@ -335,7 +335,7 @@ theorem absDiffHeap_pointsTo (oldScratch : UInt64) [WasmHeapGS] :
   change
     ([∗map] address ↦ value ∈
       insert σ7 1048575 (some (u64Byte oldScratch 7)),
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u64 1048568 oldScratch
   rw [(BI.BigSepM.bigSepM_insert h7).to_eq]
@@ -352,7 +352,7 @@ theorem absDiffHeap_pointsTo (oldScratch : UInt64) [WasmHeapGS] :
   iintro ⟨H7, H6, H5, H4, H3, H2, H1, H0⟩
   iframe
 
-theorem absDiffGlobals_pointsTo [WasmGlobalGS] :
+theorem absDiffGlobals_pointsTo [WasmGlobalGS Unit] :
     ([∗map] index ↦ value ∈ absDiffGlobals,
       globalPointsTo index value) ⊢
       globalPointsTo 0 (.i32 1048576) := by

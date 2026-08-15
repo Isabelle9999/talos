@@ -65,9 +65,9 @@ structure SortOuterState where
 
 set_option maxHeartbeats 4000000 in
 theorem wp_mergeMainStep
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat) (emitted : List UInt32)
     (hinv : MergeLoopInvariant input scratch left mid right i j k emitted)
@@ -234,9 +234,9 @@ theorem wp_mergeMainStep
 
 set_option maxHeartbeats 4000000 in
 theorem wp_mergeMainLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat) (emitted : List UInt32)
     (hinv : MergeLoopInvariant input scratch left mid right i j k emitted)
@@ -261,7 +261,7 @@ theorem wp_mergeMainLoop
         whileDo mergeMainCondition mergeMainStep ++ code,
         arity, remainder, controls, calls⟩ : Expr Unit)
       @ s; E {{ Φ }} := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF Unit) := iprop%
     ∀ (scratch' : List UInt32) (i' j' k' : Nat)
         (emitted' : List UInt32),
       ⌜MergeLoopInvariant input scratch' left mid right
@@ -273,7 +273,7 @@ theorem wp_mergeMainLoop
             i' j' k' stack,
           code, arity, remainder, controls, calls⟩ : Expr Unit)
         @ s; E {{ Φ }}
-  let Inv : MergeLoopState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : MergeLoopState → IProp (WasmHeapGF Unit) := fun state => iprop%
     ⌜MergeLoopInvariant input state.scratch left mid right
       state.i state.j state.k state.emitted⌝ ∗
     arrayAt source input ∗ arrayAt temporary state.scratch ∗ Finish
@@ -427,9 +427,9 @@ theorem wp_mergeMainLoop
     iframe
 
 theorem wp_mergeMainLoop_from
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (actualLocals : Locals) (stack : List Value)
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat) (emitted : List UInt32)
@@ -462,9 +462,9 @@ theorem wp_mergeMainLoop_from
 
 set_option maxHeartbeats 3000000 in
 theorem wp_mergeLeftStep
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat)
     (hiLen : i < input.length) (hkLen : k < scratch.length)
@@ -539,9 +539,9 @@ theorem wp_mergeLeftStep
 
 set_option maxHeartbeats 3000000 in
 theorem wp_mergeRightStep
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat)
     (hjLen : j < input.length) (hkLen : k < scratch.length)
@@ -616,9 +616,9 @@ theorem wp_mergeRightStep
 
 set_option maxHeartbeats 4000000 in
 theorem wp_mergeLeftLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right i j k : Nat) (emitted : List UInt32)
     (hinv : MergeLoopInvariant input scratch left mid right i j k emitted)
@@ -643,7 +643,7 @@ theorem wp_mergeLeftLoop
         whileDo mergeLeftCondition mergeLeftStep ++ code,
         arity, remainder, controls, calls⟩ : Expr Unit)
       @ s; E {{ Φ }} := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF Unit) := iprop%
     ∀ (scratch' : List UInt32) (j' k' : Nat)
         (emitted' : List UInt32),
       ⌜MergeLoopInvariant input scratch' left mid right
@@ -654,7 +654,7 @@ theorem wp_mergeLeftLoop
             mid j' k' stack,
           code, arity, remainder, controls, calls⟩ : Expr Unit)
         @ s; E {{ Φ }}
-  let Inv : MergeLoopState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : MergeLoopState → IProp (WasmHeapGF Unit) := fun state => iprop%
     ⌜MergeLoopInvariant input state.scratch left mid right
       state.i state.j state.k state.emitted⌝ ∗
     ⌜state.i = mid ∨ state.j = right⌝ ∗
@@ -767,9 +767,9 @@ theorem wp_mergeLeftLoop
 
 set_option maxHeartbeats 4000000 in
 theorem wp_mergeRightLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right j k : Nat) (emitted : List UInt32)
     (hinv :
@@ -794,7 +794,7 @@ theorem wp_mergeRightLoop
         whileDo mergeRightCondition mergeRightStep ++ code,
         arity, remainder, controls, calls⟩ : Expr Unit)
       @ s; E {{ Φ }} := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF Unit) := iprop%
     ∀ (scratch' : List UInt32) (k' : Nat)
         (emitted' : List UInt32),
       ⌜MergeLoopInvariant input scratch' left mid right
@@ -805,7 +805,7 @@ theorem wp_mergeRightLoop
             mid right k' stack,
           code, arity, remainder, controls, calls⟩ : Expr Unit)
         @ s; E {{ Φ }}
-  let Inv : MergeLoopState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : MergeLoopState → IProp (WasmHeapGF Unit) := fun state => iprop%
     ⌜MergeLoopInvariant input state.scratch left mid right
       mid state.j state.k state.emitted⌝ ∗
     arrayAt source input ∗ arrayAt temporary state.scratch ∗ Finish
@@ -902,9 +902,9 @@ theorem wp_mergeRightLoop
 
 set_option maxHeartbeats 3000000 in
 theorem wp_mergeCopyStep
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (source temporary : UInt32) (current scratch : List UInt32)
     (left mid right k : Nat)
     (hkCurrent : k < current.length) (hkScratch : k < scratch.length)
@@ -962,9 +962,9 @@ theorem wp_mergeCopyStep
 
 set_option maxHeartbeats 5000000 in
 theorem wp_mergeCopyLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (source temporary : UInt32)
     (input current scratch merged copied : List UInt32)
     (left mid right k : Nat)
@@ -991,7 +991,7 @@ theorem wp_mergeCopyLoop
         whileDo mergeCopyCondition mergeCopyStep ++ code,
         arity, remainder, controls, calls⟩ : Expr Unit)
       @ s; E {{ Φ }} := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF Unit) := iprop%
     ∀ output : List UInt32,
       ⌜CopyLoopInvariant input output left right right merged⌝ -∗
       arrayAt source output -∗ arrayAt temporary scratch -∗
@@ -1000,7 +1000,7 @@ theorem wp_mergeCopyLoop
             mid right right stack,
           code, arity, remainder, controls, calls⟩ : Expr Unit)
         @ s; E {{ Φ }}
-  let Inv : CopyLoopState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : CopyLoopState → IProp (WasmHeapGF Unit) := fun state => iprop%
     ⌜CopyLoopInvariant input state.current left right
       state.k state.copied⌝ ∗
     ⌜state.copied = merged.take (state.k - left)⌝ ∗
@@ -1128,9 +1128,9 @@ theorem wp_mergeCopyLoop
     iframe
 
 theorem wp_mergeCopyLoop_from
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (actualLocals : Locals) (stack : List Value)
     (source temporary : UInt32)
     (input current scratch merged copied : List UInt32)
@@ -1166,9 +1166,9 @@ theorem wp_mergeCopyLoop_from
 
 set_option maxHeartbeats 8000000 in
 theorem wp_mergeBody
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right : Nat)
     {calls : List CallFrame} :
@@ -1277,9 +1277,9 @@ theorem wp_mergeBody
     %hmergeRange %hscratchFinalLength Hsource Htemporary
 
 theorem wp_mergeBody_from
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (actualLocals : Locals)
     (source temporary : UInt32) (input scratch : List UInt32)
     (left mid right : Nat)
@@ -1305,9 +1305,9 @@ theorem wp_mergeBody_from
 
 set_option maxHeartbeats 4000000 in
 theorem wp_merge
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (mergeIndex : Nat)
     (himports : ¬mergeIndex < runtimeModule.imports.length)
     (hfunction :
@@ -1369,7 +1369,7 @@ theorem wp_merge
   iframe
 
 theorem mergePost_elim
-    [WasmHeapGS]
+    [WasmHeapGS α]
     (source temporary : UInt32) (input : List UInt32)
     (left mid right : Nat) :
     mergePost source temporary input left mid right ⊢
@@ -1382,7 +1382,7 @@ theorem mergePost_elim
   iexact Hpost
 
 theorem mergeSortPre_elim
-    [WasmHeapGS]
+    [WasmHeapGS α]
     (source temporary : UInt32)
     (input scratch : List UInt32) :
     mergeSortPre source temporary input scratch ⊢
@@ -1395,9 +1395,9 @@ theorem mergeSortPre_elim
 
 set_option maxHeartbeats 3000000 in
 theorem wp_mergeSortPrepareRight
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (source temporary : UInt32)
     (count width left mid oldRight : Nat)
     (_htwoWidth : width * 2 < UInt32.size)
@@ -1492,9 +1492,9 @@ theorem wp_mergeSortPrepareRight
     iexact Hcont
 
 theorem wp_mergeSortPrepareRight_from
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (actualLocals : Locals) (stack : List Value)
     (source temporary : UInt32)
     (count width left mid oldRight : Nat)
@@ -1543,9 +1543,9 @@ theorem wp_mergeSortPrepareRight_from
 
 set_option maxHeartbeats 5000000 in
 theorem wp_mergeSortPrepare
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (source temporary : UInt32)
     (count width left oldMid oldRight : Nat)
     (hleftWidth : left + width < UInt32.size)
@@ -1642,9 +1642,9 @@ theorem wp_mergeSortPrepare
 
 set_option maxHeartbeats 4000000 in
 theorem wp_mergeSortCallAdvance
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (mergeIndex : Nat)
     (himports : ¬mergeIndex < runtimeModule.imports.length)
     (hfunction :
@@ -1733,9 +1733,9 @@ theorem wp_mergeSortCallAdvance
 
 set_option maxHeartbeats 8000000 in
 theorem wp_mergeSortInnerLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (mergeIndex : Nat)
     (himports : ¬mergeIndex < runtimeModule.imports.length)
     (hfunction :
@@ -1774,7 +1774,7 @@ theorem wp_mergeSortInnerLoop
           (mergeSortInnerStep mergeIndex) ++ code,
         arity, remainder, controls, calls⟩ : Expr Unit)
       @ s; E {{ Φ }} := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF Unit) := iprop%
     ∀ (output scratch' : List UInt32) (pass' mid' right' : Nat),
       ⌜MergePassInvariant original output width pass'⌝ -∗
       ⌜output.length = count⌝ -∗
@@ -1787,7 +1787,7 @@ theorem wp_mergeSortInnerLoop
             (pass' * (2 * width)) mid' right' stack,
           code, arity, remainder, controls, calls⟩ : Expr Unit)
         @ s; E {{ Φ }}
-  let Inv : SortInnerState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : SortInnerState → IProp (WasmHeapGF Unit) := fun state => iprop%
     ⌜MergePassInvariant original state.current width state.pass⌝ ∗
     ⌜state.current.length = count⌝ ∗
     ⌜state.scratch.length = count⌝ ∗
@@ -1985,9 +1985,9 @@ theorem wp_mergeSortInnerLoop
 
 set_option maxHeartbeats 10000000 in
 theorem wp_mergeSortOuterLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (mergeIndex : Nat)
     (himports : ¬mergeIndex < runtimeModule.imports.length)
     (hfunction :
@@ -2028,7 +2028,7 @@ theorem wp_mergeSortOuterLoop
           (mergeSortOuterStep mergeIndex) ++ code,
         arity, remainder, controls, calls⟩ : Expr Unit)
       @ s; E {{ Φ }} := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF Unit) := iprop%
     ∀ (output scratch' : List UInt32)
         (width' left' mid' right' : Nat),
       ⌜SortedRuns output width'⌝ -∗
@@ -2043,7 +2043,7 @@ theorem wp_mergeSortOuterLoop
             left' mid' right' stack,
           code, arity, remainder, controls, calls⟩ : Expr Unit)
         @ s; E {{ Φ }}
-  let Inv : SortOuterState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : SortOuterState → IProp (WasmHeapGF Unit) := fun state => iprop%
     ⌜SortedRuns state.current state.width⌝ ∗
     ⌜List.Perm input state.current⌝ ∗
     ⌜state.current.length = count⌝ ∗
@@ -2247,9 +2247,9 @@ theorem wp_mergeSortOuterLoop
 
 set_option maxHeartbeats 6000000 in
 theorem wp_mergeSortBody
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (mergeIndex : Nat)
     (himports : ¬mergeIndex < runtimeModule.imports.length)
     (hfunction :
@@ -2318,9 +2318,9 @@ theorem wp_mergeSortBody
 
 set_option maxHeartbeats 5000000 in
 theorem wp_mergeSort
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (sortIndex mergeIndex : Nat)
     (hsortImports : ¬sortIndex < runtimeModule.imports.length)
     (hsortFunction :

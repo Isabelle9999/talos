@@ -129,13 +129,13 @@ def PartitionRange (input output : List UInt32) (lo hi pivotIndex : Nat) : Prop 
   (∀ x ∈ segment output lo pivotIndex, x ≤ output[pivotIndex]!) ∧
   (∀ x ∈ segment output (pivotIndex + 1) hi, x > output[pivotIndex]!)
 
-def quicksortPre [WasmHeapGS]
-    (arr : UInt32) (values : List UInt32) (lo hi : Nat) : IProp WasmHeapGF :=
+def quicksortPre [WasmHeapGS α]
+    (arr : UInt32) (values : List UInt32) (lo hi : Nat) : IProp (WasmHeapGF α) :=
   iprop% arrayAt arr values ∗
     ⌜lo ≤ hi ∧ hi ≤ values.length ∧ ValidQuicksortLayout arr values.length⌝
 
-def quicksortPost [WasmHeapGS]
-    (arr : UInt32) (input : List UInt32) (lo hi : Nat) : IProp WasmHeapGF :=
+def quicksortPost [WasmHeapGS α]
+    (arr : UInt32) (input : List UInt32) (lo hi : Nat) : IProp (WasmHeapGF α) :=
   iprop% ∃ output : List UInt32,
     ⌜output.length = input.length ∧
      output.take lo = input.take lo ∧
@@ -503,15 +503,15 @@ theorem quicksortHeap_inBounds (arr : UInt32) (input : List UInt32)
     simp only [hpages]
     exact hmem
 
-theorem quicksortHeapAux_pointsTo [WasmHeapGS]
+theorem quicksortHeapAux_pointsTo [WasmHeapGS α]
     (σ : WasmHeapMap (Option UInt8)) (base : UInt32) (xs : List UInt32)
     (hdisjoint : ∀ a b, get? σ a = some b → a.toNat < base.toNat)
     (hfit : base.toNat + 4 * xs.length < UInt32.size) :
     ([∗map] address ↦ value ∈ quicksortHeapAux σ base xs,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap) address (DFrac.own 1) value) ⊢
+        pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap) address (DFrac.own 1) value) ⊢
       arrayAt base xs ∗
       ([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF) (H := WasmHeapMap) address (DFrac.own 1) value) := by
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap) address (DFrac.own 1) value) := by
   induction xs generalizing σ base with
   | nil =>
     simp only [quicksortHeapAux, arrayAt, BI.emp_sep.to_eq]
@@ -567,11 +567,11 @@ theorem quicksortHeapAux_pointsTo [WasmHeapGS]
     · isplitl [Hword]; iexact Hword; iexact Hxs
     · iexact Hσ
 
-theorem quicksortHeap_pointsTo [WasmHeapGS]
+theorem quicksortHeap_pointsTo [WasmHeapGS α]
     (arr : UInt32) (input : List UInt32)
     (hfit : arr.toNat + 4 * input.length < UInt32.size) :
     ([∗map] address ↦ value ∈ quicksortHeap arr input,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap) address (DFrac.own 1) value) ⊢
+        pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap) address (DFrac.own 1) value) ⊢
       arrayAt arr input := by
   unfold quicksortHeap
   iintro Hheap
@@ -580,12 +580,12 @@ theorem quicksortHeap_pointsTo [WasmHeapGS]
   icases Hsplit with ⟨Harray, _Hemp⟩
   iexact Harray
 
-theorem arrayAt_readWordArray [WasmSmallStepGS hlc]
+theorem arrayAt_readWordArray [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat) (obs : List StepKind) (threads : Nat)
     (arr : UInt32) (output : List UInt32)
     (hfit : arr.toNat + 4 * output.length ≤ UInt32.size) :
-    stateInterp (GF := WasmHeapGF) store steps obs threads ∗ arrayAt arr output ==∗
-      stateInterp (GF := WasmHeapGF) store steps obs threads ∗ arrayAt arr output ∗
+    stateInterp (GF := WasmHeapGF α) store steps obs threads ∗ arrayAt arr output ==∗
+      stateInterp (GF := WasmHeapGF α) store steps obs threads ∗ arrayAt arr output ∗
       ⌜readWordArray store.wasm.mem arr output.length = output⌝ := by
   induction output generalizing arr with
   | nil =>

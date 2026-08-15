@@ -97,10 +97,10 @@ theorem FillWords_eq_structured :
 /-- One real small-step fill iteration extends the authoritatively owned
 filled prefix by one word and frames an arbitrary Iris resource `R`. -/
 theorem fillWords_storeIteration_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (base n i : UInt32) (value old : UInt64)
     (suffix : List UInt64)
     (code : Program) (arity : Nat) (remainder : List Value)
@@ -194,10 +194,9 @@ theorem fillWords_storeIteration_wp
 /-- The generated index increment and `br 1` really target the surrounding
 loop frame, with the updated local and no operand-stack leakage. -/
 theorem fillWords_incrementBackedge_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (base n i : UInt32) (value : UInt64)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
     (outerControls : List Wasm.SmallStep.ControlFrame)
@@ -234,10 +233,10 @@ theorem fillWords_incrementBackedge_wp
 /-- Compose the authoritative store with the generated increment/back-edge.
 The premise is exactly the guarded family hypothesis for iteration `i + 1`. -/
 theorem fillWords_bodyTail_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (base n i : UInt32) (value old : UInt64)
     (suffix : List UInt64)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
@@ -275,10 +274,10 @@ theorem fillWords_bodyTail_wp
 stateful body tail, while `i ≥ n` exits first the outer block and then the
 loop frame into `afterLoop`. -/
 theorem fillWords_guard_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (P : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (P : IProp (WasmHeapGF α))
     (base n i : UInt32) (value : UInt64)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
     (outerControls : List Wasm.SmallStep.ControlFrame)
@@ -340,10 +339,10 @@ theorem fillWords_guard_wp
 the original array, so `i + suffix.length = n`; ownership is exactly the
 filled prefix followed by that suffix. -/
 theorem fillWords_loopBody_invariant_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (base n i : UInt32) (value : UInt64) (suffix : List UInt64)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
     (outerControls : List Wasm.SmallStep.ControlFrame)
@@ -364,7 +363,7 @@ theorem fillWords_loopBody_invariant_wp
           fillWordsLoopFrame afterLoop :: outerControls, calls⟩ :
         Wasm.SmallStep.Expr α) @ s; E {{ Φ }} := by
   iloeb as IH generalizing %i %suffix %hinv
-  let Kloop : IProp WasmHeapGF := iprop(
+  let Kloop : IProp (WasmHeapGF α) := iprop(
     ▷ ∀ (j : UInt32) (tail : List UInt64),
       ⌜j.toNat + tail.length = n.toNat⌝ -∗
       R ∗ array64At base
@@ -377,7 +376,7 @@ theorem fillWords_loopBody_invariant_wp
   ihave IHtyped : □ Kloop $$ [IH]
   · simp only [Kloop]
     iexact IH
-  let P : IProp WasmHeapGF :=
+  let P : IProp (WasmHeapGF α) :=
     iprop% □ Kloop ∗ R ∗ array64At base
       (List.replicate i.toNat value ++ suffix)
   iintro ⟨HR, Harray⟩
@@ -402,7 +401,7 @@ theorem fillWords_loopBody_invariant_wp
             (i + 1).toNat + tail.length = n.toNat := by
           simp only [List.length_cons] at hinv
           omega
-        let Rloop : IProp WasmHeapGF := iprop% □ Kloop ∗ R
+        let Rloop : IProp (WasmHeapGF α) := iprop% □ Kloop ∗ R
         iintro Hcurrent
         icases Hcurrent with ⟨#IHcurrent, HcurrentRest⟩
         icases HcurrentRest with ⟨HRcurrent, HarrayCurrent⟩
@@ -452,10 +451,10 @@ theorem fillWords_loopBody_invariant_wp
 
 /-- Enter the generated `.loop` with an arbitrary original u64 array. -/
 theorem fillWords_loop_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (base n : UInt32) (value : UInt64) (original : List UInt64)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
     (outerControls : List Wasm.SmallStep.ControlFrame)
@@ -501,10 +500,10 @@ theorem fillWords_loop_wp
 /-- Full symbolic Iris rule for `FillWords`, including initialization of the
 loop index local.  The postcondition owns the entire filled u64 region. -/
 theorem fillWords_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (base n initialIndex : UInt32) (value : UInt64)
     (original : List UInt64)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)

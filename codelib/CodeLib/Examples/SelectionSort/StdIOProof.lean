@@ -369,18 +369,18 @@ theorem inputHeap_inBounds (program : Executable) (input : List UInt64)
     exact hfit
 
 set_option maxHeartbeats 6000000 in
-theorem heap64Aux_pointsTo [WasmHeapGS]
+theorem heap64Aux_pointsTo [WasmHeapGS Unit]
     (heap : WasmHeapMap (Option UInt8)) (base : UInt32)
     (values : List UInt64)
     (hdisjoint : ∀ address byte, get? heap address = some byte →
       address.toNat < base.toNat)
     (hfit : base.toNat + 8 * values.length < UInt32.size) :
     ([∗map] address ↦ value ∈ heap64Aux heap base values,
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       array64At base values ∗
       ([∗map] address ↦ value ∈ heap,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) value) := by
   induction values generalizing heap base with
   | nil =>
@@ -556,10 +556,10 @@ theorem heap64Aux_pointsTo [WasmHeapGS]
         · iexact Hvalues
       · iexact Hheap
 
-theorem inputHeap_pointsTo [WasmHeapGS] (input : List UInt64)
+theorem inputHeap_pointsTo [WasmHeapGS Unit] (input : List UInt64)
     (hfit : Fits input) :
     ([∗map] address ↦ value ∈ inputHeap input,
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢ array64At array input := by
   unfold inputHeap
   iintro Hheap
@@ -576,13 +576,13 @@ def readWordArray64 (mem : Mem) (base : UInt32) : Nat → List UInt64
   | 0 => []
   | n + 1 => mem.read64 base :: readWordArray64 mem (base + 8) n
 
-theorem array64At_words [WasmSmallStepGS hlc]
+theorem array64At_words [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat) (obs : List StepKind)
     (threads : Nat) (base : UInt32) (output : List UInt64)
     (hfit : base.toNat + 8 * output.length < UInt32.size) :
-    stateInterp (GF := WasmHeapGF) store steps obs threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps obs threads ∗
       array64At base output ==∗
-    stateInterp (GF := WasmHeapGF) store steps obs threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps obs threads ∗
       array64At base output ∗
       ⌜readWordArray64 store.wasm.mem base output.length = output⌝ := by
   induction output generalizing base with
@@ -627,15 +627,15 @@ theorem array64At_words [WasmSmallStepGS hlc]
         rw [hword.1]
         exact congrArg (value :: ·) hrest
 
-theorem array64At_capacity [WasmSmallStepGS hlc]
+theorem array64At_capacity [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (base : UInt32) (values : List UInt64)
     (hfit : base.toNat + 8 * values.length < UInt32.size)
     (hbaseBound : base.toNat ≤ store.wasm.mem.pages * 65536) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       array64At base values ==∗
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       array64At base values ∗
       ⌜base.toNat + 8 * values.length ≤
         store.wasm.mem.pages * 65536⌝ := by
@@ -703,10 +703,10 @@ def SortPost (input : List UInt64)
     8 * input.length ≤ store.wasm.mem.pages * 65536
 
 set_option maxHeartbeats 6000000 in
-theorem twp_recursiveSortCall [WasmSmallStepGS hlc]
+theorem twp_recursiveSortCall [WasmSmallStepGS hlc Unit]
     (input : List UInt64) (hfit : Fits input) :
     (([∗map] address ↦ value ∈ inputHeap input,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) value) ∗
       ([∗map] index ↦ value ∈ (∅ : WasmGlobalMap Value),
         globalPointsTo index value) ∗
@@ -714,7 +714,7 @@ theorem twp_recursiveSortCall [WasmSmallStepGS hlc]
       WP (concreteSortConfig recursive input).expr @ Stuckness.NotStuck; ⊤
         [{ values,
           ∀ (store : MachineStore Unit) (_observations : List StepKind),
-            stateInterp (GF := WasmHeapGF) store 0 [] 0 -∗
+            stateInterp (GF := WasmHeapGF Unit) store 0 [] 0 -∗
             ⌜SortPost input values store⌝ }] := by
   iintro ⟨Hheap, _Hglobals, Hruntime⟩
   ihave Harray := inputHeap_pointsTo input hfit $$ Hheap
@@ -753,10 +753,10 @@ theorem twp_recursiveSortCall [WasmSmallStepGS hlc]
     · simpa [array, hlength] using hcapacity
 
 set_option maxHeartbeats 6000000 in
-theorem twp_loopSortCall [WasmSmallStepGS hlc]
+theorem twp_loopSortCall [WasmSmallStepGS hlc Unit]
     (input : List UInt64) (hfit : Fits input) :
     (([∗map] address ↦ value ∈ inputHeap input,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) value) ∗
       ([∗map] index ↦ value ∈ (∅ : WasmGlobalMap Value),
         globalPointsTo index value) ∗
@@ -764,7 +764,7 @@ theorem twp_loopSortCall [WasmSmallStepGS hlc]
       WP (concreteSortConfig loop input).expr @ Stuckness.NotStuck; ⊤
         [{ values,
           ∀ (store : MachineStore Unit) (_observations : List StepKind),
-            stateInterp (GF := WasmHeapGF) store 0 [] 0 -∗
+            stateInterp (GF := WasmHeapGF Unit) store 0 [] 0 -∗
             ⌜SortPost input values store⌝ }] := by
   iintro ⟨Hheap, _Hglobals, Hruntime⟩
   ihave Harray := inputHeap_pointsTo input hfit $$ Hheap

@@ -14,12 +14,12 @@ namespace Wasm.SmallStep
 open Iris Iris.ProgramLogic Language.Notation Std
 open Wasm.SepLogic
 
-variable [WasmSmallStepGS hlc]
+variable [WasmSmallStepGS hlc α]
 local instance instSelectionSortWasmTotalIrisGS :
-    IrisGS_gen hlc (Expr α) WasmHeapGF :=
+    IrisGS_gen hlc (Expr α) (WasmHeapGF α) :=
   instIrisGS
 variable {s : Stuckness} {E : CoPset}
-variable {Φ : List Value → IProp WasmHeapGF}
+variable {Φ : List Value → IProp (WasmHeapGF α)}
 
 /- These i64 rules are the direct total-WP counterparts of `wp_ltUI64`,
 `wp_load64`, and `wp_store64`.  They are kept here because the generic total
@@ -238,9 +238,9 @@ private theorem arrayAddress64_toNat (base : UInt32) {index length : Nat}
   omega
 
 theorem twp_address64
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     {params localValues stack : List Value}
     {baseIndex elementIndex : Nat} {base element : UInt32}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -294,9 +294,9 @@ private theorem address64_steps (address : UInt32)
 
 set_option maxHeartbeats 2000000 in
 theorem twp_loadAt64
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     {params localValues stack : List Value}
     {baseIndex elementIndex : Nat} {base : UInt32}
     {input : List UInt64} {k : Nat} (hk : k < input.length)
@@ -347,9 +347,9 @@ theorem twp_loadAt64
   iexact Hword
 
 private theorem twp_store64_cell
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     {params localValues stack : List Value}
     {address : UInt32} {oldWord newWord : UInt64}
     {code : Program} {arity : Nat} {remainder : List Value}
@@ -382,9 +382,9 @@ private theorem twp_store64_cell
 
 set_option maxHeartbeats 4000000 in
 theorem twp_swapAt64
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     {params localValues stack : List Value}
     {baseIndex aIndex bIndex tmpIndex : Nat}
     {base : UInt32} {input : List UInt64} {a b : Nat}
@@ -481,9 +481,9 @@ private theorem nat_lt_u32_iff {left right : Nat}
 
 set_option maxHeartbeats 8000000 in
 private theorem twp_findMin_aux
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (findIndex : Nat)
     (himports : ¬findIndex < runtimeModule.imports.length)
     (hfunction : runtimeModule.funcs[findIndex - runtimeModule.imports.length]? =
@@ -707,9 +707,9 @@ private theorem twp_findMin_aux
         iapply Hcont $$ %best %hpure Hruntime Harray
 
 theorem twp_findMin
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (findIndex : Nat)
     (himports : ¬findIndex < runtimeModule.imports.length)
     (hfunction : runtimeModule.funcs[findIndex - runtimeModule.imports.length]? =
@@ -750,9 +750,9 @@ private theorem sorted_of_length_lt_two (values : List UInt64)
 set_option maxHeartbeats 12000000 in
 set_option maxRecDepth 10000 in
 private theorem twp_recursiveSort_aux
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (findIndex sortIndex : Nat)
     (himportsFind : ¬findIndex < runtimeModule.imports.length)
     (hfunctionFind : runtimeModule.funcs[findIndex - runtimeModule.imports.length]? =
@@ -955,9 +955,9 @@ private theorem twp_recursiveSort_aux
         iapply Hcont $$ %output %hpure Hruntime Houtput
 
 theorem twp_recursiveSort
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (findIndex sortIndex : Nat)
     (himportsFind : ¬findIndex < runtimeModule.imports.length)
     (hfunctionFind : runtimeModule.funcs[findIndex - runtimeModule.imports.length]? =
@@ -999,9 +999,9 @@ private structure InnerState where
 
 set_option maxHeartbeats 8000000 in
 private theorem twp_innerLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (arr : UInt32) (current : List UInt64) (length : Nat)
     (hlength : current.length = length)
     (outer best scan : Nat) (temporary : UInt64)
@@ -1024,7 +1024,7 @@ private theorem twp_innerLoop
         temporary stack,
       whileDo loopSelectionSortInnerCondition loopSelectionSortInnerStep ++ code,
       arity, remainder, controls, calls⟩ : Expr Unit) @ s; E [{ Φ }] := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF Unit) := iprop%
     ∀ finalBest : Nat,
       ⌜outer ≤ finalBest ∧ finalBest < current.length ∧
         ∀ k, outer ≤ k → k < current.length →
@@ -1034,7 +1034,7 @@ private theorem twp_innerLoop
           length temporary stack,
         code, arity, remainder, controls, calls⟩ : Expr Unit)
         @ s; E [{ Φ }]
-  let Inv : InnerState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : InnerState → IProp (WasmHeapGF Unit) := fun state => iprop%
     ⌜MinScan current outer state.best state.scan⌝ ∗
       array64At arr current ∗ Finish
   iintro ⟨Harray, Hfinish⟩
@@ -1198,9 +1198,9 @@ private structure OuterState where
 set_option maxHeartbeats 12000000 in
 set_option maxRecDepth 10000 in
 private theorem twp_outerLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (arr : UInt32) (input current : List UInt64)
     (outer best scan : Nat) (temporary : UInt64)
     (hinv : OuterInvariant input current outer)
@@ -1221,7 +1221,7 @@ private theorem twp_outerLoop
         temporary stack,
       whileDo loopSelectionSortOuterCondition loopSelectionSortOuterStep ++ code,
       arity, remainder, controls, calls⟩ : Expr Unit) @ s; E [{ Φ }] := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF Unit) := iprop%
     ∀ (output : List UInt64) (outer' best' scan' : Nat)
         (temporary' : UInt64),
       ⌜List.Perm input output ∧ Sorted output⌝ -∗
@@ -1230,7 +1230,7 @@ private theorem twp_outerLoop
           temporary' stack,
         code, arity, remainder, controls, calls⟩ : Expr Unit)
         @ s; E [{ Φ }]
-  let Inv : OuterState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : OuterState → IProp (WasmHeapGF Unit) := fun state => iprop%
     ⌜OuterInvariant input state.current state.outer⌝ ∗
       array64At arr state.current ∗ Finish
   iintro ⟨Harray, Hfinish⟩
@@ -1411,9 +1411,9 @@ private theorem twp_outerLoop
     · iexact Hfinish
 
 theorem twp_loopSort
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (sortIndex : Nat)
     (himports : ¬sortIndex < runtimeModule.imports.length)
     (hfunction : runtimeModule.funcs[sortIndex - runtimeModule.imports.length]? =

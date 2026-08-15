@@ -13,12 +13,12 @@ namespace Wasm.SmallStep
 open Iris Iris.ProgramLogic Language.Notation
 open Wasm.SepLogic
 
-variable [WasmSmallStepGS hlc]
+variable [WasmSmallStepGS hlc α]
 local instance instWasmIrisGS :
-    IrisGS_gen hlc (Expr α) WasmHeapGF :=
+    IrisGS_gen hlc (Expr α) (WasmHeapGF α) :=
   instIrisGS
 variable {s : Stuckness} {E : CoPset}
-variable {Φ : List Value → IProp WasmHeapGF}
+variable {Φ : List Value → IProp (WasmHeapGF α)}
 
 /-- Generic lifting rule for a store-preserving deterministic Wasm step.
 Most operand, control-frame, and administrative rules are thin specializations
@@ -53,6 +53,58 @@ theorem wp_pureStep
   subst e₂
   subst store₂
   simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
+  imod Hclose
+  imodintro
+  isplitl [Hσ]
+  · iexact Hσ
+  isplitl [Hwp]
+  · iexact Hwp
+  · itrivial
+
+/-- Primitive lifting rule for a deterministic host step whose result may
+change any part of the physical Wasm store.  The transition premise must
+reconcile the complete old and new state interpretations; in particular it
+cannot update a returned, trapped, or thrown host state without jointly
+updating `hostStateAuth`. -/
+theorem wp_hostStep
+    (kind : StepKind) (current : ThreadState α)
+    (next : MachineStore α → Config α)
+    (hstep : ∀ store : MachineStore α,
+      Step ⟨.running current, store⟩ kind (next store)) :
+    (iprop% ∀ (store : MachineStore α) (steps : Nat)
+        (observations : List StepKind) (threads : Nat),
+      stateInterp (GF := WasmHeapGF α) store steps observations threads -∗
+        (|={∅}=> stateInterp (GF := WasmHeapGF α) (next store).store
+            steps observations threads ∗
+          WP (next store).expr @ s; E {{ Φ }})) ⊢
+      WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
+  iintro Htransition
+  iapply wp_lift_step rfl
+  iintro %store %ns %obs %obs' %nt Hσ
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducible]
+    exact ⟨[], (next store).expr, (next store).store, [],
+      ⟨rfl, kind, rfl, hstep store⟩⟩
+  iintro !> %e₂ %store₂ %forks %Hprim Hcredit
+  rcases Hprim with ⟨hforks, actualKind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst obs
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic (hstep store) wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
+  ihave Htransition' := Htransition $$ %store %ns %obs' %nt
+  ispecialize Htransition' $$ Hσ
+  imod Htransition' with ⟨Hσ, Hwp⟩
   imod Hclose
   imodintro
   isplitl [Hσ]
@@ -812,7 +864,7 @@ theorem wp_loop_löb
     {locals : Locals} {paramArity resultArity arity : Nat}
     {body code : Program} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
-    (I : IProp WasmHeapGF)
+    (I : IProp (WasmHeapGF α))
     (body_closes :
         (▷ (I -∗
           WP (.running
@@ -820,7 +872,7 @@ theorem wp_loop_löb
               { kind := .loop, paramArity, resultArity, body,
                 continuation := code,
                 belowStack := locals.values.drop paramArity } :: controls,
-              calls⟩ : Expr α) @ s; E {{ Φ }})) ⊢@{IProp WasmHeapGF}
+              calls⟩ : Expr α) @ s; E {{ Φ }})) ⊢@{IProp (WasmHeapGF α)}
         (I -∗
           WP (.running
             ⟨locals, body, arity, remainder,
@@ -858,14 +910,14 @@ def loopBodyExpr (locals : Locals)
       calls⟩
 
 theorem wp_loop_löb_family
-    {ι : Type} (locals : ι → Locals) (I : ι → IProp WasmHeapGF)
+    {ι : Type} (locals : ι → Locals) (I : ι → IProp (WasmHeapGF α))
     (initial : ι)
     {paramArity resultArity arity : Nat}
     {body code : Program} {remainder belowStack : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     (hbelow : belowStack = (locals initial).values.drop paramArity)
     (body_closes : ∀ i,
-      ⊢@{IProp WasmHeapGF} (iprop%
+      ⊢@{IProp (WasmHeapGF α)} (iprop%
         ▷ (∀ (j : ι), I j -∗
           WP (loopBodyExpr (α := α) (locals j)
             paramArity resultArity arity body code remainder belowStack
@@ -2414,9 +2466,9 @@ theorem wp_load8U
     let next : ThreadState α :=
       ⟨⟨params, localValues, .i32 byte.toUInt32 :: values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         (address + offset) (DFrac.own 1) (some byte) -∗
-    ▷ (pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    ▷ (pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         (address + offset) (DFrac.own 1) (some byte) -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
@@ -2487,9 +2539,9 @@ theorem wp_load8UI64
     let next : ThreadState α :=
       ⟨⟨params, localValues, .i64 byte.toUInt64 :: values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         (address + offset) (DFrac.own 1) (some byte) -∗
-    ▷ (pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    ▷ (pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         (address + offset) (DFrac.own 1) (some byte) -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
@@ -2562,9 +2614,9 @@ theorem wp_store8
         .store8 offset :: code, arity, remainder, controls, calls⟩
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩, code, arity, remainder, controls, calls⟩
-    ▷ pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         (address + offset) (DFrac.own 1) (some oldByte) -∗
-    ▷ (pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    ▷ (pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         (address + offset) (DFrac.own 1) (some value.toUInt8) -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
@@ -2641,9 +2693,9 @@ theorem wp_store8I64
         .store8I64 offset :: code, arity, remainder, controls, calls⟩
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩, code, arity, remainder, controls, calls⟩
-    ▷ pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         (address + offset) (DFrac.own 1) (some oldByte) -∗
-    ▷ (pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    ▷ (pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         (address + offset) (DFrac.own 1) (some value.toUInt8) -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
@@ -4377,7 +4429,7 @@ theorem wp_swapElementsFunc3
 /-- End-to-end Iris contract for the hand-written byte-memory roundtrip used
 by `Interpreter.Wasm.Examples.SmallStep`. -/
 theorem wp_byteRoundtrip (oldByte : UInt8) :
-    pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
       24 (DFrac.own 1) (some oldByte) ⊢
     WP (.running
       ⟨⟨[], [], []⟩,
@@ -4385,7 +4437,7 @@ theorem wp_byteRoundtrip (oldByte : UInt8) :
           .const 24, .load8U 0 ],
         1, [], [], []⟩ : Expr α) @ s; E
       {{ result, ⌜result = [.i32 0xAB]⌝ ∗
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
           24 (DFrac.own 1) (some (0xAB : UInt8)) }} := by
   iintro Hpt
   iapply wp_const
@@ -4393,7 +4445,7 @@ theorem wp_byteRoundtrip (oldByte : UInt8) :
   iapply wp_const
   inext
   ihave HptLater :
-      ▷ pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         (24 + 0) (DFrac.own 1) (some oldByte) $$ [Hpt]
   · inext
     rw [UInt32.add_zero]
@@ -4404,7 +4456,7 @@ theorem wp_byteRoundtrip (oldByte : UInt8) :
   iapply wp_const
   inext
   ihave HptLater :
-      ▷ pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         (24 + 0) (DFrac.own 1) (some (0xAB : UInt8)) $$ [Hpt]
   · inext
     rw [show (0x1234AB : UInt32).toUInt8 = (0xAB : UInt8) by decide]

@@ -23,9 +23,9 @@ def partitionLocals
 
 set_option maxHeartbeats 4000000 in
 theorem wp_partitionScanStep
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (arr : UInt32) (input current : List UInt32)
     (lo hi i j hiMinusOne : Nat) (pivot tmp : UInt32)
     (_hinv : PartitionLoopInvariant input current lo hi i j pivot)
@@ -147,9 +147,9 @@ structure PartitionState where
 
 set_option maxHeartbeats 4000000 in
 theorem wp_partitionScanLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (arr : UInt32) (input current : List UInt32)
     (lo hi i j hiMinusOne : Nat) (pivot tmp : UInt32)
     (hinv : PartitionLoopInvariant input current lo hi i j pivot)
@@ -169,7 +169,7 @@ theorem wp_partitionScanLoop
         whileDo partitionScanCondition partitionScanStep ++ code,
         arity, remainder, controls, calls⟩ : Expr Unit)
         @ s; E {{ Φ }} := by
-  let Finish : IProp WasmHeapGF := iprop%
+  let Finish : IProp (WasmHeapGF Unit) := iprop%
     ∀ (current' : List UInt32) (i' j' : Nat) (tmp' : UInt32),
       ⌜PartitionLoopInvariant input current' lo hi i' j' pivot⌝ -∗
       ⌜j' = hiMinusOne⌝ -∗
@@ -177,7 +177,7 @@ theorem wp_partitionScanLoop
       WP (.running ⟨partitionLocals arr lo hi pivot i' j' hiMinusOne tmp' [],
         code, arity, remainder, controls, calls⟩ : Expr Unit)
         @ s; E {{ Φ }}
-  let Inv : PartitionState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : PartitionState → IProp (WasmHeapGF Unit) := fun state => iprop%
     ⌜PartitionLoopInvariant input state.values lo hi state.i state.j pivot⌝ ∗
     arrayAt arr state.values ∗ Finish
   iintro ⟨Harray, Hfinish⟩
@@ -277,9 +277,9 @@ theorem wp_partitionScanLoop
 
 set_option maxHeartbeats 4000000 in
 theorem wp_partitionBody
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (arr : UInt32) (input : List UInt32) (lo hi : Nat)
     (hbounds : lo < hi ∧ hi ≤ input.length)
     (hfit : arr.toNat + 4 * input.length ≤ UInt32.size)
@@ -403,9 +403,9 @@ theorem wp_partitionBody
     %hplacePivot Harray
 
 theorem wp_partitionBody_from
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (actualLocals : Locals)
     (arr : UInt32) (input : List UInt32) (lo hi : Nat)
     (hbounds : lo < hi ∧ hi ≤ input.length)
@@ -428,9 +428,9 @@ theorem wp_partitionBody_from
 
 set_option maxHeartbeats 4000000 in
 theorem wp_partition
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (partitionIdx : Nat)
     (himports : ¬partitionIdx < runtimeModule.imports.length)
     (hfunction : runtimeModule.funcs[partitionIdx - runtimeModule.imports.length]? =
@@ -485,9 +485,9 @@ def quicksortLocals (arr : UInt32) (lo hi : Nat) (pivotIdx : Nat)
 
 set_option maxHeartbeats 8000000 in
 private theorem wp_quicksortBody_aux
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (partitionIdx quicksortIdx : Nat)
     (himports_p : ¬partitionIdx < runtimeModule.imports.length)
     (hfunction_p : runtimeModule.funcs[partitionIdx - runtimeModule.imports.length]? =
@@ -692,9 +692,9 @@ private theorem wp_quicksortBody_aux
       iapply Hcont $$ %out_r Hruntime_r %hpure_final Harray_r
 
 theorem wp_quicksortBody
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (partitionIdx quicksortIdx : Nat)
     (himports_p : ¬partitionIdx < runtimeModule.imports.length)
     (hfunction_p : runtimeModule.funcs[partitionIdx - runtimeModule.imports.length]? =
@@ -731,9 +731,9 @@ theorem wp_quicksortBody
 
 set_option maxHeartbeats 5000000 in
 theorem wp_quicksort
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (runtimeModule : Module) (partitionIdx quicksortIdx : Nat)
     (himports_p : ¬partitionIdx < runtimeModule.imports.length)
     (hfunction_p : runtimeModule.funcs[partitionIdx - runtimeModule.imports.length]? =

@@ -16,19 +16,19 @@ namespace Wasm.SmallStep
 open Iris Iris.ProgramLogic Language.Notation
 open Wasm.SepLogic
 
-variable [WasmSmallStepGS hlc]
+variable [WasmSmallStepGS hlc α]
 local instance instWasmTotalLoopIrisGS :
-    IrisGS_gen hlc (Expr α) WasmHeapGF :=
+    IrisGS_gen hlc (Expr α) (WasmHeapGF α) :=
   instIrisGS
 variable {s : Stuckness} {E : CoPset}
-variable {Φ : List Value → IProp WasmHeapGF}
+variable {Φ : List Value → IProp (WasmHeapGF α)}
 
 /-- Total counterpart of `wp_loop_löb_family`. The body proof may branch back
 to any family index whose measure is strictly smaller, which is exactly the
 well-founded variant a terminating loop provides. -/
 theorem twp_loop_wf_family
     {ι : Type} (measure : ι → Nat)
-    (locals : ι → Locals) (I : ι → IProp WasmHeapGF)
+    (locals : ι → Locals) (I : ι → IProp (WasmHeapGF α))
     (initial : ι) (initialLocals : Locals)
     {paramArity resultArity arity : Nat}
     {body code : Program} {remainder belowStack : List Value}
@@ -36,7 +36,7 @@ theorem twp_loop_wf_family
     (hinitial : locals initial = initialLocals)
     (hbelow : belowStack = (locals initial).values.drop paramArity)
     (body_closes : ∀ i,
-      ⊢@{IProp WasmHeapGF} (iprop%
+      ⊢@{IProp (WasmHeapGF α)} (iprop%
         (∀ (j : ι), ⌜measure j < measure i⌝ -∗ I j -∗
           WP (loopBodyExpr (α := α) (locals j)
             paramArity resultArity arity body code remainder belowStack

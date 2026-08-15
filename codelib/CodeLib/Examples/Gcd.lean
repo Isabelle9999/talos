@@ -59,7 +59,7 @@ def gcdConfig (a b : UInt32) : Config Unit :=
         wasm := gcdModule.initialStore } }
 
 private def gcdInvariant (a₀ b₀ : UInt32)
-    (state : UInt32 × UInt32 × UInt32) : IProp WasmHeapGF :=
+    (state : UInt32 × UInt32 × UInt32) : IProp (WasmHeapGF Unit) :=
   iprop% ⌜Nat.gcd state.1.toNat state.2.1.toNat =
     Nat.gcd a₀.toNat b₀.toNat⌝
 
@@ -67,21 +67,21 @@ set_option maxHeartbeats 2000000 in
 /-- Iris WP for the handwritten function body.  The theorem is contextual in
 the call stack, so it can be used after the ordinary `wp_call` rule. -/
 theorem wp_gcdBody
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (a b : UInt32) (calls : List CallFrame)
     (hreturn : ∀ (currentA currentB temporary : UInt32),
       currentB = 0 →
       Nat.gcd currentA.toNat currentB.toNat =
         Nat.gcd a.toNat b.toNat →
-      ⊢@{IProp WasmHeapGF}
+      ⊢@{IProp (WasmHeapGF Unit)}
         WP (.running
           ⟨{ gcdLocals currentA currentB temporary with
               values := [.i32 currentA] },
             [.ret], 1, [], [], calls⟩ :
             Expr Unit) @ s; E {{ Φ }}) :
-    ⊢@{IProp WasmHeapGF}
+    ⊢@{IProp (WasmHeapGF Unit)}
       WP (.running
         ⟨gcdLocals a b 0, gcdBody, 1, [], [], calls⟩ :
           Expr Unit) @ s; E {{ Φ }} := by
@@ -156,10 +156,10 @@ theorem wp_gcdBody
 
 /-- Closed WP: the function returns the mathematical gcd of its two inputs. -/
 theorem wp_gcd
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (a b : UInt32) :
-    ⊢@{IProp WasmHeapGF}
+    ⊢@{IProp (WasmHeapGF Unit)}
       WP (.running
         ⟨gcdLocals a b 0, gcdBody, 1, [], [], []⟩ :
           Expr Unit) @ s; E
@@ -189,15 +189,15 @@ set_option maxHeartbeats 2000000 in
 induction on the second Euclidean argument; unlike partial WP, TWP does not
 permit a guarded Löb hypothesis. -/
 private theorem twp_gcdLoop
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (a b : UInt32) (calls : List CallFrame)
     (hreturn : ∀ (currentA currentB temporary : UInt32),
       currentB = 0 →
       Nat.gcd currentA.toNat currentB.toNat =
         Nat.gcd a.toNat b.toNat →
-      ⊢@{IProp WasmHeapGF}
+      ⊢@{IProp (WasmHeapGF Unit)}
         WP (.running
           ⟨{ gcdLocals currentA currentB temporary with
               values := [.i32 currentA] },
@@ -206,7 +206,7 @@ private theorem twp_gcdLoop
     ∀ (currentA currentB temporary : UInt32),
       Nat.gcd currentA.toNat currentB.toNat =
         Nat.gcd a.toNat b.toNat →
-      ⊢@{IProp WasmHeapGF}
+      ⊢@{IProp (WasmHeapGF Unit)}
         WP (loopBodyExpr
           (gcdLocals currentA currentB temporary)
           0 0 1 gcdLoopBody [.localGet 0, .ret] [] [] [] calls :
@@ -259,21 +259,21 @@ private theorem twp_gcdLoop
 
 /-- Total weakest precondition for the handwritten GCD body. -/
 theorem twp_gcdBody
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (a b : UInt32) (calls : List CallFrame)
     (hreturn : ∀ (currentA currentB temporary : UInt32),
       currentB = 0 →
       Nat.gcd currentA.toNat currentB.toNat =
         Nat.gcd a.toNat b.toNat →
-      ⊢@{IProp WasmHeapGF}
+      ⊢@{IProp (WasmHeapGF Unit)}
         WP (.running
           ⟨{ gcdLocals currentA currentB temporary with
               values := [.i32 currentA] },
             [.ret], 1, [], [], calls⟩ :
             Expr Unit) @ s; E [{ Φ }]) :
-    ⊢@{IProp WasmHeapGF}
+    ⊢@{IProp (WasmHeapGF Unit)}
       WP (.running
         ⟨gcdLocals a b 0, gcdBody, 1, [], [], calls⟩ :
           Expr Unit) @ s; E [{ Φ }] := by
@@ -284,10 +284,10 @@ theorem twp_gcdBody
 /-- Closed total WP: Euclidean GCD terminates and returns the mathematical
 gcd of its inputs. -/
 theorem twp_gcd
-    [WasmSmallStepGS hlc]
+    [WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
     (a b : UInt32) :
-    ⊢@{IProp WasmHeapGF}
+    ⊢@{IProp (WasmHeapGF Unit)}
       WP (.running
         ⟨gcdLocals a b 0, gcdBody, 1, [], [], []⟩ :
           Expr Unit) @ s; E

@@ -154,6 +154,17 @@ Pipeline:
 3. One `lake build` in `lean/`.
 4. Summary line: crate count, `lake build` status, `sorry` count.
 
+Every emitted `Program.lean` embeds the exact `program.wat` text. Its normal
+Lean build fails if that WAT file is missing or differs byte-for-byte, so a
+stale or detached generated module cannot pass `prove`. Reproducible release
+workflows should use `--force-emit`, pin the `wasm-tools` version, and record
+SHA-256 hashes of the input Wasm, printed WAT, and emitted Lean source.
+
+When invoking a Talos package with `lake -d`, run from a directory governed by
+Talos's checked-in `lean-toolchain`, or select that toolchain explicitly with
+`elan run`. Elan resolves the toolchain from the caller's working directory,
+not from Lake's `-d` argument.
+
 ### 3. Adding a crate
 
 1. `verifier add foo_bar` — copies the bundled crate template

@@ -16,12 +16,12 @@ namespace Wasm.SmallStep
 open Iris Iris.ProgramLogic Language.Notation
 open Wasm.SepLogic
 
-variable [WasmSmallStepGS hlc]
+variable [WasmSmallStepGS hlc α]
 local instance instWasmTotalIrisGS :
-    IrisGS_gen hlc (Expr α) WasmHeapGF :=
+    IrisGS_gen hlc (Expr α) (WasmHeapGF α) :=
   instIrisGS
 variable {s : Stuckness} {E : CoPset}
-variable {Φ : List Value → IProp WasmHeapGF}
+variable {Φ : List Value → IProp (WasmHeapGF α)}
 
 /-- Generic total lifting rule for a store-preserving deterministic Wasm
 step. Unlike `wp_pureStep`, its continuation is not guarded by a later. -/

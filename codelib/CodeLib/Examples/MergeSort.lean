@@ -181,16 +181,16 @@ def ValidLayout (source temporary : UInt32) (length : Nat) : Prop :=
   (sourceRange.2 ≤ temporaryRange.1 ∨
     temporaryRange.2 ≤ sourceRange.1)
 
-def mergeSortPre [WasmHeapGS]
+def mergeSortPre [WasmHeapGS α]
     (source temporary : UInt32)
-    (input scratch : List UInt32) : IProp WasmHeapGF :=
+    (input scratch : List UInt32) : IProp (WasmHeapGF α) :=
   iprop% arrayAt source input ∗ arrayAt temporary scratch ∗
     ⌜scratch.length = input.length⌝ ∗
     ⌜ValidLayout source temporary input.length⌝
 
-def mergeSortPost [WasmHeapGS]
+def mergeSortPost [WasmHeapGS α]
     (source temporary : UInt32)
-    (input : List UInt32) : IProp WasmHeapGF :=
+    (input : List UInt32) : IProp (WasmHeapGF α) :=
   iprop% ∃ output scratch : List UInt32,
     ⌜SortedPermutation input output⌝ ∗
     ⌜scratch.length = input.length⌝ ∗
@@ -201,9 +201,9 @@ def mergeSortArguments
     (stack : List Value) : List Value :=
   .i32 (UInt32.ofNat length) :: .i32 temporary :: .i32 source :: stack
 
-def mergePre [WasmHeapGS]
+def mergePre [WasmHeapGS α]
     (source temporary : UInt32) (input scratch : List UInt32)
-    (left mid right : Nat) : IProp WasmHeapGF :=
+    (left mid right : Nat) : IProp (WasmHeapGF α) :=
   iprop% arrayAt source input ∗ arrayAt temporary scratch ∗
     ⌜scratch.length = input.length⌝ ∗
     ⌜ValidLayout source temporary input.length⌝ ∗
@@ -242,9 +242,9 @@ theorem MergeRange.length_eq
     (h : MergeRange input output left mid right) :
     output.length = input.length := h.2.2.2.1
 
-def mergePost [WasmHeapGS]
+def mergePost [WasmHeapGS α]
     (source temporary : UInt32) (input : List UInt32)
-    (left mid right : Nat) : IProp WasmHeapGF :=
+    (left mid right : Nat) : IProp (WasmHeapGF α) :=
   iprop% ∃ output scratch : List UInt32,
     ⌜MergeRange input output left mid right⌝ ∗
     ⌜scratch.length = input.length⌝ ∗

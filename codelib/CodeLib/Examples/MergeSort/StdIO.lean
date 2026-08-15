@@ -823,10 +823,10 @@ theorem sortHeap_inBounds (input : List UInt32) (hfit : Fits input) :
   simpa only [sortHeap, sourceHeap, scratchValues,
     writeWordArray_readWordArray] using hscratch
 
-theorem sortHeap_pointsTo [WasmHeapGS]
+theorem sortHeap_pointsTo [WasmHeapGS Unit]
     (input : List UInt32) (hfit : Fits input) :
     ([∗map] address ↦ value ∈ sortHeap input,
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       arrayAt source input ∗ arrayAt scratch (scratchValues input) := by
   let sourceHeap := Quicksort.quicksortHeapAux ∅ source input
@@ -877,15 +877,15 @@ theorem sortHeap_pointsTo [WasmHeapGS]
   · iexact Hsource
   · iexact Hscratch
 
-theorem arrayAt_capacity [WasmSmallStepGS hlc]
-    (store : MachineStore α) (steps : Nat)
+theorem arrayAt_capacity [WasmSmallStepGS hlc Unit]
+    (store : MachineStore Unit) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (base : UInt32) (values : List UInt32)
     (hfit : base.toNat + 4 * values.length < UInt32.size)
     (hbaseBound : base.toNat ≤ store.wasm.mem.pages * 65536) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF Unit) store steps observations threads ∗
       arrayAt base values ==∗
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF Unit) store steps observations threads ∗
       arrayAt base values ∗
       ⌜base.toNat + 4 * values.length ≤ store.wasm.mem.pages * 65536⌝ := by
   by_cases hempty : values = []
@@ -958,7 +958,7 @@ def SortPost (input : List UInt32)
     readWordArray store.wasm.mem source input.length = output ∧
     4 * input.length ≤ store.wasm.mem.pages * 65536
 
-private theorem mergeSortPost_elim [WasmHeapGS]
+private theorem mergeSortPost_elim [WasmHeapGS Unit]
     (source scratch : UInt32) (input : List UInt32) :
     mergeSortPost source scratch input ⊢
       (iprop% ∃ output scratchFinal : List UInt32,
@@ -970,10 +970,10 @@ private theorem mergeSortPost_elim [WasmHeapGS]
   iexact Hpost
 
 set_option maxHeartbeats 6000000 in
-theorem twp_sort [WasmSmallStepGS hlc]
+theorem twp_sort [WasmSmallStepGS hlc Unit]
     (input : List UInt32) (hfit : Fits input) :
     (([∗map] address ↦ value ∈ sortHeap input,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) value) ∗
       ([∗map] index ↦ value ∈ (∅ : WasmGlobalMap Value),
         globalPointsTo index value) ∗
@@ -981,7 +981,7 @@ theorem twp_sort [WasmSmallStepGS hlc]
       WP (sortConfig input).expr @ Stuckness.NotStuck; ⊤
         [{ values,
           ∀ (store : MachineStore Unit) (_observations : List StepKind),
-            stateInterp (GF := WasmHeapGF) store 0 [] 0 -∗
+            stateInterp (GF := WasmHeapGF Unit) store 0 [] 0 -∗
             ⌜SortPost input values store⌝ }] := by
   iintro ⟨Hheap, _Hglobals, Hruntime⟩
   ihave Harrays := sortHeap_pointsTo input hfit $$ Hheap

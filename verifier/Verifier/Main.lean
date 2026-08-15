@@ -1,4 +1,5 @@
 import Verifier.Emit
+import Verifier.EmitRoundTrip
 import Verifier.Path
 import Verifier.Extract
 import Interpreter.Wasm.Decoder.Wat
@@ -277,7 +278,8 @@ private def printCrateBanner (crates : Array Crate) : IO Unit :=
 -- `build` / `emit` / `prove` / `check`
 -- ----------------------------------------------------------------------------
 
-private def emitProgramFile (c : Crate) (m : Wasm.Module) : IO Unit := do
+private def emitProgramFile (c : Crate) (m : Wasm.Module)
+    (watText : String) : IO Unit := do
   IO.FS.createDirAll c.leanDir
   let modName := s!"Project.{snakeToPascal c.name}"
   let body :=
@@ -298,6 +300,8 @@ private def emitProgramFile (c : Crate) (m : Wasm.Module) : IO Unit := do
       "",
       "def «module» : Wasm.Module :=",
       Emit.module m,
+      "",
+      Emit.driftCheck s!"../rust/build/{c.name}/program.wat" watText,
       "",
       s!"end {modName}",
       ""
@@ -386,7 +390,7 @@ private def emitOneCrate (projectDir : FilePath) (c : Crate) (forceEmit : Bool) 
     match Wasm.Decoder.Wat.decode watText with
     | .error e => die s!"{c.name}: wat decoder rejected the module: {e}"
     | .ok m    =>
-      emitProgramFile c m
+      emitProgramFile c m watText
       IO.println s!"    emitted {programLean}"
   else
     IO.println s!"    {programLean} is up to date"

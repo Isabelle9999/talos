@@ -93,10 +93,10 @@ theorem CopyWords_eq_structured :
 /-- One real small-step copy iteration reads the next authoritative source
 word, writes the destination, and preserves source ownership. -/
 theorem copyWords_loadStoreIteration_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (dst src n i : UInt32) (pre : List UInt32)
     (oldDst value : UInt32) (dstSuffix srcSuffix : List UInt32)
     (code : Program) (arity : Nat) (remainder : List Value)
@@ -240,10 +240,9 @@ theorem copyWords_loadStoreIteration_wp
   iframe
 
 theorem copyWords_incrementBackedge_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (dst src n i : UInt32)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
     (outerControls : List Wasm.SmallStep.ControlFrame)
@@ -278,10 +277,10 @@ theorem copyWords_incrementBackedge_wp
   iexact Hcontinue
 
 theorem copyWords_bodyTail_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (dst src n i : UInt32) (pre : List UInt32)
     (oldDst value : UInt32) (dstSuffix srcSuffix : List UInt32)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
@@ -318,10 +317,10 @@ theorem copyWords_bodyTail_wp
   iexact Hresources
 
 theorem copyWords_guard_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (P : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (P : IProp (WasmHeapGF α))
     (dst src n i : UInt32)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
     (outerControls : List Wasm.SmallStep.ControlFrame)
@@ -383,10 +382,10 @@ theorem copyWords_guard_wp
 `dstSuffix` and `srcSuffix` are the unprocessed tails, and their concatenation
 with `pre` still denotes the original source sequence. -/
 theorem copyWords_loopBody_invariant_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (dst src n i : UInt32)
     (source pre dstSuffix srcSuffix : List UInt32)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
@@ -413,7 +412,7 @@ theorem copyWords_loopBody_invariant_wp
         Wasm.SmallStep.Expr α) @ s; E {{ Φ }} := by
   iloeb as IH generalizing
     %i %pre %dstSuffix %srcSuffix %hpre %hdstInv %hsource
-  let Kloop : IProp WasmHeapGF := iprop(
+  let Kloop : IProp (WasmHeapGF α) := iprop(
     ▷ ∀ (j : UInt32) (copied dstTail srcTail : List UInt32),
       ⌜copied.length = j.toNat⌝ -∗
       ⌜copied.length + dstTail.length = n.toNat⌝ -∗
@@ -428,7 +427,7 @@ theorem copyWords_loopBody_invariant_wp
   ihave IHtyped : □ Kloop $$ [IH]
   · simp only [Kloop]
     iexact IH
-  let P : IProp WasmHeapGF :=
+  let P : IProp (WasmHeapGF α) :=
     iprop% □ Kloop ∗ R ∗ arrayAt dst (pre ++ dstSuffix) ∗
       arrayAt src (pre ++ srcSuffix)
   iintro ⟨HR, Harrays⟩
@@ -469,7 +468,7 @@ theorem copyWords_loopBody_invariant_wp
         have hsourceNext : source = copied' ++ srcTail := by
           rw [hsource]
           simp only [copied', List.append_assoc, List.singleton_append]
-        let Rloop : IProp WasmHeapGF := iprop% □ Kloop ∗ R
+        let Rloop : IProp (WasmHeapGF α) := iprop% □ Kloop ∗ R
         iintro Hcurrent
         icases Hcurrent with ⟨#IHcurrent, HcurrentRest⟩
         icases HcurrentRest with ⟨HRcurrent, HarraysCurrent⟩
@@ -543,10 +542,10 @@ theorem copyWords_loopBody_invariant_wp
     iframe
 
 theorem copyWords_loop_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (dst src n : UInt32)
     (destination source : List UInt32)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
@@ -595,10 +594,10 @@ theorem copyWords_loop_wp
 
 /-- Full universal Iris rule for the generated disjoint u32 copy loop. -/
 theorem copyWords_smallStep_wp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (dst src n initialIndex : UInt32)
     (destination source : List UInt32)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
@@ -654,10 +653,10 @@ structure CopyWordsLoopState where
 
 /-- Total counterpart of `copyWords_loadStoreIteration_wp`. -/
 theorem copyWords_loadStoreIteration_twp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (dst src n i : UInt32) (pre : List UInt32)
     (oldDst value : UInt32) (dstSuffix srcSuffix : List UInt32)
     (code : Program) (arity : Nat) (remainder : List Value)
@@ -788,10 +787,9 @@ theorem copyWords_loadStoreIteration_twp
 
 /-- Total counterpart of `copyWords_incrementBackedge_wp`. -/
 theorem copyWords_incrementBackedge_twp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type}
+    {Φ : List Value → IProp (WasmHeapGF α)}
     (dst src n i : UInt32)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
     (outerControls : List Wasm.SmallStep.ControlFrame)
@@ -822,10 +820,10 @@ theorem copyWords_incrementBackedge_twp
 
 /-- Total counterpart of `copyWords_bodyTail_wp`. -/
 theorem copyWords_bodyTail_twp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (dst src n i : UInt32) (pre : List UInt32)
     (oldDst value : UInt32) (dstSuffix srcSuffix : List UInt32)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
@@ -863,10 +861,10 @@ theorem copyWords_bodyTail_twp
 
 /-- Total counterpart of `copyWords_guard_wp`. -/
 theorem copyWords_guard_twp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (P : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (P : IProp (WasmHeapGF α))
     (dst src n i : UInt32)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
     (outerControls : List Wasm.SmallStep.ControlFrame)
@@ -918,10 +916,10 @@ theorem copyWords_guard_twp
 back edge, so the well-founded family rule closes the proof without a
 later. -/
 theorem copyWords_loop_twp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (dst src n : UInt32)
     (destination source : List UInt32)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)
@@ -943,7 +941,7 @@ theorem copyWords_loop_twp
           [.loop 0 0 CopyWordsLoopBody] ++ afterLoop,
           arity, remainder, outerControls, calls⟩ :
         Wasm.SmallStep.Expr α) @ s; E [{ Φ }] := by
-  let Inv : CopyWordsLoopState → IProp WasmHeapGF := fun state => iprop%
+  let Inv : CopyWordsLoopState → IProp (WasmHeapGF α) := fun state => iprop%
     ⌜state.copied.length = state.index.toNat⌝ ∗
     ⌜state.copied.length + state.dstTail.length = n.toNat⌝ ∗
     ⌜source = state.copied ++ state.srcTail⌝ ∗
@@ -1119,10 +1117,10 @@ theorem copyWords_loop_twp
 /-- Total Iris rule for the generated disjoint u32 copy loop: the loop always
 finishes, and on finishing the destination holds the source words. -/
 theorem copyWords_smallStep_twp
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    (R : IProp (WasmHeapGF α))
     (dst src n initialIndex : UInt32)
     (destination source : List UInt32)
     (afterLoop : Program) (arity : Nat) (remainder : List Value)

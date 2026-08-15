@@ -17,13 +17,14 @@ namespace Wasm.SmallStep
 open Iris Iris.ProgramLogic Std
 open Wasm.SepLogic
 
-class WasmSmallStepGS (hlc : outParam HasLC) extends
-    InvGS_gen hlc WasmHeapGF.{0}, WasmHeapGS.{0} where
-  global : WasmGlobalGS.{0}
-  dataSegment : WasmDataSegmentGS.{0}
-  table : WasmTableGS.{0}
-  elementSegment : WasmElementSegmentGS.{0}
-  runtime : WasmRuntimeModuleGS
+class WasmSmallStepGS (hlc : outParam HasLC) (α : outParam Type) extends
+    InvGS_gen hlc (WasmHeapGF.{0} α), WasmHeapGS.{0} α where
+  global : WasmGlobalGS.{0} α
+  dataSegment : WasmDataSegmentGS.{0} α
+  table : WasmTableGS.{0} α
+  elementSegment : WasmElementSegmentGS.{0} α
+  runtime : WasmRuntimeModuleGS α
+  host : WasmHostGS α
 
 attribute [instance] WasmSmallStepGS.toInvGS_gen
 attribute [instance] WasmSmallStepGS.toWasmHeapGS
@@ -32,9 +33,10 @@ attribute [reducible, instance] WasmSmallStepGS.dataSegment
 attribute [reducible, instance] WasmSmallStepGS.table
 attribute [reducible, instance] WasmSmallStepGS.elementSegment
 attribute [reducible, instance] WasmSmallStepGS.runtime
+attribute [reducible, instance] WasmSmallStepGS.host
 
-instance instStateInterp [WasmSmallStepGS hlc] :
-    StateInterp (MachineStore α) StepKind WasmHeapGF where
+instance instStateInterp [WasmSmallStepGS hlc α] :
+    StateInterp (MachineStore α) StepKind (WasmHeapGF α) where
   stateInterp store _ _ _ := iprop%
     ∃ σ : WasmHeapMap (Option UInt8),
       ∃ globalσ : WasmGlobalMap Value,
@@ -53,6 +55,7 @@ instance instStateInterp [WasmSmallStepGS hlc] :
           WasmSmallStepGS.elementSegment.elementSegmentName
           (DFrac.own 1) elementSegmentσ ∗
         runtimeModuleOwn store.runtime.module ∗
+        hostStateAuth store.wasm.host ∗
       ⌜heapAgreesWithMem σ store.wasm.mem ∧
         heapAddressesInBounds σ store.wasm.mem ∧
         globalHeapAgrees globalσ store.wasm.globals ∧
@@ -61,10 +64,10 @@ instance instStateInterp [WasmSmallStepGS hlc] :
         elementSegmentHeapAgrees elementSegmentσ
           store.wasm.elementSegments⌝
 
-theorem stateInterp_eq [WasmSmallStepGS hlc]
+theorem stateInterp_eq [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ⊣⊢
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ⊣⊢
       (iprop% ∃ σ : WasmHeapMap (Option UInt8),
         ∃ globalσ : WasmGlobalMap Value,
         ∃ dataSegmentσ : WasmDataSegmentMap (Option (List UInt8)),
@@ -82,6 +85,7 @@ theorem stateInterp_eq [WasmSmallStepGS hlc]
             WasmSmallStepGS.elementSegment.elementSegmentName
             (DFrac.own 1) elementSegmentσ ∗
           runtimeModuleOwn store.runtime.module ∗
+          hostStateAuth store.wasm.host ∗
         ⌜heapAgreesWithMem σ store.wasm.mem ∧
           heapAddressesInBounds σ store.wasm.mem ∧
           globalHeapAgrees globalσ store.wasm.globals ∧
@@ -91,109 +95,127 @@ theorem stateInterp_eq [WasmSmallStepGS hlc]
             store.wasm.elementSegments⌝) :=
   .rfl
 
-theorem stateInterp_pointsTo_read8 [WasmSmallStepGS hlc]
+theorem stateInterp_pointsTo_read8 [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (address : UInt32) (value : UInt8) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) (some value) ==∗
       ⌜store.wasm.mem.read8 address = value⌝ := by
   iintro ⟨Hstate, Hpointsto⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   icases genHeap_valid $$ [$Hheap $Hpointsto] with >%hlookup
   ipureintro
   exact Hfacts.1 address value hlookup
 
-theorem stateInterp_pointsTo_inBounds [WasmSmallStepGS hlc]
+theorem stateInterp_pointsTo_inBounds [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (address : UInt32) (value : UInt8) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) (some value) ==∗
       ⌜address.toNat < store.wasm.mem.pages * 65536⌝ := by
   iintro ⟨Hstate, Hpointsto⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   icases genHeap_valid $$ [$Hheap $Hpointsto] with >%hlookup
   ipureintro
   exact Hfacts.2.1 address value hlookup
 
-theorem stateInterp_pointsTo_facts [WasmSmallStepGS hlc]
+theorem stateInterp_pointsTo_facts [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (address : UInt32) (value : UInt8) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) (some value) ==∗
       ⌜store.wasm.mem.read8 address = value ∧
         address.toNat < store.wasm.mem.pages * 65536⌝ := by
   iintro ⟨Hstate, Hpointsto⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   icases genHeap_valid $$ [$Hheap $Hpointsto] with >%hlookup
   ipureintro
   exact ⟨Hfacts.1 address value hlookup, Hfacts.2.1 address value hlookup⟩
 
-/-- Host-local state is deliberately absent from the Iris physical resources.
-Changing only `Store.host` therefore preserves the complete state
-interpretation.  This is the frame lemma used by host functions, such as
-`stdio.write`, whose effects do not modify Wasm-owned runtime resources. -/
-theorem stateInterp_host_set [WasmSmallStepGS hlc]
+/-- Update the physical and authoritative host state in lockstep. The
+exclusive fragment prevents this update while any client still describes a
+different host state. -/
+theorem stateInterp_host_set [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat) (host : α) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ==∗
-      stateInterp (GF := WasmHeapGF)
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
+      hostStateOwn store.wasm.host ==∗
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm := { store.wasm with host } }
-        steps observations threads := by
-  iintro Hstate
+        steps observations threads ∗ hostStateOwn host := by
+  iintro ⟨Hstate, Hown⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
+  imod hostState_update store.wasm.host host $$ [$Hhost $Hown] with
+    ⟨Hhost, Hown⟩
   imodintro
-  iapply (stateInterp_eq
-    { store with wasm := { store.wasm with host } }
-    steps observations threads).mpr
-  iexists σ
-  iexists globalσ
-  iexists dataSegmentσ
-  iexists tableσ
-  iexists elementSegmentσ
-  iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime
-  ipureintro
-  exact Hfacts
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
+  · iapply (stateInterp_eq
+      { store with wasm := { store.wasm with host } }
+      steps observations threads).mpr
+    iexists σ
+    iexists globalσ
+    iexists dataSegmentσ
+    iexists tableσ
+    iexists elementSegmentσ
+    iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost
+    ipureintro
+    exact Hfacts
+  · iexact Hown
+
+/-- Regression lemma: the client fragment cannot describe a host state that
+differs from the physical state protected by `StateInterp`. -/
+theorem stateInterp_host_agree [WasmSmallStepGS hlc α]
+    (store : MachineStore α) (steps : Nat)
+    (observations : List StepKind) (threads : Nat) (host : α) :
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
+      hostStateOwn host ⊢ ⌜store.wasm.host = host⌝ := by
+  iintro ⟨Hstate, Hown⟩
+  icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
+    ⟨%heap, %globals, %segments, %tables, %elements,
+      Hheap, Hglobals, Hsegments, Htables, Helements, Hruntime, Hhost, %Hfacts⟩
+  iapply hostState_agree store.wasm.host host
+  iframe Hhost Hown
 
 /-- Owned global state determines the corresponding physical instantiated
 global. -/
-theorem stateInterp_global_facts [WasmSmallStepGS hlc]
+theorem stateInterp_global_facts [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (index : Nat) (value : Value) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       globalPointsTo index value ==∗
       ⌜store.wasm.globals.globals[index]? = some value⌝ := by
   iintro ⟨Hstate, Hglobal⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hlookup := globalPointsTo_lookup globalσ index value $$ Hglobals Hglobal
   ipureintro
   exact Hfacts.2.2.1 index value hlookup
 
 /-- Updating an owned global updates both the authoritative ghost map and the
 physical instantiated global array in lockstep. -/
-theorem stateInterp_global_set [WasmSmallStepGS hlc]
+theorem stateInterp_global_set [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (index : Nat) (oldValue newValue : Value) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       globalPointsTo index oldValue ==∗
-      stateInterp (GF := WasmHeapGF)
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm :=
             { store.wasm with globals :=
                 { globals := store.wasm.globals.globals.set index newValue } } }
@@ -202,14 +224,14 @@ theorem stateInterp_global_set [WasmSmallStepGS hlc]
   iintro ⟨Hstate, Hglobal⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hlookup :=
     globalPointsTo_lookup globalσ index oldValue $$ Hglobals Hglobal
   imod globalPointsTo_update globalσ index oldValue newValue $$
       Hglobals Hglobal with
     ⟨Hglobals, Hglobal⟩
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq
       { store with wasm :=
           { store.wasm with globals :=
@@ -220,7 +242,7 @@ theorem stateInterp_global_set [WasmSmallStepGS hlc]
     iexists dataSegmentσ
     iexists tableσ
     iexists elementSegmentσ
-    iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime
+    iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost
     ipureintro
     exact ⟨Hfacts.1, Hfacts.2.1,
       ⟨global_store_sound globalσ store.wasm.globals
@@ -231,24 +253,24 @@ theorem stateInterp_global_set [WasmSmallStepGS hlc]
 /-- Owned passive-segment state determines the corresponding physical
 instantiated segment entry. The framed form keeps both resources available for
 a following `memory.init` or `data.drop` transition. -/
-theorem stateInterp_dataSegment_facts_frame [WasmSmallStepGS hlc]
+theorem stateInterp_dataSegment_facts_frame [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (index : Nat) (value : Option (List UInt8)) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       dataSegmentPointsTo index value ==∗
-      stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+      stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       dataSegmentPointsTo index value ∗
       ⌜store.wasm.dataSegments[index]? = some value⌝ := by
   iintro ⟨Hstate, Hsegment⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hlookup :=
     dataSegmentPointsTo_lookup dataSegmentσ index value $$
       Hsegments Hsegment
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq store steps observations threads).mpr
     iexists σ
     iexists globalσ
@@ -265,13 +287,13 @@ theorem stateInterp_dataSegment_facts_frame [WasmSmallStepGS hlc]
 
 /-- `data.drop` updates the physical segment status and its authoritative
 ghost entry in lockstep. -/
-theorem stateInterp_dataSegment_drop [WasmSmallStepGS hlc]
+theorem stateInterp_dataSegment_drop [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (index : Nat) (oldValue : Option (List UInt8)) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       dataSegmentPointsTo index oldValue ==∗
-      stateInterp (GF := WasmHeapGF)
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm :=
             { store.wasm with
               dataSegments := store.wasm.dataSegments.set index none } }
@@ -280,7 +302,7 @@ theorem stateInterp_dataSegment_drop [WasmSmallStepGS hlc]
   iintro ⟨Hstate, Hsegment⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hlookup :=
     dataSegmentPointsTo_lookup dataSegmentσ index oldValue $$
       Hsegments Hsegment
@@ -288,7 +310,7 @@ theorem stateInterp_dataSegment_drop [WasmSmallStepGS hlc]
       Hsegments Hsegment with
     ⟨Hsegments, Hsegment⟩
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq
       { store with wasm :=
           { store.wasm with
@@ -309,24 +331,24 @@ theorem stateInterp_dataSegment_drop [WasmSmallStepGS hlc]
 
 /-- Element-segment ownership identifies the live or dropped state at the
 corresponding stable physical segment index. -/
-theorem stateInterp_elementSegment_facts_frame [WasmSmallStepGS hlc]
+theorem stateInterp_elementSegment_facts_frame [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (index : Nat) (value : Option (List (Option Nat))) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       elementSegmentPointsTo index value ==∗
-      stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+      stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       elementSegmentPointsTo index value ∗
       ⌜store.wasm.elementSegments[index]? = some value⌝ := by
   iintro ⟨Hstate, Hsegment⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hlookup :=
     elementSegmentPointsTo_lookup elementSegmentσ index value $$
       HelementSegments Hsegment
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq store steps observations threads).mpr
     iexists σ
     iexists globalσ
@@ -343,13 +365,13 @@ theorem stateInterp_elementSegment_facts_frame [WasmSmallStepGS hlc]
 
 /-- `elem.drop` changes the physical segment status and authoritative ghost
 entry to `none` without renumbering any segment. -/
-theorem stateInterp_elementSegment_drop [WasmSmallStepGS hlc]
+theorem stateInterp_elementSegment_drop [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (index : Nat) (oldValue : Option (List (Option Nat))) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       elementSegmentPointsTo index oldValue ==∗
-      stateInterp (GF := WasmHeapGF)
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm :=
             { store.wasm with
               elementSegments :=
@@ -359,7 +381,7 @@ theorem stateInterp_elementSegment_drop [WasmSmallStepGS hlc]
   iintro ⟨Hstate, Hsegment⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hlookup :=
     elementSegmentPointsTo_lookup elementSegmentσ index oldValue $$
       HelementSegments Hsegment
@@ -368,7 +390,7 @@ theorem stateInterp_elementSegment_drop [WasmSmallStepGS hlc]
       HelementSegments Hsegment with
     ⟨HelementSegments, Hsegment⟩
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq
       { store with wasm :=
           { store.wasm with
@@ -392,23 +414,23 @@ theorem stateInterp_elementSegment_drop [WasmSmallStepGS hlc]
 
 /-- Owning a table fragment identifies the complete physical instantiated
 table at its stable table index. -/
-theorem stateInterp_table_facts_frame [WasmSmallStepGS hlc]
+theorem stateInterp_table_facts_frame [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (index : Nat) (table : TableInst) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       tablePointsTo index table ==∗
-      stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+      stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       tablePointsTo index table ∗
       ⌜store.wasm.tables[index]? = some table⌝ := by
   iintro ⟨Hstate, Htable⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hlookup :=
     tablePointsTo_lookup tableσ index table $$ Htables Htable
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq store steps observations threads).mpr
     iexists σ
     iexists globalσ
@@ -425,13 +447,13 @@ theorem stateInterp_table_facts_frame [WasmSmallStepGS hlc]
 
 /-- Replacing an owned table preserves its stable identity and updates the
 authoritative ghost map and physical table list in lockstep. -/
-theorem stateInterp_table_set [WasmSmallStepGS hlc]
+theorem stateInterp_table_set [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (index : Nat) (oldTable newTable : TableInst) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       tablePointsTo index oldTable ==∗
-      stateInterp (GF := WasmHeapGF)
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm :=
             { store.wasm with
               tables := listSetAt store.wasm.tables index newTable } }
@@ -440,14 +462,14 @@ theorem stateInterp_table_set [WasmSmallStepGS hlc]
   iintro ⟨Hstate, Htable⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hlookup :=
     tablePointsTo_lookup tableσ index oldTable $$ Htables Htable
   imod tablePointsTo_update tableσ index oldTable newTable $$
       Htables Htable with
     ⟨Htables, Htable⟩
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq
       { store with wasm :=
           { store.wasm with
@@ -467,16 +489,17 @@ theorem stateInterp_table_set [WasmSmallStepGS hlc]
         Hfacts.2.2.2.2.2⟩⟩
   · iexact Htable
 
-theorem stateInterp_runtimeModule_agree [WasmSmallStepGS hlc]
+theorem stateInterp_runtimeModule_agree [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat) (m : Module) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       runtimeModuleOwn m ==∗
       ⌜store.runtime.module = m⌝ := by
   iintro ⟨Hstate, Hexpected⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hactual, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hactual, Hhost,
+      %Hfacts⟩
   icombine Hactual Hexpected as Hmodules
   ihave %hagrees :=
     runtimeModuleOwn_agree store.runtime.module m $$ Hmodules
@@ -486,14 +509,14 @@ theorem stateInterp_runtimeModule_agree [WasmSmallStepGS hlc]
 /-- Four-byte ownership determines the physical little-endian word and proves
 the complete access is in bounds. The address equalities exclude UInt32
 wraparound in the derived byte footprint. -/
-theorem stateInterp_pointsTo_u32_facts [WasmSmallStepGS hlc]
+theorem stateInterp_pointsTo_u32_facts [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (address value : UInt32)
     (h1 : (address + 1).toNat = address.toNat + 1)
     (h2 : (address + 2).toNat = address.toNat + 2)
     (h3 : (address + 3).toNat = address.toNat + 3) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u32 address value ==∗
       ⌜store.wasm.mem.read32 address = value ∧
         address.toNat + 4 ≤ store.wasm.mem.pages * 65536⌝ := by
@@ -502,7 +525,7 @@ theorem stateInterp_pointsTo_u32_facts [WasmSmallStepGS hlc]
   icases Hword with ⟨H0, H1, H2, H3⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hg0 :
       ⌜get? σ address = some (some (u32Byte value 0))⌝ $$ [Hheap H0]
   · imod genHeap_valid $$ [$Hheap $H0] with %hg0
@@ -540,16 +563,16 @@ theorem stateInterp_pointsTo_u32_facts [WasmSmallStepGS hlc]
 /-- Framed form of `stateInterp_pointsTo_u32_facts`. It preserves both the
 state interpretation and word ownership, so clients can extract physical
 facts for multiple disjoint words sequentially. -/
-theorem stateInterp_pointsTo_u32_facts_frame [WasmSmallStepGS hlc]
+theorem stateInterp_pointsTo_u32_facts_frame [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (address value : UInt32)
     (h1 : (address + 1).toNat = address.toNat + 1)
     (h2 : (address + 2).toNat = address.toNat + 2)
     (h3 : (address + 3).toNat = address.toNat + 3) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u32 address value ==∗
-      stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+      stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u32 address value ∗
       ⌜store.wasm.mem.read32 address = value ∧
         address.toNat + 4 ≤ store.wasm.mem.pages * 65536⌝ := by
@@ -558,7 +581,7 @@ theorem stateInterp_pointsTo_u32_facts_frame [WasmSmallStepGS hlc]
   icases Hword with ⟨H0, H1, H2, H3⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hg0 :
       ⌜get? σ address = some (some (u32Byte value 0))⌝ $$ [Hheap H0]
   · imod genHeap_valid $$ [$Hheap $H0] with %hg0
@@ -594,7 +617,7 @@ theorem stateInterp_pointsTo_u32_facts_frame [WasmSmallStepGS hlc]
     rw [h3] at hb3
     omega
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq store steps observations threads).mpr
     iexists σ
     iexists globalσ
@@ -613,7 +636,7 @@ theorem stateInterp_pointsTo_u32_facts_frame [WasmSmallStepGS hlc]
 /-- Eight-byte ownership determines the physical little-endian word and proves
 the complete access is in bounds. The address equalities exclude UInt32
 wraparound in the derived byte footprint. -/
-theorem stateInterp_pointsTo_u64_facts [WasmSmallStepGS hlc]
+theorem stateInterp_pointsTo_u64_facts [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (address : UInt32) (value : UInt64)
@@ -624,7 +647,7 @@ theorem stateInterp_pointsTo_u64_facts [WasmSmallStepGS hlc]
     (h5 : (address + 5).toNat = address.toNat + 5)
     (h6 : (address + 6).toNat = address.toNat + 6)
     (h7 : (address + 7).toNat = address.toNat + 7) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u64 address value ==∗
       ⌜store.wasm.mem.read64 address = value ∧
         address.toNat + 8 ≤ store.wasm.mem.pages * 65536⌝ := by
@@ -633,7 +656,7 @@ theorem stateInterp_pointsTo_u64_facts [WasmSmallStepGS hlc]
   icases Hword with ⟨H0, H1, H2, H3, H4, H5, H6, H7⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hg0 :
       ⌜get? σ address = some (some (u64Byte value 0))⌝ $$ [Hheap H0]
   · imod genHeap_valid $$ [$Hheap $H0] with %hg0
@@ -688,7 +711,7 @@ theorem stateInterp_pointsTo_u64_facts [WasmSmallStepGS hlc]
 /-- Framed form of `stateInterp_pointsTo_u64_facts`. It returns both the
 authoritative state interpretation and the word ownership, allowing a client
 to establish physical facts for several disjoint words sequentially. -/
-theorem stateInterp_pointsTo_u64_facts_frame [WasmSmallStepGS hlc]
+theorem stateInterp_pointsTo_u64_facts_frame [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (address : UInt32) (value : UInt64)
@@ -699,9 +722,9 @@ theorem stateInterp_pointsTo_u64_facts_frame [WasmSmallStepGS hlc]
     (h5 : (address + 5).toNat = address.toNat + 5)
     (h6 : (address + 6).toNat = address.toNat + 6)
     (h7 : (address + 7).toNat = address.toNat + 7) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u64 address value ==∗
-      stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+      stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u64 address value ∗
       ⌜store.wasm.mem.read64 address = value ∧
         address.toNat + 8 ≤ store.wasm.mem.pages * 65536⌝ := by
@@ -710,7 +733,7 @@ theorem stateInterp_pointsTo_u64_facts_frame [WasmSmallStepGS hlc]
   icases Hword with ⟨H0, H1, H2, H3, H4, H5, H6, H7⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   ihave %hg0 :
       ⌜get? σ address = some (some (u64Byte value 0))⌝ $$ [Hheap H0]
   · imod genHeap_valid $$ [$Hheap $H0] with %hg0
@@ -763,7 +786,7 @@ theorem stateInterp_pointsTo_u64_facts_frame [WasmSmallStepGS hlc]
     rw [h7] at hb7
     omega
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq store steps observations threads).mpr
     iexists σ
     iexists globalσ
@@ -779,28 +802,28 @@ theorem stateInterp_pointsTo_u64_facts_frame [WasmSmallStepGS hlc]
     · ipureintro
       exact ⟨hread, hbound⟩
 
-theorem stateInterp_store8 [WasmSmallStepGS hlc]
+theorem stateInterp_store8 [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (address : UInt32) (oldValue newValue : UInt8)
     (hbound : address.toNat < store.wasm.mem.pages * 65536) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) (some oldValue) ==∗
-      stateInterp (GF := WasmHeapGF)
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm :=
             { store.wasm with mem := store.wasm.mem.write8 address newValue } }
         steps observations threads ∗
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) (some newValue) := by
   iintro ⟨Hstate, Hpointsto⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   imod genHeap_update (v₂ := some newValue) $$ [$Hheap $Hpointsto] with
     ⟨Hheap, Hpointsto⟩
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq
       { store with wasm :=
           { store.wasm with mem := store.wasm.mem.write8 address newValue } }
@@ -810,14 +833,14 @@ theorem stateInterp_store8 [WasmSmallStepGS hlc]
     iexists dataSegmentσ
     iexists tableσ
     iexists elementSegmentσ
-    iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime
+    iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost
     ipureintro
     exact ⟨store_sound σ store.wasm.mem address newValue Hfacts.1,
       store_inBounds σ store.wasm.mem address newValue Hfacts.2.1 hbound,
       Hfacts.2.2⟩
   · iexact Hpointsto
 
-theorem stateInterp_store32 [WasmSmallStepGS hlc]
+theorem stateInterp_store32 [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (address oldValue newValue : UInt32)
@@ -825,9 +848,9 @@ theorem stateInterp_store32 [WasmSmallStepGS hlc]
     (h2 : (address + 2).toNat = address.toNat + 2)
     (h3 : (address + 3).toNat = address.toNat + 3)
     (hbound : address.toNat + 4 ≤ store.wasm.mem.pages * 65536) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u32 address oldValue ==∗
-      stateInterp (GF := WasmHeapGF)
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm :=
             { store.wasm with mem := store.wasm.mem.write32 address newValue } }
         steps observations threads ∗
@@ -837,7 +860,7 @@ theorem stateInterp_store32 [WasmSmallStepGS hlc]
   icases Hword with ⟨H0, H1, H2, H3⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   imod genHeap_update (v₂ := some (u32Byte newValue 0)) $$
       [$Hheap $H0] with ⟨Hheap, H0⟩
   imod genHeap_update (v₂ := some (u32Byte newValue 1)) $$
@@ -847,7 +870,7 @@ theorem stateInterp_store32 [WasmSmallStepGS hlc]
   imod genHeap_update (v₂ := some (u32Byte newValue 3)) $$
       [$Hheap $H3] with ⟨Hheap, H3⟩
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq
       { store with wasm :=
           { store.wasm with mem := store.wasm.mem.write32 address newValue } }
@@ -864,7 +887,7 @@ theorem stateInterp_store32 [WasmSmallStepGS hlc]
     iexists dataSegmentσ
     iexists tableσ
     iexists elementSegmentσ
-    iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime
+    iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost
     ipureintro
     exact ⟨
         (store32_sound σ store.wasm.mem address newValue h1 h2 h3 Hfacts.1)
@@ -874,7 +897,7 @@ theorem stateInterp_store32 [WasmSmallStepGS hlc]
   · iapply (pointsTo_u32_eq address newValue).mpr
     iframe
 
-theorem stateInterp_store64 [WasmSmallStepGS hlc]
+theorem stateInterp_store64 [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (address : UInt32) (oldValue newValue : UInt64)
@@ -886,9 +909,9 @@ theorem stateInterp_store64 [WasmSmallStepGS hlc]
     (h6 : (address + 6).toNat = address.toNat + 6)
     (h7 : (address + 7).toNat = address.toNat + 7)
     (hbound : address.toNat + 8 ≤ store.wasm.mem.pages * 65536) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u64 address oldValue ==∗
-      stateInterp (GF := WasmHeapGF)
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm :=
             { store.wasm with mem := store.wasm.mem.write64 address newValue } }
         steps observations threads ∗
@@ -898,7 +921,7 @@ theorem stateInterp_store64 [WasmSmallStepGS hlc]
   icases Hword with ⟨H0, H1, H2, H3, H4, H5, H6, H7⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   imod genHeap_update (v₂ := some (u64Byte newValue 0)) $$
       [$Hheap $H0] with ⟨Hheap, H0⟩
   imod genHeap_update (v₂ := some (u64Byte newValue 1)) $$
@@ -916,7 +939,7 @@ theorem stateInterp_store64 [WasmSmallStepGS hlc]
   imod genHeap_update (v₂ := some (u64Byte newValue 7)) $$
       [$Hheap $H7] with ⟨Hheap, H7⟩
   imodintro
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost]
   · iapply (stateInterp_eq
       { store with wasm :=
           { store.wasm with mem := store.wasm.mem.write64 address newValue } }
@@ -927,7 +950,7 @@ theorem stateInterp_store64 [WasmSmallStepGS hlc]
     iexists tableσ
     iexists elementSegmentσ
     unfold store64Heap
-    iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime
+    iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost
     ipureintro
     exact ⟨
       store64_sound σ store.wasm.mem address newValue
@@ -941,20 +964,20 @@ theorem stateInterp_store64 [WasmSmallStepGS hlc]
 /-- Successful memory growth preserves the authoritative byte heap unchanged:
 physical bytes are identical and every previously owned address remains in
 bounds because the page count only increases. -/
-theorem stateInterp_memoryGrow [WasmSmallStepGS hlc]
+theorem stateInterp_memoryGrow [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (delta : UInt32) (memory : Mem) (previousPages : Nat)
     (hgrow : store.wasm.mem.grow delta store.runtime.module.memoryCap =
       some (memory, previousPages)) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ⊢
-      stateInterp (GF := WasmHeapGF)
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ⊢
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm := { store.wasm with mem := memory } }
         steps observations threads := by
   iintro Hstate
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, Hhost, %Hfacts⟩
   iapply (stateInterp_eq
     { store with wasm := { store.wasm with mem := memory } }
     steps observations threads).mpr
@@ -963,7 +986,7 @@ theorem stateInterp_memoryGrow [WasmSmallStepGS hlc]
   iexists dataSegmentσ
   iexists tableσ
   iexists elementSegmentσ
-  iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime
+  iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime Hhost
   ipureintro
   exact ⟨grow_sound σ store.wasm.mem memory delta
       store.runtime.module.memoryCap previousPages hgrow Hfacts.1,
@@ -973,14 +996,14 @@ theorem stateInterp_memoryGrow [WasmSmallStepGS hlc]
 
 /-- Four-byte fill update used by the manual memory example. Ownership of the
 whole affected range is required and is updated atomically. -/
-theorem stateInterp_fill16_four_AB [WasmSmallStepGS hlc]
+theorem stateInterp_fill16_four_AB [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (oldWord : UInt32)
     (hbound : 20 ≤ store.wasm.mem.pages * 65536) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u32 16 oldWord ==∗
-      stateInterp (GF := WasmHeapGF)
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm :=
             { store.wasm with mem := store.wasm.mem.fill 16 4 0xAB } }
         steps observations threads ∗
@@ -998,14 +1021,14 @@ theorem stateInterp_fill16_four_AB [WasmSmallStepGS hlc]
 /-- Four-byte passive-segment initialization used by the manual Iris example.
 The segment itself is read-only during `memory.init`; only the destination
 word changes. -/
-theorem stateInterp_init16_four [WasmSmallStepGS hlc]
+theorem stateInterp_init16_four [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (oldWord : UInt32)
     (hbound : 20 ≤ store.wasm.mem.pages * 65536) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u32 16 oldWord ==∗
-      stateInterp (GF := WasmHeapGF)
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm :=
             { store.wasm with mem :=
                 store.wasm.mem.writeBytesFrom 16 [1, 2, 3, 4] 0 4 } }
@@ -1023,13 +1046,13 @@ theorem stateInterp_init16_four [WasmSmallStepGS hlc]
 
 /-- Aligned four-byte copy used by the manual Iris example. Source ownership
 is framed, while complete destination ownership is updated atomically. -/
-theorem stateInterp_copy8_zero_four [WasmSmallStepGS hlc]
+theorem stateInterp_copy8_zero_four [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
     (oldDestination : UInt32) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u32 0 0x04030201 ∗ pointsTo_u32 8 oldDestination ==∗
-      stateInterp (GF := WasmHeapGF)
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm :=
             { store.wasm with mem := store.wasm.mem.copy 8 0 4 } }
         steps observations threads ∗
@@ -1062,12 +1085,12 @@ theorem stateInterp_copy8_zero_four [WasmSmallStepGS hlc]
 /-- Overlapping four-byte copy from address 0 to address 2.  One eight-byte
 owner covers the overlapping source and destination, and the ghost update
 uses the pre-copy source bytes, matching WebAssembly memmove semantics. -/
-theorem stateInterp_copy2_zero_four [WasmSmallStepGS hlc]
+theorem stateInterp_copy2_zero_four [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ∗
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u64 0 0x8877665544332211 ==∗
-      stateInterp (GF := WasmHeapGF)
+      stateInterp (GF := WasmHeapGF α)
         { store with wasm :=
             { store.wasm with mem := store.wasm.mem.copy 2 0 4 } }
         steps observations threads ∗
@@ -1081,22 +1104,22 @@ theorem stateInterp_copy2_zero_four [WasmSmallStepGS hlc]
     (pointsTo_u64_eq 0 0x8877665544332211).mp $$ Hword
   icases Hword with ⟨H0, H1, H2, H3, H4, H5, H6, H7⟩
   ihave H2At :
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         2 (DFrac.own 1) (some (u64Byte 0x8877665544332211 2)) $$ [H2]
   · rw [show (0 : UInt32) + 2 = 2 by decide]
     iexact H2
   ihave H3At :
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         3 (DFrac.own 1) (some (u64Byte 0x8877665544332211 3)) $$ [H3]
   · rw [show (0 : UInt32) + 3 = 3 by decide]
     iexact H3
   ihave H4At :
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         4 (DFrac.own 1) (some (u64Byte 0x8877665544332211 4)) $$ [H4]
   · rw [show (0 : UInt32) + 4 = 4 by decide]
     iexact H4
   ihave H5At :
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         5 (DFrac.own 1) (some (u64Byte 0x8877665544332211 5)) $$ [H5]
   · rw [show (0 : UInt32) + 5 = 5 by decide]
     iexact H5
@@ -1151,8 +1174,8 @@ theorem stateInterp_copy2_zero_four [WasmSmallStepGS hlc]
     simp only [UInt32.reduceAdd]
     iframe
 
-instance instIrisGS [WasmSmallStepGS hlc] :
-    IrisGS_gen hlc (Expr α) WasmHeapGF where
+instance instIrisGS [WasmSmallStepGS hlc α] :
+    IrisGS_gen hlc (Expr α) (WasmHeapGF α) where
   numLatersPerStep _ := 0
   forkPost _ := iprop(True)
   stateInterp_mono _ _ _ _ := by iintro $

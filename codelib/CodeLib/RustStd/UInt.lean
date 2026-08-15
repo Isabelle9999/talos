@@ -32,9 +32,9 @@ abbrev BinChunk {A B C : Type}
     [UIntWasm A] [UIntWasm B] [UIntWasm C]
     (frag : Program) (op : A → B → C)
     (pre : A → B → Prop := fun _ _ => True) : Prop :=
-  ∀ {α : Type} {hlc : HasLC} [Wasm.SmallStep.WasmSmallStepGS hlc]
+  ∀ {α : Type} {hlc : HasLC} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp Wasm.SepLogic.WasmHeapGF}
+    {Φ : List Value → IProp (Wasm.SepLogic.WasmHeapGF α)}
     {params localValues : List Value}
     {rest : Program} {arity : Nat} {remainder : List Value}
     {controls : List Wasm.SmallStep.ControlFrame}
@@ -52,9 +52,9 @@ abbrev BinChunk {A B C : Type}
 /-- Contextual unary stack fragment. -/
 abbrev UnChunk {T : Type} [UIntWasm T]
     (frag : Program) (op : T → T) : Prop :=
-  ∀ {α : Type} {hlc : HasLC} [Wasm.SmallStep.WasmSmallStepGS hlc]
+  ∀ {α : Type} {hlc : HasLC} [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp Wasm.SepLogic.WasmHeapGF}
+    {Φ : List Value → IProp (Wasm.SepLogic.WasmHeapGF α)}
     {params localValues : List Value}
     {rest : Program} {arity : Nat} {remainder : List Value}
     {controls : List Wasm.SmallStep.ControlFrame}

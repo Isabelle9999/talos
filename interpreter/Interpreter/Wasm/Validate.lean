@@ -41,10 +41,10 @@ partial def Program.allInstrs (p : Program) : List Instruction :=
     | .tryTable _ _ _ body _ _ => Program.allInstrs body
     | _ => []
 
-/-- The GC type indices an instruction's immediates reference. -/
-def Instruction.typeRefs : Instruction → List Nat
-  | .callRef t | .returnCallRef t => [t]
-  | .callIndirect ti _ | .returnCallIndirect ti _ => [ti]
+/-- The GC type indices an instruction's immediates reference. Function type
+indices on `(return_)call_indirect` and `(return_)call_ref` index `Module.types`
+instead and are checked by `Instruction.checkFunctionRefs`. -/
+def Instruction.gcTypeRefs : Instruction → List Nat
   | .gc op => match op with
     | .refNullAny _ => []
     | .structNew t | .structNewDefault t
@@ -1577,7 +1577,7 @@ def Module.validate (m : Module) : Except String Unit := do
   -- mutating accessors target a mutable field / element.
   for f in m.funcs do
     for i in f.body.allInstrs do
-      for t in i.typeRefs do
+      for t in i.gcTypeRefs do
         if t ≥ nTypes then throw "unknown type"
       i.checkBulkMemoryRefs m
       i.checkTableSegmentRefs m

@@ -90,10 +90,10 @@ theorem fatPtrHeap_inBounds {α} {st : Store α} {p dataPtr len : UInt32}
   simpa [fatPtrHeap, hwriteSecond] using hsecond
 
 theorem fatPtrHeap_pointsTo
-    [WasmHeapGS] (p dataPtr len : UInt32)
+    [WasmHeapGS α] (p dataPtr len : UInt32)
     (hroom : p.toNat + 8 ≤ 4294967296) :
     ([∗map] address ↦ byte ∈ fatPtrHeap p dataPtr len,
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) byte) ⊢
       pointsTo_u32 p dataPtr ∗ pointsTo_u32 (p + 4) len := by
   have hp (n : Nat) (hn : n < 4294967296)
@@ -162,10 +162,11 @@ theorem fatPtrHeap_pointsTo
 /-- Iris loader for the canonical `(dataPtr, len)` ABI pair. Both words are
 returned unchanged so callers can frame the physical fat pointer across calls. -/
 theorem wp_loadFatPtr
-    [Wasm.SmallStep.WasmSmallStepGS hlc]
+    {α : Type}
+    [Wasm.SmallStep.WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    {α : Type} {params localValues values : List Value}
+    {Φ : List Value → IProp (WasmHeapGF α)}
+    {params localValues values : List Value}
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List Wasm.SmallStep.ControlFrame}
     {calls : List Wasm.SmallStep.CallFrame}
