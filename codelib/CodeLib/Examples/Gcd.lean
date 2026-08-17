@@ -321,7 +321,8 @@ theorem gcd_terminatesWith (a b : UInt32) :
     (fun values =>
       values =
         [.i32 (UInt32.ofNat (Nat.gcd a.toNat b.toNat))])
-  intro hlc gs
-  exact twp_gcd a b
+  · rfl
+  · intro hlc gs
+    exact twp_gcd a b
 
 end Wasm.Examples.Gcd

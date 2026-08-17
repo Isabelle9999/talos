@@ -1020,6 +1020,7 @@ theorem func1_zero_smallStep_partiallyMeets
   · apply gcdFrameHeap_inBounds
     rfl
   · exact func1GlobalHeap_agrees
+  · rfl
   · intro gs
     iintro ⟨Hframe, Hglobals, Hruntime⟩
     ihave Hglobal := func1GlobalHeap_pointsTo $$ Hglobals
@@ -3729,6 +3730,7 @@ theorem func1_nonzero_smallStep_partiallyMeets
   · apply gcdFrameHeap_inBounds
     rfl
   · exact func1GlobalHeap_agrees
+  · rfl
   · intro gs
     iintro ⟨Hframe, Hglobals, Hruntime⟩
     ihave Hglobal := func1GlobalHeap_pointsTo $$ Hglobals
@@ -4845,6 +4847,7 @@ theorem func0_smallStep_partiallyMeets (a b : UInt64) :
   · exact func0InitialHeap_agrees
   · exact func0InitialHeap_inBounds
   · exact func0GlobalHeap_agrees
+  · rfl
   · intro gs
     unfold func0InitialHeap
     iintro ⟨Hframe, Hglobals, Hruntime⟩
@@ -4889,6 +4892,7 @@ theorem func2_smallStep_partiallyMeets (a b : UInt64) :
   · exact func0InitialHeap_agrees
   · exact func0InitialHeap_inBounds
   · exact func0GlobalHeap_agrees
+  · rfl
   · intro gs
     unfold func0InitialHeap
     iintro ⟨Hframe, Hglobals, Hruntime⟩

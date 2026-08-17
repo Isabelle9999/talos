@@ -745,6 +745,7 @@ theorem quicksort_terminatesWith (arr : UInt32) (input : List UInt32)
         readWordArray store.wasm.mem arr input.length = output)
     (quicksortHeap_agrees arr input hfit)
     (quicksortHeap_inBounds arr input hfit hmem)
+    rfl
     (fun hlc gs => by
       iintro ⟨Hbytes, Hruntime⟩
       have hfitStrict : arr.toNat + 4 * input.length < UInt32.size := by
