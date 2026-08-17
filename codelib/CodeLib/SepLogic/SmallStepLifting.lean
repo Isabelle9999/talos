@@ -1343,7 +1343,7 @@ theorem wp_callHost
     isplitr
     · ipureintro
       cases s <;> simp only [Stuckness.MaybeReducible]
-      exact ⟨[.host functionIndex],
+      exact ⟨[],
         .running ⟨⟨params, localValues,
             results.take imp.results.length ++
               values.drop imp.params.length⟩,
@@ -1385,7 +1385,7 @@ theorem wp_callHost
     isplitr
     · ipureintro
       cases s <;> simp only [Stuckness.MaybeReducible]
-      exact ⟨[.host functionIndex],
+      exact ⟨[],
         .trapped (.host msg),
         { store with wasm := newWasm }, [],
         ⟨rfl, _, rfl, Step.callHostTrap himports' himp' hhost' h⟩⟩
@@ -1420,7 +1420,7 @@ theorem wp_callHost
     isplitr
     · ipureintro
       cases s <;> simp only [Stuckness.MaybeReducible]
-      exact ⟨[.host functionIndex],
+      exact ⟨[],
         .running ⟨⟨params, localValues, values.drop imp.params.length⟩,
           [], arity, remainder,
           [{ kind := .throwing tag xs
@@ -1504,7 +1504,7 @@ theorem wp_returnFromCallExplicit'
   isplitr
   · ipureintro
     cases s <;> simp only [Stuckness.MaybeReducible]
-    exact ⟨[.administrative .returnFromCall], _, store, [],
+    exact ⟨[], _, store, [],
       ⟨rfl, _, rfl, Step.returnFromCallExplicit hsame⟩⟩
   iintro !> %e₂ %store₂ %forks %Hstep Hcredit
   rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
@@ -1576,7 +1576,7 @@ theorem wp_returnFromCallExplicit
   isplitr
   · ipureintro
     cases s <;> simp only [Stuckness.MaybeReducible]
-    exact ⟨[.administrative .returnFromCall], _, store, [],
+    exact ⟨[], _, store, [],
       ⟨rfl, _, rfl, Step.returnFromCallExplicit hsame⟩⟩
   iintro !> %e₂ %store₂ %forks %Hstep Hcredit
   rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
@@ -5461,7 +5461,7 @@ theorem wp_callCrossInstance
   isplitr
   · ipureintro
     cases s <;> simp only [Stuckness.MaybeReducible]
-    exact ⟨[.administrative .callCrossInstance],
+    exact ⟨[],
       .running ⟨fn.toLocals (values.take imp.params.length).reverse,
         fn.body, fn.results.length, [], [],
         { locals := ⟨params, localValues, values.drop imp.params.length⟩
@@ -5557,7 +5557,7 @@ theorem wp_returnFromCallCrossInstance
   isplitr
   · ipureintro
     cases s <;> simp only [Stuckness.MaybeReducible]
-    exact ⟨[.administrative .returnFromCallCrossInstance], _,
+    exact ⟨[], _,
       { store with runtime := { store.runtime with entry := returningInstance } }, [],
       ⟨rfl, _, rfl, Step.returnFromCallCrossInstanceExplicit hdiff⟩⟩
   iintro !> %e₂ %store₂ %forks %Hstep Hcredit
@@ -5659,7 +5659,7 @@ theorem wp_callIndirect
   isplitr
   · ipureintro
     cases s <;> simp only [Stuckness.MaybeReducible]
-    exact ⟨[.instruction (.callIndirect typeIndex tableIndex)],
+    exact ⟨[],
       .running
         ⟨fn.toLocals (values.take fn.numParams).reverse,
           fn.body, fn.results.length, [], [],

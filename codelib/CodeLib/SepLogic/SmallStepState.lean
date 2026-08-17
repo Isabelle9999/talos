@@ -275,33 +275,35 @@ theorem stateInterp_pointsTo_facts [WasmSmallStepGS hlc α]
   exact ⟨fromResolver store Hfacts.1 address value hlookup,
     fromResolverBounds store Hfacts.2.1 address (by simp [hlookup])⟩
 
-/-- Host-local state is deliberately absent from the Iris physical resources.
-Changing only `Store.host` therefore preserves the complete state
-interpretation.  This is the frame lemma used by host functions, such as
-`stdio.write`, whose effects do not modify Wasm-owned runtime resources. -/
-theorem stateInterp_host_set [WasmSmallStepGS hlc]
+/-- Changing `Store.host` requires exchanging `hostStateOwn` because
+`stateInterp` holds the authoritative `hostStateAuth`. The caller supplies
+the old fragment and receives the new one. -/
+theorem stateInterp_host_set [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat) (host : α) :
-    stateInterp (GF := WasmHeapGF) store steps observations threads ==∗
-      stateInterp (GF := WasmHeapGF)
+    stateInterp (GF := WasmHeapGF.{0} α) store steps observations threads ∗
+      hostStateOwn store.wasm.host ==∗
+      stateInterp (GF := WasmHeapGF.{0} α)
         { store with wasm := { store.wasm with host } }
-        steps observations threads := by
-  iintro Hstate
-  icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
-    ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hruntime, %Hfacts⟩
+        steps observations threads ∗
+      hostStateOwn host := by
+  iintro ⟨Hσ, HP⟩
+  icases (stateInterp_eq store steps observations threads).mp $$ Hσ with
+    ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ, %runtimeModuleσ, %hostEnvσ,
+      Hheap, Hglobals, Hsegments, Htables, HelementSegments, HruntimeModuleAuth, HruntimeModuleBigSep,
+      HruntimeInstances, HinstanceAuth, HhostEnvAuth, Hstate_auth, %Hfacts⟩
+  imod hostStateOwn_update store.wasm.host host $$ [$Hstate_auth $HP] with ⟨Hauth', HP'⟩
   imodintro
-  iapply (stateInterp_eq
-    { store with wasm := { store.wasm with host } }
-    steps observations threads).mpr
-  iexists σ
-  iexists globalσ
-  iexists dataSegmentσ
-  iexists tableσ
-  iexists elementSegmentσ
-  iframe Hheap Hglobals Hsegments Htables HelementSegments Hruntime
-  ipureintro
-  exact Hfacts
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeModuleBigSep HruntimeInstances HinstanceAuth HhostEnvAuth Hauth']
+  · iapply (stateInterp_eq
+      { store with wasm := { store.wasm with host } }
+      steps observations threads).mpr
+    iexists σ; iexists globalσ; iexists dataSegmentσ; iexists tableσ
+    iexists elementSegmentσ; iexists runtimeModuleσ; iexists hostEnvσ
+    iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeModuleBigSep HruntimeInstances HinstanceAuth HhostEnvAuth Hauth'
+    ipureintro
+    exact Hfacts
+  · iexact HP'
 
 /-- Owned global state determines the corresponding physical instantiated
 global. -/

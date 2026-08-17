@@ -1314,9 +1314,9 @@ theorem wp_merge
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    runtimeModuleOwn runtimeModule ∗
+    runtimeModuleOwn ⟨0⟩ runtimeModule ∗
       mergePre source temporary input scratch left mid right ∗
-      (runtimeModuleOwn runtimeModule -∗
+      (runtimeModuleOwn ⟨0⟩ runtimeModule -∗
         mergePost source temporary input left mid right -∗
         WP (.running
           ⟨{ callerLocals with values := stack },
@@ -1329,7 +1329,7 @@ theorem wp_merge
         .call mergeIndex :: code, arity, remainder, controls, calls⟩ :
         Expr Unit) @ s; E {{ Φ }} := by
   iintro ⟨Hruntime, Hpre, Hcont⟩
-  ihave HruntimeLater : ▷ runtimeModuleOwn runtimeModule $$ [Hruntime]
+  ihave HruntimeLater : ▷ runtimeModuleOwn ⟨0⟩ runtimeModule $$ [Hruntime]
   · inext
     iexact Hruntime
   iapply Wasm.SmallStep.wp_call runtimeModule mergeIndex mergeFunction
@@ -1347,11 +1347,13 @@ theorem wp_merge
   · iexact Hpre
   iintro %output %scratch' %hmergeRange %hscratchLength
     Hsource Htemporary
-  iapply Wasm.SmallStep.wp_returnFromCallExplicit
+  ihave HruntimeLater2 : ▷ runtimeModuleOwn ⟨0⟩ runtimeModule $$ [Hruntime]
+  · inext
+    iexact Hruntime
+  iapply Wasm.SmallStep.wp_returnFromCallExplicit' $$ HruntimeLater2
   inext
-  simp only [mergeLocals, List.take_zero, List.nil_append,
-    List.drop_eq_nil_of_le (by simp : 5 ≤
-      (mergeArguments source temporary left mid right stack).length)]
+  iintro Hruntime
+  simp only [mergeLocals, List.take_zero, List.nil_append]
   iapply Hcont $$ Hruntime
   unfold mergePost
   iexists output, scratch'
@@ -1651,9 +1653,9 @@ theorem wp_mergeSortCallAdvance
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    runtimeModuleOwn runtimeModule ∗
+    runtimeModuleOwn ⟨0⟩ runtimeModule ∗
       mergePre source temporary input scratch left mid right ∗
-      (runtimeModuleOwn runtimeModule -∗
+      (runtimeModuleOwn ⟨0⟩ runtimeModule -∗
         mergePost source temporary input left mid right -∗
         WP (.running
           ⟨sortLocals source temporary count width
@@ -1748,14 +1750,14 @@ theorem wp_mergeSortInnerLoop
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    runtimeModuleOwn runtimeModule ∗
+    runtimeModuleOwn ⟨0⟩ runtimeModule ∗
       arrayAt 0 source current ∗ arrayAt 0 temporary scratch ∗
       (∀ (output scratch' : List UInt32) (pass' mid' right' : Nat),
         ⌜MergePassInvariant original output width pass'⌝ -∗
         ⌜output.length = count⌝ -∗
         ⌜scratch'.length = count⌝ -∗
         ⌜count ≤ pass' * (2 * width)⌝ -∗
-        runtimeModuleOwn runtimeModule -∗
+        runtimeModuleOwn ⟨0⟩ runtimeModule -∗
         arrayAt 0 source output -∗ arrayAt 0 temporary scratch' -∗
         WP (.running
           ⟨sortLocals source temporary count width
@@ -1775,7 +1777,7 @@ theorem wp_mergeSortInnerLoop
       ⌜output.length = count⌝ -∗
       ⌜scratch'.length = count⌝ -∗
       ⌜count ≤ pass' * (2 * width)⌝ -∗
-      runtimeModuleOwn runtimeModule -∗
+      runtimeModuleOwn ⟨0⟩ runtimeModule -∗
       arrayAt 0 source output -∗ arrayAt 0 temporary scratch' -∗
       WP (.running
         ⟨sortLocals source temporary count width
@@ -1787,7 +1789,7 @@ theorem wp_mergeSortInnerLoop
     ⌜state.current.length = count⌝ ∗
     ⌜state.scratch.length = count⌝ ∗
     ⌜state.pass * (2 * width) < UInt32.size⌝ ∗
-    runtimeModuleOwn runtimeModule ∗
+    runtimeModuleOwn ⟨0⟩ runtimeModule ∗
     arrayAt 0 source state.current ∗ arrayAt 0 temporary state.scratch ∗ Finish
   let blockFrame : ControlFrame :=
     { kind := .block
@@ -2000,7 +2002,7 @@ theorem wp_mergeSortOuterLoop
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    runtimeModuleOwn runtimeModule ∗
+    runtimeModuleOwn ⟨0⟩ runtimeModule ∗
       arrayAt 0 source current ∗ arrayAt 0 temporary scratch ∗
       (∀ (output scratch' : List UInt32)
           (width' left' mid' right' : Nat),
@@ -2009,7 +2011,7 @@ theorem wp_mergeSortOuterLoop
         ⌜output.length = count⌝ -∗
         ⌜scratch'.length = count⌝ -∗
         ⌜count ≤ width'⌝ -∗
-        runtimeModuleOwn runtimeModule -∗
+        runtimeModuleOwn ⟨0⟩ runtimeModule -∗
         arrayAt 0 source output -∗ arrayAt 0 temporary scratch' -∗
         WP (.running
           ⟨sortLocals source temporary count width'
@@ -2030,7 +2032,7 @@ theorem wp_mergeSortOuterLoop
       ⌜output.length = count⌝ -∗
       ⌜scratch'.length = count⌝ -∗
       ⌜count ≤ width'⌝ -∗
-      runtimeModuleOwn runtimeModule -∗
+      runtimeModuleOwn ⟨0⟩ runtimeModule -∗
       arrayAt 0 source output -∗ arrayAt 0 temporary scratch' -∗
       WP (.running
         ⟨sortLocals source temporary count width'
@@ -2044,7 +2046,7 @@ theorem wp_mergeSortOuterLoop
     ⌜state.scratch.length = count⌝ ∗
     ⌜0 < state.width⌝ ∗
     ⌜state.width < UInt32.size⌝ ∗
-    runtimeModuleOwn runtimeModule ∗
+    runtimeModuleOwn ⟨0⟩ runtimeModule ∗
     arrayAt 0 source state.current ∗ arrayAt 0 temporary state.scratch ∗ Finish
   let blockFrame : ControlFrame :=
     { kind := .block
@@ -2250,10 +2252,10 @@ theorem wp_mergeSortBody
         some mergeFunction)
     (source temporary : UInt32) (input scratch : List UInt32)
     {calls : List CallFrame} :
-    runtimeModuleOwn runtimeModule ∗
+    runtimeModuleOwn ⟨0⟩ runtimeModule ∗
       mergeSortPre source temporary input scratch ∗
       (∀ (width left mid right : Nat),
-        runtimeModuleOwn runtimeModule -∗
+        runtimeModuleOwn ⟨0⟩ runtimeModule -∗
         mergeSortPost source temporary input -∗
         WP (.running
           ⟨sortLocals source temporary input.length
@@ -2328,9 +2330,9 @@ theorem wp_mergeSort
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     {stack : List Value} :
-    runtimeModuleOwn runtimeModule ∗
+    runtimeModuleOwn ⟨0⟩ runtimeModule ∗
       mergeSortPre source temporary input scratch ∗
-      (runtimeModuleOwn runtimeModule -∗
+      (runtimeModuleOwn ⟨0⟩ runtimeModule -∗
         mergeSortPost source temporary input -∗
         WP (.running
           ⟨{ callerLocals with values := stack },
@@ -2343,7 +2345,7 @@ theorem wp_mergeSort
         .call sortIndex :: code, arity, remainder, controls, calls⟩ :
         Expr Unit) @ s; E {{ Φ }} := by
   iintro ⟨Hruntime, Hpre, Hcont⟩
-  ihave HruntimeLater : ▷ runtimeModuleOwn runtimeModule $$ [Hruntime]
+  ihave HruntimeLater : ▷ runtimeModuleOwn ⟨0⟩ runtimeModule $$ [Hruntime]
   · inext
     iexact Hruntime
   iapply Wasm.SmallStep.wp_call runtimeModule sortIndex
@@ -2362,7 +2364,8 @@ theorem wp_mergeSort
         continuation := code
         resultArity := arity
         callerRemainder := remainder
-        control := controls } :: calls)
+        control := controls
+        returningInstance := ⟨0⟩ } :: calls)
   simp only [sortLocals] at Hbody
   iapply Hbody
   isplitl [Hruntime]
@@ -2370,11 +2373,13 @@ theorem wp_mergeSort
   isplitl [Hpre]
   · iexact Hpre
   iintro %width %left %mid %right Hruntime Hpost
-  iapply Wasm.SmallStep.wp_returnFromCallExplicit
+  ihave HruntimeLater2 : ▷ runtimeModuleOwn ⟨0⟩ runtimeModule $$ [Hruntime]
+  · inext
+    iexact Hruntime
+  iapply Wasm.SmallStep.wp_returnFromCallExplicit' $$ HruntimeLater2
   inext
-  simp only [List.take_zero, List.nil_append,
-    List.drop_eq_nil_of_le (by simp : 3 ≤
-      (mergeSortArguments source temporary input.length stack).length)]
+  iintro Hruntime
+  simp only [List.take_zero, List.nil_append]
   iapply Hcont $$ Hruntime Hpost
 
 end Wasm.Examples.MergeSort

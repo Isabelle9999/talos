@@ -477,39 +477,49 @@ theorem twp_call
       functionIndex - runtimeModule.imports.length]? = some fn)
     {params localValues values : List Value}
     {code : Program} {arity : Nat} {remainder : List Value}
-    {controls : List ControlFrame} {calls : List CallFrame} :
+    {controls : List ControlFrame} {calls : List CallFrame}
+    (callerId : ModuleInstanceId) :
     let caller : CallFrame :=
       { locals := ⟨params, localValues, values.drop fn.numParams⟩
         continuation := code
         resultArity := arity
         callerRemainder := remainder
-        control := controls }
+        control := controls
+        returningInstance := callerId }
     let current : ThreadState α :=
       ⟨⟨params, localValues, values⟩, .call functionIndex :: code,
         arity, remainder, controls, calls⟩
     let next : ThreadState α :=
       ⟨fn.toLocals (values.take fn.numParams).reverse,
         fn.body, fn.results.length, [], [], caller :: calls⟩
-    runtimeModuleOwn runtimeModule -∗
-    (runtimeModuleOwn runtimeModule -∗
+    runtimeModuleOwn callerId runtimeModule -∗
+    (runtimeModuleOwn callerId runtimeModule -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
   iintro Hruntime Htwp
   iapply twp_lift_step_no_fork rfl
   iintro %store %ns %obs %nt Hσ
-  ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$
       [Hσ Hruntime]
   · imod stateInterp_runtimeModule_agree store ns obs nt
-      runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+      callerId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
     ipureintro
     exact Hmodule
   have himports' :
-      ¬functionIndex < store.runtime.module.imports.length := by
+      ¬functionIndex < store.runtime.currentModule.imports.length := by
     simpa only [Hmodule] using himports
-  have hfn' : store.runtime.module.funcs[
-      functionIndex - store.runtime.module.imports.length]? = some fn := by
+  have hfn' : store.runtime.currentModule.funcs[
+      functionIndex - store.runtime.currentModule.imports.length]? = some fn := by
     simpa only [Hmodule] using hfn
+  simp only [runtimeModuleOwn]
+  icases Hruntime with ⟨HruntimeElem, HinstanceOwn⟩
+  ihave %Hentry : ⌜store.runtime.entry = callerId⌝ $$ [Hσ HinstanceOwn]
+  · imod stateInterp_currentInstance_agree store ns obs nt callerId $$
+        [$Hσ $HinstanceOwn] with %Hentry
+    ipureintro
+    exact Hentry
+  have hsame : callerId = store.runtime.entry := Hentry.symm
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
   isplitr
@@ -522,7 +532,8 @@ theorem twp_call
             continuation := code
             resultArity := arity
             callerRemainder := remainder
-            control := controls } :: calls⟩,
+            control := controls
+            returningInstance := store.runtime.entry } :: calls⟩,
       store, [], ⟨rfl, .instruction (.call functionIndex), rfl,
         Step.call himports' hfn'⟩⟩
   iintro %κ %e₂ %store₂ %forks %Hstep
@@ -548,8 +559,11 @@ theorem twp_call
     rfl
   isplitl [Hσ]
   · iexact Hσ
-  · iapply Htwp
-    iexact Hruntime
+  · rw [← hsame]
+    iapply Htwp
+    isplitl [HruntimeElem]
+    · iexact HruntimeElem
+    · iexact HinstanceOwn
 
 theorem twp_returnFromCallExplicit
     {calleeLocals callerLocals : Locals}
@@ -557,13 +571,16 @@ theorem twp_returnFromCallExplicit
     {calleeArity callerArity : Nat}
     {calleeRemainder callerRemainder : List Value}
     {calleeControls callerControls : List ControlFrame}
+    {returningInstance : ModuleInstanceId}
+    {module : Module}
     {calls : List CallFrame} :
     let caller : CallFrame :=
       { locals := callerLocals
         continuation := callerCode
         resultArity := callerArity
         callerRemainder := callerRemainder
-        control := callerControls }
+        control := callerControls
+        returningInstance := returningInstance }
     let current : ThreadState α :=
       ⟨calleeLocals, .ret :: calleeCode, calleeArity, calleeRemainder,
         calleeControls, caller :: calls⟩
@@ -572,10 +589,57 @@ theorem twp_returnFromCallExplicit
           values :=
             calleeLocals.values.take calleeArity ++ callerLocals.values },
         callerCode, callerArity, callerRemainder, callerControls, calls⟩
-    WP (Expr.running next : Expr α) @ s; E [{ Φ }] ⊢
+    runtimeModuleOwn returningInstance module -∗
+    (runtimeModuleOwn returningInstance module -∗
+      WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
-  exact twp_pureStep _ _ _ (fun _ => Step.returnFromCallExplicit)
+  iintro Hruntime Hwp
+  iapply twp_lift_step_no_fork rfl
+  iintro %store %ns %obs %nt Hσ
+  simp only [runtimeModuleOwn]
+  icases Hruntime with ⟨HruntimeElem, HinstanceOwn⟩
+  ihave %Hentry : ⌜store.runtime.entry = returningInstance⌝ $$ [Hσ HinstanceOwn]
+  · imod stateInterp_currentInstance_agree store ns obs nt returningInstance $$
+        [$Hσ $HinstanceOwn] with %Hentry
+    ipureintro
+    exact Hentry
+  have hsame : returningInstance = store.runtime.entry := Hentry.symm
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
+    exact ⟨_, store, [],
+      ⟨rfl, _, rfl, Step.returnFromCallExplicit hsame⟩⟩
+  iintro %κ %e₂ %store₂ %forks %Hstep
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst κ
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic (Step.returnFromCallExplicit (α := α) hsame) wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  imod Hclose
+  imodintro
+  isplit
+  · ipureintro
+    rfl
+  isplit
+  · ipureintro
+    rfl
+  isplitl [Hσ]
+  · iexact Hσ
+  · simp only [resumeCaller]
+    iapply Hwp
+    isplitl [HruntimeElem]
+    · iexact HruntimeElem
+    · iexact HinstanceOwn
 
 theorem twp_load32
     {params localValues values : List Value}
@@ -596,8 +660,8 @@ theorem twp_load32
     let next : ThreadState α :=
       ⟨⟨params, localValues, .i32 word :: values⟩,
         code, arity, remainder, controls, calls⟩
-    pointsTo_u32 (address + offset) word -∗
-    (pointsTo_u32 (address + offset) word -∗
+    pointsTo_u32 0 (address + offset) word -∗
+    (pointsTo_u32 0 (address + offset) word -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
@@ -681,8 +745,8 @@ theorem twp_store32
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    pointsTo_u32 (address + offset) oldWord -∗
-    (pointsTo_u32 (address + offset) value -∗
+    pointsTo_u32 0 (address + offset) oldWord -∗
+    (pointsTo_u32 0 (address + offset) value -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
