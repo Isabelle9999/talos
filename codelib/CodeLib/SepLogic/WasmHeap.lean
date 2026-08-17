@@ -15,6 +15,7 @@ abbrev WasmGlobalMap := fun V => ExtTreeMap Nat V compare
 abbrev WasmDataSegmentMap := fun V => ExtTreeMap Nat V compare
 abbrev WasmTableMap := fun V => ExtTreeMap Nat V compare
 abbrev WasmElementSegmentMap := fun V => ExtTreeMap Nat V compare
+abbrev WasmExceptionMap := fun V => ExtTreeMap Nat V compare
 abbrev WasmHeapGF (α : Type := Unit) : BundledGFunctors
   | 0 => ⟨InvMapF, by infer_instance⟩
   | 1 => ⟨constOF (DisjointLeibnizSet CoPset), by infer_instance⟩
@@ -36,6 +37,9 @@ abbrev WasmHeapGF (α : Type := Unit) : BundledGFunctors
       (HeapView Nat (Agree (DiscreteO (Option (List (Option Nat)))))
         WasmElementSegmentMap), by infer_instance⟩
   | 12 => ⟨ExclAuth.ExclAuthURF (constOF (DiscreteO α)), by infer_instance⟩
+  | 13 => ⟨constOF
+      (HeapView Nat (Agree (DiscreteO (Nat × List Value)))
+        WasmExceptionMap), by infer_instance⟩
   | _ => ⟨constOF Unit, by infer_instance⟩
 -- Wire genHeapPreS (following HeapLang's instHeapLangGS_HeapLangS)
 instance instWasmHeapPreS :
@@ -84,6 +88,12 @@ class WasmElementSegmentGS (α : outParam Type) extends
   elementSegmentName : GName
 
 attribute [instance] WasmElementSegmentGS.toGhostMapG
+
+class WasmExceptionGS (α : outParam Type) extends
+    GhostMapG (WasmHeapGF α) Nat (Nat × List Value) WasmExceptionMap where
+  exceptionName : GName
+
+attribute [instance] WasmExceptionGS.toGhostMapG
 
 class WasmRuntimeModuleGS (α : outParam Type) where
   runtimeElem :
@@ -266,6 +276,37 @@ theorem elementSegmentPointsTo_update [gs : WasmElementSegmentGS α]
         (insert σ index newValue) ∗
       elementSegmentPointsTo index newValue := by
   unfold elementSegmentPointsTo
+  iapply ghost_map_update
+
+def exceptionPointsTo [gs : WasmExceptionGS α]
+    (index : Nat) (dq : DFrac) (tagAndArgs : Nat × List Value) :
+    IProp (WasmHeapGF α) :=
+  ghost_map_elem gs.exceptionName dq index tagAndArgs
+
+instance [WasmExceptionGS α] (index : Nat) (dq : DFrac)
+    (tagAndArgs : Nat × List Value) :
+    BI.Timeless (exceptionPointsTo (α := α) index dq tagAndArgs) := by
+  unfold exceptionPointsTo
+  infer_instance
+
+theorem exceptionPointsTo_lookup [gs : WasmExceptionGS α]
+    (σ : WasmExceptionMap (Nat × List Value))
+    (index : Nat) (dq : DFrac) (tagAndArgs : Nat × List Value) :
+    ghost_map_auth gs.exceptionName (DFrac.own 1) σ -∗
+      exceptionPointsTo index dq tagAndArgs -∗
+      iprop(⌜get? σ index = some tagAndArgs⌝) := by
+  unfold exceptionPointsTo
+  iapply ghost_map_lookup
+
+theorem exceptionPointsTo_update [gs : WasmExceptionGS α]
+    (σ : WasmExceptionMap (Nat × List Value))
+    (index : Nat) (oldVal newVal : Nat × List Value) :
+    ghost_map_auth gs.exceptionName (DFrac.own 1) σ -∗
+      exceptionPointsTo index (DFrac.own 1) oldVal ==∗
+      ghost_map_auth gs.exceptionName (DFrac.own 1)
+        (insert σ index newVal) ∗
+      exceptionPointsTo index (DFrac.own 1) newVal := by
+  unfold exceptionPointsTo
   iapply ghost_map_update
 
 /-- Persistent knowledge of the immutable instantiated module. Agreement with
@@ -458,6 +499,75 @@ instance instTimelessPointsToU32 (addr v : UInt32) :
     BI.Timeless (pointsTo_u32 (α := α) addr v) := by
   unfold pointsTo_u32
   infer_instance
+
+/-- The `n`th little-endian byte of a 16-bit value (low 2 bytes of a UInt32). -/
+def u16Byte (v : UInt32) (n : Nat) : UInt8 :=
+  match n with
+  | 0 => v.toUInt8
+  | _ => (v >>> 8).toUInt8
+
+omit inst in
+theorem u16Byte_reassemble (v : UInt32) :
+    (u16Byte v 0).toUInt32 ||| ((u16Byte v 1).toUInt32 <<< 8) = v &&& 0xFFFF := by
+  unfold u16Byte
+  bv_decide
+
+-- multi-byte: u16 as 2 consecutive owned bytes (little-endian)
+def pointsTo_u16 (addr : UInt32) (v : UInt32) : IProp (WasmHeapGF α) :=
+  iprop%
+    (addr ↦w u16Byte v 0) ∗ ((addr + 1) ↦w u16Byte v 1)
+
+theorem pointsTo_u16_eq (addr v : UInt32) :
+    pointsTo_u16 (α := α) addr v ⊣⊢
+      (iprop% (addr ↦w u16Byte v 0) ∗ ((addr + 1) ↦w u16Byte v 1)) :=
+  .rfl
+
+instance instTimelessPointsToU16 (addr v : UInt32) :
+    BI.Timeless (pointsTo_u16 (α := α) addr v) := by
+  unfold pointsTo_u16
+  infer_instance
+
+-- byte-range ownership: n consecutive bytes at addr
+def pointsToBytes (addr : UInt32) (bytes : List UInt8) : IProp (WasmHeapGF α) :=
+  match bytes with
+  | [] => iprop% emp
+  | b :: rest => iprop% (addr ↦w b) ∗ (pointsToBytes (addr + 1) rest)
+
+instance instTimelessPointsToBytes (addr : UInt32) (bytes : List UInt8) :
+    BI.Timeless (pointsToBytes (α := α) addr bytes) := by
+  induction bytes generalizing addr with
+  | nil =>
+      simp only [pointsToBytes]
+      infer_instance
+  | cons b rest ih =>
+      simp only [pointsToBytes]
+      letI := ih (addr + 1)
+      infer_instance
+
+theorem pointsToBytes_nil (addr : UInt32) :
+    pointsToBytes (α := α) addr [] ⊣⊢ emp := .rfl
+
+theorem pointsToBytes_cons (addr : UInt32) (b : UInt8) (rest : List UInt8) :
+    pointsToBytes (α := α) addr (b :: rest) ⊣⊢
+      (addr ↦w b) ∗ pointsToBytes (addr + 1) rest := .rfl
+
+omit inst in
+theorem byte_offset_succ (addr : UInt32) (k : Nat) :
+    addr + UInt32.ofNat (k + 1) = (addr + 1) + UInt32.ofNat k := by
+  symm
+  rw [UInt32.ofNat_add, show UInt32.ofNat 1 = 1 from rfl]
+  rw [UInt32.add_assoc addr 1, UInt32.add_comm 1]
+
+theorem pointsToBytes_append (addr : UInt32) (xs ys : List UInt8) :
+    pointsToBytes (α := α) addr (xs ++ ys) ⊣⊢
+    pointsToBytes addr xs ∗ pointsToBytes (addr + UInt32.ofNat xs.length) ys := by
+  induction xs generalizing addr with
+  | nil => simp [pointsToBytes]; exact BI.emp_sep.symm
+  | cons x rest ih =>
+    simp only [List.cons_append, List.length_cons, pointsToBytes]
+    rw [byte_offset_succ]
+    exact (BI.sep_congr_right (ih (addr + 1))).trans BI.sep_assoc.symm
+
 -- Array ownership: n consecutive u32 elements at ptr
 -- arrayAt ptr [x₀, x₁, ..., xₙ₋₁] = pointsTo_u32 ptr x₀ ∗ pointsTo_u32 (ptr+4) x₁ ∗ ...
 def arrayAt (ptr : UInt32) (xs : List UInt32) : IProp (WasmHeapGF α) :=

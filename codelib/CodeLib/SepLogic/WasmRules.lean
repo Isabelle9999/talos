@@ -104,6 +104,26 @@ theorem elementSegmentHeapAgrees_empty
   rw [LawfulPartialMap.get?_empty] at hget
   contradiction
 
+def exceptionHeapAgrees
+    (σ : WasmExceptionMap (Nat × List Value))
+    (exns : List (Nat × List Value)) : Prop :=
+  ∀ (k : Nat) (v : Nat × List Value),
+    get? σ k = some v → exns[k]? = some v
+
+theorem exceptionHeapAgrees_empty (exns : List (Nat × List Value)) :
+    exceptionHeapAgrees (∅ : WasmExceptionMap (Nat × List Value)) exns := by
+  intro k v hget
+  rw [LawfulPartialMap.get?_empty] at hget
+  contradiction
+
+theorem exceptionHeapAgrees_append {σ : WasmExceptionMap (Nat × List Value)}
+    {exns : List (Nat × List Value)} {entry : Nat × List Value}
+    (h : exceptionHeapAgrees σ exns) : exceptionHeapAgrees σ (exns ++ [entry]) := by
+  intro k v hget
+  have hv := h k v hget
+  obtain ⟨hlt, _⟩ := getElem?_eq_some_iff.mp hv
+  rwa [List.getElem?_append_left hlt]
+
 /-- Updating an owned global in both the authoritative ghost map and the
 physical global array preserves their agreement. -/
 theorem global_store_sound
@@ -651,6 +671,56 @@ theorem store32_inBounds (σ : WasmHeapMap (Option UInt8)) (mem : Mem)
       get?_insert_ne (Ne.symm e2), get?_insert_ne (Ne.symm e1),
       get?_insert_ne (Ne.symm e0)] at h_get
     simpa [Mem.write32] using h_addresses addr' byte h_get
+
+def store16Heap (σ : WasmHeapMap (Option UInt8)) (addr value : UInt32) :
+    WasmHeapMap (Option UInt8) :=
+  insert (insert σ addr (some (u16Byte value 0))) (addr + 1) (some (u16Byte value 1))
+
+theorem store16_sound (σ : WasmHeapMap (Option UInt8)) (mem : Mem)
+    (addr value : UInt32)
+    (h1 : (addr + 1).toNat = addr.toNat + 1)
+    (h_agree : heapAgreesWithMem σ mem) :
+    heapAgreesWithMem (store16Heap σ addr value) (mem.write16 addr value) := by
+  intro addr' byte h_get
+  by_cases e1 : addr' = addr + 1
+  · subst addr'
+    simp [store16Heap, get?_insert_eq] at h_get
+    rw [← h_get]
+    simp [Mem.write16, Mem.read8, h1, u16Byte]
+    bv_decide
+  by_cases e0 : addr' = addr
+  · subst addr'
+    simp [store16Heap, get?_insert_ne (Ne.symm e1), get?_insert_eq] at h_get
+    rw [← h_get]
+    simp [Mem.write16, Mem.read8, u16Byte]
+    bv_decide
+  · simp [store16Heap, get?_insert_ne (Ne.symm e1),
+      get?_insert_ne (Ne.symm e0)] at h_get
+    have n0 : addr'.toNat ≠ addr.toNat :=
+      fun h => e0 (UInt32.toNat_inj.mp h)
+    have n1 : addr'.toNat ≠ addr.toNat + 1 := by
+      rw [← h1]
+      exact fun h => e1 (UInt32.toNat_inj.mp h)
+    simpa [Mem.write16, Mem.read8, n0, n1] using h_agree addr' byte h_get
+
+theorem store16_inBounds (σ : WasmHeapMap (Option UInt8)) (mem : Mem)
+    (addr value : UInt32)
+    (h1 : (addr + 1).toNat = addr.toNat + 1)
+    (h_addresses : heapAddressesInBounds σ mem)
+    (h_addr : addr.toNat + 2 ≤ mem.pages * 65536) :
+    heapAddressesInBounds (store16Heap σ addr value) (mem.write16 addr value) := by
+  intro addr' byte h_get
+  by_cases e1 : addr' = addr + 1
+  · subst addr'
+    simp [Mem.write16, h1]
+    omega
+  by_cases e0 : addr' = addr
+  · subst addr'
+    simp [Mem.write16]
+    omega
+  · simp [store16Heap, get?_insert_ne (Ne.symm e1),
+      get?_insert_ne (Ne.symm e0)] at h_get
+    simpa [Mem.write16] using h_addresses addr' byte h_get
 
 def store64Heap (σ : WasmHeapMap (Option UInt8)) (addr : UInt32)
     (value : UInt64) : WasmHeapMap (Option UInt8) :=
