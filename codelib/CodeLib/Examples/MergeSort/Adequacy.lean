@@ -256,17 +256,68 @@ private theorem mergeSortHeap_pointsTo [WasmHeapGS Unit]
   icases Hstep2 with ⟨Hsrc, _Hemp⟩
   iframe
 
--- post conversion: mergeSortPost implies existence of a sorted permutation
-private theorem mergeSortPost_to_exists {hlc : HasLC} [WasmSmallStepGS hlc Unit]
-    (source temporary : UInt32) (input : List UInt32) (_values : List Value) :
+/-- Walking `arrayAt` ownership against the final state interpretation
+reproduces the physical words: `readWordArray` on the terminal memory returns
+exactly the owned list. This is what lets the adequacy theorems below observe
+the sorted output in the machine's memory rather than only in ghost state. -/
+private theorem arrayAt_readWordArray {hlc : HasLC} [WasmSmallStepGS hlc Unit]
+    (store : MachineStore Unit) (steps : Nat) (obs : List StepKind) (threads : Nat)
+    (base : UInt32) (output : List UInt32)
+    (hfit : base.toNat + 4 * output.length ≤ UInt32.size) :
+    stateInterp (GF := WasmHeapGF) store steps obs threads ∗ arrayAt base output ==∗
+      stateInterp (GF := WasmHeapGF) store steps obs threads ∗ arrayAt base output ∗
+      ⌜readWordArray store.wasm.mem base output.length = output⌝ := by
+  induction output generalizing base with
+  | nil =>
+    simp only [arrayAt, List.length_nil, readWordArray]
+    iintro ⟨Hstate, Hemp⟩
+    imodintro
+    isplitl [Hstate]; iexact Hstate
+    isplitl [Hemp]; iexact Hemp
+    ipureintro; trivial
+  | cons x xs ih =>
+    simp only [arrayAt, List.length_cons]
+    simp only [List.length_cons, UInt32.size] at hfit
+    have h4_le : (base + 4 : UInt32).toNat ≤ base.toNat + 4 := by
+      have h := UInt32.toNat_add base 4
+      simp only [show (4 : UInt32).toNat = 4 from by decide] at h
+      rw [h]; exact Nat.mod_le _ _
+    have hfit' : (base + 4).toNat + 4 * xs.length ≤ UInt32.size := by
+      simp only [UInt32.size]; omega
+    iintro ⟨Hstate, Hword, Hxs⟩
+    imod stateInterp_pointsTo_u32_facts_frame store steps obs threads base x
+      (UInt32.add_ofNat_toNat_noWrap base 1 (by decide) (by omega))
+      (UInt32.add_ofNat_toNat_noWrap base 2 (by decide) (by omega))
+      (UInt32.add_ofNat_toNat_noWrap base 3 (by decide) (by omega)) $$
+        [$Hstate $Hword] with ⟨Hstate, Hword, %hfacts⟩
+    imod ih (base + 4) hfit' $$ [$Hstate $Hxs] with ⟨Hstate, Hxs, %hread⟩
+    imodintro
+    isplitl [Hstate]; iexact Hstate
+    isplitl [Hword Hxs]
+    · isplitl [Hword]; iexact Hword; iexact Hxs
+    ipureintro
+    unfold readWordArray
+    rw [hfacts.1, hread]
+
+-- post conversion: mergeSortPost pins the physical `source` array in every
+-- terminal store to a sorted permutation of the input.
+private theorem mergeSortPost_to_store {hlc : HasLC} [WasmSmallStepGS hlc Unit]
+    (source temporary : UInt32) (input : List UInt32)
+    (hbound_s : source.toNat + 4 * input.length ≤ 65536)
+    (_values : List Value) :
     mergeSortPost source temporary input ⊢
     (iprop% ∀ (store : MachineStore Unit) (_observations : List StepKind),
       stateInterp (GF := WasmHeapGF) store 0 [] 0 -∗
-      ⌜∃ output, SortedPermutation input output⌝) := by
+      ⌜∃ output, SortedPermutation input output ∧
+        readWordArray store.wasm.mem source input.length = output⌝) := by
   unfold mergeSortPost
-  iintro ⟨%output, %_sc, %hsp, %_hscr', _Hout, _Htmp'⟩ %_store %_obs _Hstate
+  iintro ⟨%output, %_sc, %hsp, %_hscr', Hout, _Htmp'⟩ %store %_obs Hstate
+  have hlen : output.length = input.length := hsp.length_eq
+  imod arrayAt_readWordArray store 0 [] 0 source output
+    (by rw [hlen]; simp only [UInt32.size]; omega) $$
+      [$Hstate $Hout] with ⟨_Hstate, _Hout, %hread⟩
   ipureintro
-  exact ⟨output, hsp⟩
+  exact ⟨output, hsp, by rw [← hlen]; exact hread⟩
 
 theorem mergesort_partiallyMeets
     (source temporary : UInt32) (input scratch : List UInt32)
@@ -275,7 +326,8 @@ theorem mergesort_partiallyMeets
     (hbound_s : source.toNat + 4 * input.length ≤ 65536)
     (hbound_t : temporary.toNat + 4 * scratch.length ≤ 65536) :
     PartiallyMeets (mergeSortConfig source temporary input scratch)
-      (fun _values _store => ∃ output, SortedPermutation input output) := by
+      (fun _values store => ∃ output, SortedPermutation input output ∧
+        readWordArray store.wasm.mem source input.length = output) := by
   apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets.{0}
     (α := Unit)
     (σ := mergeSortHeap source temporary input scratch)
@@ -292,7 +344,7 @@ theorem mergesort_partiallyMeets
       mergeSortHeap_pointsTo source temporary input scratch hvalid hscr hbound_s hbound_t $$ Hbytes
     icases Hpoints with ⟨Hsrc, Htmp⟩
     simp only [mergeSortConfig]
-    iapply wp_mono (mergeSortPost_to_exists source temporary input)
+    iapply wp_mono (mergeSortPost_to_store source temporary input hbound_s)
     iapply twp.to_wp
     iapply twp_mergeSort_total source temporary input scratch
     isplitl [Hruntime]
@@ -313,7 +365,8 @@ theorem mergesort_terminatesWith
     (hbound_s : source.toNat + 4 * input.length ≤ 65536)
     (hbound_t : temporary.toNat + 4 * scratch.length ≤ 65536) :
     TerminatesWith (mergeSortConfig source temporary input scratch)
-      (fun _values _store => ∃ output, SortedPermutation input output) := by
+      (fun _values store => ∃ output, SortedPermutation input output ∧
+        readWordArray store.wasm.mem source input.length = output) := by
   apply wasm_smallStep_heap_store_terminates.{0}
     (α := Unit)
     (σ := mergeSortHeap source temporary input scratch)
@@ -325,7 +378,7 @@ theorem mergesort_terminatesWith
       mergeSortHeap_pointsTo source temporary input scratch hvalid hscr hbound_s hbound_t $$ Hbytes
     icases Hpoints with ⟨Hsrc, Htmp⟩
     simp only [mergeSortConfig]
-    iapply twp.mono (mergeSortPost_to_exists source temporary input)
+    iapply twp.mono (mergeSortPost_to_store source temporary input hbound_s)
     iapply twp_mergeSort_total source temporary input scratch
     isplitl [Hruntime]
     · iexact Hruntime

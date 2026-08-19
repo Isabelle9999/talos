@@ -1,11 +1,53 @@
 import Project.SwapElements.SmallStepSpec
 import Project.SwapElementsOpt3.SmallStepEquivalence
 
+/-!
+# Equivalence of the two `swap_elements` builds (`opt-level = 0` vs `opt-level = 3`)
+
+Small-step port of the big-step equivalence between the two builds of
+`arr.swap(i, j)`: `mod0` (shadow stack + scratch slot, export at func 4) and
+`mod3` (fully inlined, export at func 0), stated as
+`SmallStep.ObservationallyEquivOn` over the authoritative machine.
+
+## What is observed — and a known weakening relative to the big-step theorem
+
+The observation here is the pair of **swapped elements only**:
+
+    fun store => (store.wasm.mem.read64 (elemAddr ptr i),
+                  store.wasm.mem.read64 (elemAddr ptr j))
+
+(with `elemAddr ptr k = (k <<< 3) + ptr`), plus the returned values and
+co-termination that `ObservationallyEquivOn` builds in.
+
+The big-step theorem this file replaces observed strictly more: the **whole
+caller array plus host state**, `fun st => (st.host, st.mem.words64 ptr
+len.toNat)` — i.e. it additionally guaranteed the two builds agree on every
+*untouched* element `k ∉ {i, j}`. That whole-array observation has **not**
+yet been restored in the small-step port. The reason is structural: the
+small-step contracts this proof composes
+(`Project.SwapElements.SmallStepSpec.swap_elements_distinct_terminates_correct`
+and `SmallStepEquivalence.opt3_func0_distinct_store_terminatesWith`)
+characterize only the two swapped words in the terminal store. Extending them
+to the whole array requires re-deriving both builds' store-level adequacy
+theorems with a parametric per-element `pointsTo_u64` footprint for the
+unswapped words (framed through the TWP proofs) plus a `Mem.words64`
+reconstruction of the terminal memory from those per-word facts. Until that
+is done, this equivalence says nothing about elements other than `i` and `j`;
+the host state is `Unit` here, so its agreement is trivial as well.
+
+This gap is tracked in `programs/lean/M8_MIGRATION_LEDGER.md` (Deferred).
+-/
+
 namespace Project.SwapElementsOpt3.Equivalence
 
 open Iris Iris.BI
 open Wasm Wasm.SepLogic
 
+/-- **Program equivalence of the two `swap_elements` builds**, observed at the
+two swapped elements. NOTE: this is deliberately documented as weaker than the
+retired big-step theorem, which observed the whole caller array
+(`Mem.words64 ptr len.toNat`); see the module docstring for what would be
+needed to restore that. -/
 def SwapOptEquiv : Prop :=
   ∀ (wasm : Store Unit) (ptr len i j : UInt32)
     (oldSpillPtr oldSpillLen : UInt32)

@@ -30,16 +30,18 @@ already-proved fact for both). We state that the **two programs are
 observationally equivalent to each other**: run from the canonical initial store
 on the same arguments, they agree on the whole *observable outcome*.
 
-The observation matches what a caller / host can see:
+The observation matches what a caller / host can see: the **returned values**
+— or, symmetrically, a **trap**: if one build fails to return, so does the
+other. The observation function is stated as the host state
+(`MachineStore.wasm.host`), but both modules run with host type `Unit`, so
+that component is trivially equal on any two stores; the meaningful content of
+the equivalence is co-termination with identical return values.
 
-* the **returned values** — or, symmetrically, a **trap**: if one build fails
-  to return, so does the other;
-* the **host's internal state** (`MachineStore.wasm.host`) at the end.
-
-The observation deliberately **excludes linear memory**. `opt-level = 0` dirties
-the shadow-stack scratch region (the "espurio" writes) that `opt-level = 3`
-never performs, so the two final memories genuinely differ. That difference is
-invisible to the caller and is not part of the equivalence.
+The observation deliberately **excludes linear memory**. `opt-level = 0`
+dirties the shadow-stack scratch region with spurious writes that
+`opt-level = 3` never performs, so the two final memories genuinely differ.
+That difference is invisible to the caller and is not part of the
+equivalence.
 
 ## Why the initial store is constrained
 
@@ -59,7 +61,9 @@ open Wasm
 
 For every argument pair, the two builds are `SmallStep.ObservationallyEquivOn`
 from their canonical initial configurations: they agree on the returned value /
-trap and on the host state, with linear memory left unobserved. -/
+trap, with linear memory left unobserved. (The observation function is the
+host state, which is trivial at host type `Unit`; the returned-values and
+co-termination agreement is built into `ObservationallyEquivOn` itself.) -/
 def GcdOptEquiv : Prop :=
   ∀ (a b : UInt64),
     SmallStep.ObservationallyEquivOn
