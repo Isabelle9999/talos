@@ -55,7 +55,7 @@ def LenSpec : Prop := ∀ (ptr len : UInt32),
 @[proves Project.RustArray.Spec.LenSpec]
 theorem len_correct : LenSpec := by
   intro ptr len
-  apply SmallStep.wasm_smallStep_partiallyMeets (α := Unit)
+  apply SmallStep.wasm_smallStep_partiallyMeets (α := Unit) (htags := rfl)
   intro gs
   simp only [leafConfig, func0]
   iapply SmallStep.wp_localGet rfl
@@ -74,7 +74,7 @@ def IsEmptySpec : Prop := ∀ (ptr len : UInt32),
 @[proves Project.RustArray.Spec.IsEmptySpec]
 theorem is_empty_correct : IsEmptySpec := by
   intro ptr len
-  apply SmallStep.wasm_smallStep_partiallyMeets (α := Unit)
+  apply SmallStep.wasm_smallStep_partiallyMeets (α := Unit) (htags := rfl)
   intro gs
   simp only [leafConfig, func2]
   iapply SmallStep.wp_localGet rfl
@@ -102,17 +102,19 @@ theorem is_empty_correct : IsEmptySpec := by
 def LenExportSpec : Prop :=
   ∀ (env : HostEnv Unit) (st : Store Unit) (p dataPtr len : UInt32),
     FatPtrAt st p dataPtr len →
+    st.tagIds = List.range «module».tags.length →
     SmallStep.PartiallyMeets (exportConfig env st func4 p)
       (fun rs _store => rs = [.i32 len])
 
 @[proves Project.RustArray.Spec.LenExportSpec]
 theorem len_export_correct : LenExportSpec := by
-  intro env st p dataPtr len hfat
+  intro env st p dataPtr len hfat htags
   apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 len])
   · exact fatPtrHeap_agrees hfat
   · exact fatPtrHeap_inBounds hfat
+  · simpa only [exportConfig] using htags
   · intro gs
     iintro ⟨Hbytes, Hruntime⟩
     ihave Hfat := fatPtrHeap_pointsTo p dataPtr len hfat.noWrap $$ Hbytes
@@ -161,17 +163,19 @@ theorem len_export_correct : LenExportSpec := by
 def IsEmptyExportSpec : Prop :=
   ∀ (env : HostEnv Unit) (st : Store Unit) (p dataPtr len : UInt32),
     FatPtrAt st p dataPtr len →
+    st.tagIds = List.range «module».tags.length →
     SmallStep.PartiallyMeets (exportConfig env st func5 p)
       (fun rs _store => rs = [.i32 (isEmptyValue len)])
 
 @[proves Project.RustArray.Spec.IsEmptyExportSpec]
 theorem is_empty_export_correct : IsEmptyExportSpec := by
-  intro env st p dataPtr len hfat
+  intro env st p dataPtr len hfat htags
   apply SmallStep.wasm_smallStep_heap_runtime_partiallyMeets (α := Unit)
       (σ := fatPtrHeap p dataPtr len)
       (φ := fun rs => rs = [.i32 (isEmptyValue len)])
   · exact fatPtrHeap_agrees hfat
   · exact fatPtrHeap_inBounds hfat
+  · simpa only [exportConfig] using htags
   · intro gs
     iintro ⟨Hbytes, Hruntime⟩
     ihave Hfat := fatPtrHeap_pointsTo p dataPtr len hfat.noWrap $$ Hbytes

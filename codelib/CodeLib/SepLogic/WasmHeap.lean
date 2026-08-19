@@ -568,6 +568,18 @@ theorem pointsToBytes_append (addr : UInt32) (xs ys : List UInt8) :
     rw [byte_offset_succ]
     exact (BI.sep_congr_right (ih (addr + 1))).trans BI.sep_assoc.symm
 
+/-- Owning a 32-bit word is the same as owning its four little-endian bytes. -/
+theorem pointsTo_u32_as_bytes (addr v : UInt32) :
+    pointsTo_u32 (α := α) addr v ⊣⊢
+      pointsToBytes addr [u32Byte v 0, u32Byte v 1, u32Byte v 2, u32Byte v 3] := by
+  have e11 : (1 + 1 : UInt32) = 2 := by decide
+  have e21 : (2 + 1 : UInt32) = 3 := by decide
+  have e2 : addr + 1 + 1 = addr + 2 := by rw [UInt32.add_assoc, e11]
+  have e3 : addr + 2 + 1 = addr + 3 := by rw [UInt32.add_assoc, e21]
+  simp only [pointsTo_u32, pointsToBytes, e2, e3,
+    (BI.sep_emp (PROP := IProp (WasmHeapGF α))).to_eq]
+  exact .rfl
+
 -- Array ownership: n consecutive u32 elements at ptr
 -- arrayAt ptr [x₀, x₁, ..., xₙ₋₁] = pointsTo_u32 ptr x₀ ∗ pointsTo_u32 (ptr+4) x₁ ∗ ...
 def arrayAt (ptr : UInt32) (xs : List UInt32) : IProp (WasmHeapGF α) :=

@@ -43,7 +43,7 @@ theorem func5_body_smallStep_wp
 theorem func5_smallStep (x : UInt32) :
     PartiallyMeets (func5Config x)
       (fun rs _store => rs = [.i32 x]) := by
-  apply wasm_smallStep_partiallyMeets (α := Unit)
+  apply wasm_smallStep_partiallyMeets (α := Unit) (htags := rfl)
   intro gs
   simp only [func5Config]
   iapply func5_body_smallStep_wp x []
@@ -81,7 +81,7 @@ theorem func6_body_smallStep_wp
 theorem func6_smallStep (x : UInt32) :
     PartiallyMeets (func6Config x)
       (fun rs _store => rs = [.f32 x]) := by
-  apply wasm_smallStep_partiallyMeets (α := Unit)
+  apply wasm_smallStep_partiallyMeets (α := Unit) (htags := rfl)
   intro gs
   simp only [func6Config]
   iapply func6_body_smallStep_wp x []
@@ -148,7 +148,7 @@ theorem func9_smallStep_wp
 theorem func9_smallStep (x : UInt32) :
     PartiallyMeets (func9Config x)
       (fun rs _store => rs = [.f32 (2147483647 &&& x)]) := by
-  apply wasm_smallStep_runtime_partiallyMeets (α := Unit)
+  apply wasm_smallStep_runtime_partiallyMeets (α := Unit) (htags := rfl)
   intro gs
   simp only [func9Config]
   iapply func9_smallStep_wp
@@ -231,7 +231,7 @@ theorem func4_smallStep_wp
 theorem func4_smallStep (x y : UInt32) :
     PartiallyMeets (func4Config x y)
       (fun rs _store => rs = [.f32 (func4Result x y)]) := by
-  apply wasm_smallStep_runtime_partiallyMeets (α := Unit)
+  apply wasm_smallStep_runtime_partiallyMeets (α := Unit) (htags := rfl)
   intro gs
   simp only [func4Config]
   iapply func4_smallStep_wp
@@ -393,6 +393,7 @@ theorem func1_smallStep (x : UInt32) :
   · simpa [func1Config] using func1Heap_agrees
   · simpa [func1Config] using func1Heap_inBounds
   · simpa [func1Config] using func1Globals_agree
+  · rfl
   · intro gs
     iintro ⟨Hbytes, Hglobals⟩
     ihave Hword := func1Heap_pointsTo $$ Hbytes
@@ -458,6 +459,7 @@ theorem func0_smallStep (x : UInt32) :
   · simpa [func0Config, func1Config] using func1Heap_agrees
   · simpa [func0Config, func1Config] using func1Heap_inBounds
   · simpa [func0Config, func1Config] using func1Globals_agree
+  · rfl
   · intro gs
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hword := func1Heap_pointsTo $$ Hbytes
@@ -592,6 +594,7 @@ theorem func3_smallStep (x : UInt64) :
   · simpa [func3Config] using func3Heap_agrees
   · simpa [func3Config] using func3Heap_inBounds
   · simpa [func3Config, func1Config] using func1Globals_agree
+  · rfl
   · intro gs
     iintro ⟨Hbytes, Hglobals⟩
     ihave Hword := func3Heap_pointsTo $$ Hbytes
@@ -664,6 +667,7 @@ theorem func2_smallStep (x : UInt32) :
   · simpa [func2Config, func3Config] using func3Heap_agrees
   · simpa [func2Config, func3Config] using func3Heap_inBounds
   · simpa [func2Config, func1Config] using func1Globals_agree
+  · rfl
   · intro gs
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hword := func3Heap_pointsTo $$ Hbytes
@@ -758,6 +762,7 @@ theorem func8_smallStep (x y : UInt32) :
   · simpa [func8Config, func1Config] using func1Heap_agrees
   · simpa [func8Config, func1Config] using func1Heap_inBounds
   · simpa [func8Config, func1Config] using func1Globals_agree
+  · rfl
   · intro gs
     iintro ⟨Hbytes, Hglobals⟩
     ihave Hword := func1Heap_pointsTo $$ Hbytes
@@ -823,6 +828,7 @@ theorem func7_smallStep (x y : UInt32) :
   · simpa [func7Config, func1Config] using func1Heap_agrees
   · simpa [func7Config, func1Config] using func1Heap_inBounds
   · simpa [func7Config, func1Config] using func1Globals_agree
+  · rfl
   · intro gs
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hword := func1Heap_pointsTo $$ Hbytes
@@ -1982,6 +1988,7 @@ theorem checkAbs_smallStep (x : UInt32) :
   · simpa [checkAbsConfig] using exportHeap_agrees
   · simpa [checkAbsConfig] using exportHeap_inBounds
   · simpa [checkAbsConfig, func1Config] using func1Globals_agree
+  · rfl
   · intro gs
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hmemory := exportHeap_pointsTo $$ Hbytes
@@ -2325,6 +2332,7 @@ theorem checkCopysign_smallStep (x y : UInt32) :
   · simpa [checkCopysignConfig] using exportHeap_agrees
   · simpa [checkCopysignConfig] using exportHeap_inBounds
   · simpa [checkCopysignConfig, func1Config] using func1Globals_agree
+  · rfl
   · intro gs
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hmemory := exportHeap_pointsTo $$ Hbytes

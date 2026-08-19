@@ -803,10 +803,8 @@ theorem twp_loopSortCall [WasmSmallStepGS hlc Unit]
 
 theorem recursive_sort_stronglyNormalizing
     (input : List UInt64) (hfit : Fits input) :
-    Iris.ProgramLogic.StronglyNormalizing
-      (Iris.ProgramLogic.ExprErasedStep (Expr := Expr Unit)
-        (State := MachineStore Unit) (Obs := StepKind))
-      ((concreteSortConfig recursive input).expr,
+    Relation.StronglyNormalizing Iris.ProgramLogic.Language.ErasedStep
+      ([(concreteSortConfig recursive input).expr],
         (concreteSortConfig recursive input).store) := by
   apply Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_stronglyNormalizing
     (concreteSortConfig recursive input) (inputHeap input) ∅
@@ -843,10 +841,8 @@ theorem recursive_sort_terminatesWith
 
 theorem loop_sort_stronglyNormalizing
     (input : List UInt64) (hfit : Fits input) :
-    Iris.ProgramLogic.StronglyNormalizing
-      (Iris.ProgramLogic.ExprErasedStep (Expr := Expr Unit)
-        (State := MachineStore Unit) (Obs := StepKind))
-      ((concreteSortConfig loop input).expr,
+    Relation.StronglyNormalizing Iris.ProgramLogic.Language.ErasedStep
+      ([(concreteSortConfig loop input).expr],
         (concreteSortConfig loop input).store) := by
   apply Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_stronglyNormalizing
     (concreteSortConfig loop input) (inputHeap input) ∅

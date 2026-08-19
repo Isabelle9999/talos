@@ -778,8 +778,7 @@ theorem twp_memoryFill32
     {controls : List ControlFrame} {calls : List CallFrame}
     (oldBytes : List UInt8)
     (hlen : oldBytes.length = len.toNat)
-    (hbound : ∀ store : MachineStore α,
-        destination.toNat + len.toNat ≤ store.wasm.mem.pages * 65536)
+    (hpos : 0 < len.toNat)
     (hnowrap : destination.toNat + len.toNat < 4294967296) :
     pointsToBytes destination oldBytes -∗
     (pointsToBytes destination (List.replicate oldBytes.length value.toUInt8) -∗
@@ -791,6 +790,17 @@ theorem twp_memoryFill32
   iintro Hbytes Htwp
   iapply twp_lift_step_no_fork rfl
   iintro %store %ns %obs %nt Hσ
+  ihave %Hpb : ⌜∀ i b, oldBytes[i]? = some b →
+      store.wasm.mem.read8 (destination + UInt32.ofNat i) = b ∧
+      (destination + UInt32.ofNat i).toNat < store.wasm.mem.pages * 65536⌝ $$
+      [Hσ Hbytes]
+  · imod stateInterp_pointsToBytes_agree store ns obs nt
+        destination oldBytes $$ [$Hσ $Hbytes] with %Hpb
+    ipureintro
+    exact Hpb
+  have hbound : destination.toNat + len.toNat ≤ store.wasm.mem.pages * 65536 := by
+    have := pointsToBytes_facts_bound Hpb (by omega) (by omega)
+    omega
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
   isplitr
@@ -802,7 +812,7 @@ theorem twp_memoryFill32
           { store.wasm with mem :=
               store.wasm.mem.fill destination.toNat len.toNat value.toUInt8 } },
       [], ⟨rfl, .instruction .memoryFill, rfl,
-        by simpa only [setMemory_eq] using Step.memoryFill32 (hbound store)⟩⟩
+        by simpa only [setMemory_eq] using Step.memoryFill32 hbound⟩⟩
   iintro %κ %e₂ %store₂ %forks %Hstep
   rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
   change forks = [] at hforks
@@ -819,7 +829,7 @@ theorem twp_memoryFill32
             { store.wasm with mem :=
                 store.wasm.mem.fill destination.toNat oldBytes.length value.toUInt8 } }⟩ := by
     rw [hlen]
-    simpa only [setMemory_eq] using Step.memoryFill32 (hbound store)
+    simpa only [setMemory_eq] using Step.memoryFill32 hbound
   obtain ⟨rfl, hconfig⟩ := step_deterministic expectedStep wasmStep
   have parts := Config.mk.inj hconfig
   have hexpr := parts.1
@@ -828,7 +838,7 @@ theorem twp_memoryFill32
   subst e₂
   subst store₂
   imod stateInterp_fill_bytes store ns obs nt destination oldBytes value.toUInt8
-      (by rw [hlen]; exact hbound store) (by rw [hlen]; exact hnowrap)
+      (by rw [hlen]; exact hbound) (by rw [hlen]; exact hnowrap)
       $$ [$Hσ $Hbytes] with ⟨Hσ, Hbytes⟩
   imod Hclose
   imodintro
