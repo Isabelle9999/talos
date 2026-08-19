@@ -111,7 +111,7 @@ theorem call_indirect_traps :
   apply Steps.cons .const
   apply Steps.cons .const
   exact Steps.cons
-    (.callIndirectTypeMismatch rfl rfl rfl (by decide)
+    (.callIndirectTypeMismatch rfl rfl rfl (by decide) (by decide)
       rfl rfl rfl (by native_decide))
     (Steps.refl _)
 

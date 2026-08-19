@@ -1,5 +1,16 @@
 import CodeLib.SepLogic.SmallStepAdequacy
 
+/-! # Shared-memory cross-instance example
+
+**Modeling caveat.** This example exercises the deliberate *shared-store*
+model of `Wasm.SmallStep.RuntimeEnv`: all instances execute against one
+physical `MachineStore.wasm` pool, so module W's `store8` lands in the very
+memory module R reads back. Real Wasm instantiation gives each instance its
+own address space; the theorem below is therefore a statement about the
+shared-store semantics, not one that transfers to a spec-conforming engine
+where the two modules would own disjoint memories. See the doc comments on
+`ModuleInstance` and `RuntimeEnv` in `Interpreter/Wasm/SmallStep.lean`. -/
+
 namespace Wasm.SmallStep
 
 open Iris Iris.BI Iris.ProgramLogic OFE COFE Iris.Algebra

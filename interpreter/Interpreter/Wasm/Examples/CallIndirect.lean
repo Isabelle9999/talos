@@ -109,7 +109,7 @@ theorem dispatch_steps (n : UInt32) :
       ⟨.done [.i32 (n + 1)], (dispatchConfig n).store⟩ := by
   apply Steps.cons (.localGet rfl)
   apply Steps.cons .const
-  apply Steps.cons (.callIndirect rfl rfl rfl (by decide)
+  apply Steps.cons (.callIndirect rfl rfl rfl (by decide) (by decide)
     rfl rfl rfl rfl)
   apply Steps.cons (.localGet rfl)
   apply Steps.cons .const

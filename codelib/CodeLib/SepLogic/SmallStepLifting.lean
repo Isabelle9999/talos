@@ -5594,6 +5594,8 @@ theorem wp_callIndirect
     (table : TableInst) (elementIndex functionIndex : Nat) (fn : Function)
     (signature expected : FuncType)
     (himports : ¬functionIndex < runtimeModule.imports.length)
+    (hnotforeign : Wasm.SmallStep.isForeignFunctionIndex
+      runtimeModule.imports.length functionIndex = false)
     (hfn : runtimeModule.funcs[
       functionIndex - runtimeModule.imports.length]? = some fn)
     (hsignature : runtimeModule.funcSig? functionIndex = some signature)
@@ -5644,6 +5646,9 @@ theorem wp_callIndirect
   have himports' :
       ¬functionIndex < store.runtime.currentModule.imports.length := by
     simpa only [Hmodule] using himports
+  have hnotforeign' : Wasm.SmallStep.isForeignFunctionIndex
+      store.runtime.currentModule.imports.length functionIndex = false := by
+    simpa only [Hmodule] using hnotforeign
   have hfn' : store.runtime.currentModule.funcs[
       functionIndex - store.runtime.currentModule.imports.length]? = some fn := by
     simpa only [Hmodule] using hfn
@@ -5670,7 +5675,7 @@ theorem wp_callIndirect
             control := controls
             returningInstance := store.runtime.entry } :: calls⟩,
       store, [], ⟨rfl, _, rfl, Step.callIndirect hselector Htablephys helement
-        himports' hfn' hsignature' hexpected' htype'⟩⟩
+        himports' hnotforeign' hfn' hsignature' hexpected' htype'⟩⟩
   iintro !> %e₂ %store₂ %forks %Hstep Hcredit
   rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
   change forks = [] at hforks
@@ -5678,7 +5683,7 @@ theorem wp_callIndirect
   subst obs
   obtain ⟨rfl, hconfig⟩ :=
     step_deterministic (Step.callIndirect (α := α) hselector Htablephys helement
-      himports' hfn' hsignature' hexpected' htype') wasmStep
+      himports' hnotforeign' hfn' hsignature' hexpected' htype') wasmStep
   have parts := Config.mk.inj hconfig
   have hexpr := parts.1
   have hstore := parts.2
