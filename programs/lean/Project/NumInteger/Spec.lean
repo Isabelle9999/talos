@@ -3978,7 +3978,7 @@ theorem func1_terminates (env : HostEnv Unit) (st1 : Store Unit) (a b : UInt64)
       (fun st' vs => st'.globals = st1.globals ∧
         vs = .i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) :: tail) := by
   apply TerminatesWith.of_wp_entry_for
-    (f := ⟨[.i32, .i32], [.i32, .i32, .i32, .i32, .i64, .i32, .i64, .i32], func1, [.i64], none⟩) rfl
+    (f := ⟨[.i32, .i32], [.i32, .i32, .i32, .i32, .i64, .i32, .i64, .i32], func1, [.i64], some 1⟩) rfl
   unfold func1
   wp_run
   rw [hg0]
@@ -4960,7 +4960,7 @@ theorem func0_terminates (env : HostEnv Unit) (a b : UInt64) :
   have hg : («module».initialStore : Store Unit).globals.globals[0]? = some (.i32 1048576) := by rfl
   have hp : («module».initialStore : Store Unit).mem.pages = 16 := by rfl
   apply TerminatesWith.of_wp_entry_for
-    (f := ⟨[.i64, .i64], [.i32, .i64], func0, [.i64], none⟩) rfl
+    (f := ⟨[.i64, .i64], [.i32, .i64], func0, [.i64], some 0⟩) rfl
   unfold func0
   wp_run
   rw [hg]
@@ -5012,7 +5012,7 @@ theorem gcd_u64_legacy_correct : LegacyGcdU64Spec := by
   intro env initial a b hinit
   subst hinit
   -- `func2` is the exported wrapper: pushes both args and calls `func0`.
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.i64, .i64], [], func2, [.i64], none⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.i64, .i64], [], func2, [.i64], some 0⟩) rfl
   unfold func2
   wp_run
   apply wp_call_tw (func0_terminates env a b)

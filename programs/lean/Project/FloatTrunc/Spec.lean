@@ -113,7 +113,7 @@ def func1Config (x : UInt32) : Config Unit :=
   { expr := .running
       ⟨⟨[.f32 x], [], []⟩, func1, 1, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := {} }
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm := «module».initialStore } }
 
 /-- Contextual body rule for callers of the saturating-conversion leaf.  It
@@ -157,52 +157,50 @@ def func0Config (x : UInt32) : Config Unit :=
   { expr := .running
       ⟨⟨[.f32 x], [.i32 0], []⟩, func0, 1, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := {} }
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm := «module».initialStore } }
 
 /-- The one physical word used by `naive_trunc`'s shadow-stack slot. -/
 def func0Heap : WasmHeapMap (Option UInt8) :=
-  store32Heap ∅ 1048572 0
+  store32Heap ∅ 0 1048572 0
 
 /-- Authoritative stack-pointer global used to derive the scratch address. -/
 def func0Globals : WasmGlobalMap Value :=
-  insert ∅ 0 (.i32 1048576)
-
-private theorem emptyHeap_agrees (memory : Mem) :
-    heapAgreesWithMem (∅ : WasmHeapMap (Option UInt8)) memory := by
-  intro address value hget
-  rw [get?_empty] at hget
-  contradiction
-
-private theorem emptyHeap_inBounds (memory : Mem) :
-    heapAddressesInBounds (∅ : WasmHeapMap (Option UInt8)) memory := by
-  intro address value hget
-  rw [get?_empty] at hget
-  contradiction
+  insert ∅ ⟨0, 0⟩ (.i32 1048576)
 
 theorem func0Heap_agrees :
-    heapAgreesWithMem func0Heap (func0Config 0).store.wasm.mem := by
-  unfold func0Heap func0Config
-  have hagree := store32_sound
-    (σ := (∅ : WasmHeapMap (Option UInt8)))
-    (mem := («module».initialStore : Store Unit).mem)
-    (addr := 1048572) (value := 0)
-    (by decide) (by decide) (by decide)
-    (emptyHeap_agrees _)
-  rw [Mem.write32_eq_self (by decide) (by decide) (by decide) (by decide)]
-    at hagree
-  exact hagree
+    heapAgreesWithMem func0Heap (storeResolve (func0Config 0).store) := by
+  unfold func0Heap
+  have h := store32_sound0 (∅ : WasmHeapMap (Option UInt8))
+      («module».initialStore : Store Unit).mem 1048572 0
+      (by decide) (by decide) (by decide)
+      (heapAgreesWithMem_empty _)
+  rw [Mem.write32_eq_self (by decide) (by decide) (by decide) (by decide)] at h
+  have hresolveEq : (fun id : Nat => if id = 0 then some («module».initialStore : Store Unit).mem else none) =
+      storeResolve (func0Config 0).store := by
+    funext id; by_cases h0 : id = 0
+    · simp [h0, storeResolve, func0Config]
+    · simp [h0, storeResolve, func0Config,
+        show («module».initialStore : Store Unit).extraMems = [] from by native_decide]
+  rw [← hresolveEq]
+  exact h
 
 theorem func0Heap_inBounds :
-    heapAddressesInBounds func0Heap (func0Config 0).store.wasm.mem := by
-  unfold func0Heap func0Config
-  apply store32_inBounds
-    (σ := (∅ : WasmHeapMap (Option UInt8)))
-    (mem := («module».initialStore : Store Unit).mem)
-    (addr := 1048572) (value := 0)
-    (by decide) (by decide) (by decide)
-    (emptyHeap_inBounds _)
-  decide
+    heapAddressesInBounds func0Heap (storeResolve (func0Config 0).store) := by
+  unfold func0Heap
+  have h := store32_inBounds0 (∅ : WasmHeapMap (Option UInt8))
+      («module».initialStore : Store Unit).mem 1048572 0
+      (by decide) (by decide) (by decide) (by decide)
+      (heapAddressesInBounds_empty _)
+  rw [Mem.write32_eq_self (by decide) (by decide) (by decide) (by decide)] at h
+  have hresolveEq : (fun id : Nat => if id = 0 then some («module».initialStore : Store Unit).mem else none) =
+      storeResolve (func0Config 0).store := by
+    funext id; by_cases h0 : id = 0
+    · simp [h0, storeResolve, func0Config]
+    · simp [h0, storeResolve, func0Config,
+        show («module».initialStore : Store Unit).extraMems = [] from by native_decide]
+  rw [← hresolveEq]
+  exact h
 
 theorem func0Globals_agree :
     globalHeapAgrees func0Globals (func0Config 0).store.wasm.globals := by
@@ -213,28 +211,32 @@ theorem func0Globals_agree :
     simp only [get?_insert_eq rfl] at hget
     obtain rfl := Option.some.inj hget
     rfl
-  · rw [get?_insert_ne (Ne.symm hindex), get?_empty] at hget
+  · rw [get?_insert_ne (show (⟨0, 0⟩ : GlobalKey) ≠ ⟨0, index⟩ from
+          fun h => hindex (congrArg GlobalKey.index h).symm),
+        get?_empty] at hget
     contradiction
 
 theorem func0Heap_pointsTo [WasmHeapGS Unit] :
     ([∗map] address ↦ value ∈ func0Heap,
       pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
-      pointsTo_u32 1048572 0 := by
+      pointsTo_u32 0 1048572 0 := by
   unfold func0Heap
   simpa only [BI.BigSepM.bigSepM_empty.to_eq, BI.sep_emp.to_eq] using
     (store32Heap_pointsTo (∅ : WasmHeapMap (Option UInt8))
-      1048572 0
+      0 1048572 0
       (get?_empty _) (get?_empty _) (get?_empty _) (get?_empty _)
       (by decide) (by decide) (by decide))
 
 theorem func0Globals_pointsTo [WasmGlobalGS Unit] :
     ([∗map] index ↦ value ∈ func0Globals,
       globalPointsTo index value) ⊢
-      globalPointsTo 0 (.i32 1048576) := by
+      globalPointsToAt 0 0 (.i32 1048576) := by
   unfold func0Globals
-  rw [(BI.BigSepM.bigSepM_insert (get?_empty 0)).to_eq,
+  rw [(BI.BigSepM.bigSepM_insert (get?_empty (⟨0, 0⟩ : GlobalKey))).to_eq,
     BI.BigSepM.bigSepM_empty.to_eq, BI.sep_emp.to_eq]
+  simp only [globalPointsToAt_eq]
+  rfl
 
 /-- Call-stack-polymorphic form of the common scratch load tail.  `R` frames
 all unrelated ownership, and the continuation decides whether the generated
@@ -243,8 +245,8 @@ theorem func0_tail_to_ret_smallStep_wp
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     {Φ : List Value → IProp (WasmHeapGF Unit)}
     (R : IProp (WasmHeapGF Unit)) (x word : UInt32) (calls : List CallFrame) :
-    R ∗ pointsTo_u32 1048572 word ∗
-      ▷ (R ∗ pointsTo_u32 1048572 word -∗
+    R ∗ pointsTo_u32 0 1048572 word ∗
+      ▷ (R ∗ pointsTo_u32 0 1048572 word -∗
         WP (.running
           ⟨⟨[.f32 x], [.i32 1048560], [.i32 word]⟩,
             [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) ⊢
@@ -257,7 +259,7 @@ theorem func0_tail_to_ret_smallStep_wp
   inext
   have heffective : (1048560 : UInt32) + 12 = 1048572 := by decide
   ihave HwordLater :
-      ▷ pointsTo_u32 ((1048560 : UInt32) + 12) word $$ [Hword]
+      ▷ pointsTo_u32 0 ((1048560 : UInt32) + 12) word $$ [Hword]
   · inext
     rw [heffective]
     iexact Hword
@@ -276,7 +278,7 @@ has written the authoritative scratch word. -/
 theorem func0_tail_smallStep_wp
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     (x word : UInt32) :
-    pointsTo_u32 1048572 word ⊢
+    pointsTo_u32 0 1048572 word ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 1048560], []⟩,
           [.localGet 1, .load32 12, .ret], 1, [], [], []⟩ :
@@ -306,8 +308,8 @@ theorem func0_store32_smallStep_wp
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     (oldWord newWord : UInt32) :
-    pointsTo_u32 1048572 oldWord ∗
-      ▷ (pointsTo_u32 1048572 newWord -∗
+    pointsTo_u32 0 1048572 oldWord ∗
+      ▷ (pointsTo_u32 0 1048572 newWord -∗
         WP (.running
           ⟨⟨params, localValues, values⟩,
             code, arity, remainder, controls, calls⟩ : Expr Unit) @ s; E
@@ -320,7 +322,7 @@ theorem func0_store32_smallStep_wp
   iintro ⟨Hword, Hnext⟩
   have heffective : (1048560 : UInt32) + 12 = 1048572 := by decide
   ihave HwordLater :
-      ▷ pointsTo_u32 ((1048560 : UInt32) + 12) oldWord $$ [Hword]
+      ▷ pointsTo_u32 0 ((1048560 : UInt32) + 12) oldWord $$ [Hword]
   · inext
     rw [heffective]
     iexact Hword
@@ -341,17 +343,17 @@ theorem func0_body_to_ret_smallStep_wp
     (R : IProp (WasmHeapGF Unit)) (x : UInt32) (calls : List CallFrame)
     (hreturn : ∀ word : UInt32,
       word = i32TruncSatF32S x →
-      R ∗ globalPointsTo 0 (.i32 1048576) ∗ pointsTo_u32 1048572 word ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048576) ∗ pointsTo_u32 0 1048572 word ⊢
         WP (.running
           ⟨⟨[.f32 x], [.i32 1048560], [.i32 word]⟩,
             [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048576) ∗ pointsTo_u32 1048572 0 ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048576) ∗ pointsTo_u32 0 1048572 0 ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 0], []⟩, func0, 1, [], [], calls⟩ :
           Expr Unit) @ s; E {{ Φ }} := by
     iintro ⟨HR, Hglobal, Hword⟩
     let Rglobal : IProp (WasmHeapGF Unit) :=
-      iprop(R ∗ globalPointsTo 0 (.i32 1048576))
+      iprop(R ∗ globalPointsToAt 0 0 (.i32 1048576))
     simp only [func0]
     iapply wp_globalGet $$ Hglobal
     inext
@@ -576,8 +578,8 @@ theorem func0_smallStep (x : UInt32) :
   · intro gs
     have hreturn : ∀ word : UInt32,
         word = i32TruncSatF32S x →
-        iprop(True) ∗ globalPointsTo 0 (.i32 1048576) ∗
-            pointsTo_u32 1048572 word ⊢
+        iprop(True) ∗ globalPointsToAt 0 0 (.i32 1048576) ∗
+            pointsTo_u32 0 1048572 word ⊢
           WP (.running
             ⟨⟨[.f32 x], [.i32 1048560], [.i32 word]⟩,
               [.ret], 1, [], [], []⟩ : Expr Unit)
@@ -646,7 +648,7 @@ def checkConfig (x : UInt32) : Config Unit :=
   { expr := .running
       ⟨⟨[.f32 x], [], []⟩, func2, 0, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := {} }
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm := «module».initialStore } }
 
 /-- Iris partial-correctness proof for the exported agreement check. -/
@@ -660,10 +662,11 @@ theorem check_smallStep (x : UInt32) :
   · simpa [checkConfig, func0Config] using func0Globals_agree
   · simp only [checkConfig]; decide
   · intro gs
+    simp only [checkConfig, RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hword := func0Heap_pointsTo $$ Hbytes
     ihave Hglobal := func0Globals_pointsTo $$ Hglobals
-    simp only [checkConfig, func2]
+    simp only [func2]
     iapply wp_block
     inext
     iapply wp_localGet rfl

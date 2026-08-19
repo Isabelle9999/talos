@@ -2428,7 +2428,7 @@ private theorem func1_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 1 st ([.f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func1, [.f32], none⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32], func1, [.f32], some 0⟩) rfl
   unfold func1; wp_run
   simp [hg, hp]
   have hle : (16 : UInt32) ≤ sp := UInt32.le_iff_toNat_le.mpr h16
@@ -2444,7 +2444,7 @@ private theorem func3_term (env : HostEnv Unit) (st : Store Unit) (sp : UInt32) 
     TerminatesWith env «module» 3 st ([.f64 x] ++ tail)
       (fun st' rs => ∃ v : UInt64, rs = [.f64 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f64], [.i32], func3, [.f64], none⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f64], [.i32], func3, [.f64], some 1⟩) rfl
   unfold func3; wp_run
   simp [hg, hp]
   have hle : (16 : UInt32) ≤ sp := UInt32.le_iff_toNat_le.mpr h16
@@ -2460,7 +2460,7 @@ private theorem func5_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 5 st ([.f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.i32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func5, [.i32], none⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func5, [.i32], some 3⟩) rfl
   unfold func5; wp_run
   exact ⟨x, rfl, hg, hp⟩
 
@@ -2473,7 +2473,7 @@ private theorem func6_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 6 st ([.i32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.i32], [], func6, [.f32], none⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.i32], [], func6, [.f32], some 4⟩) rfl
   unfold func6; wp_run
   exact ⟨x, rfl, hg, hp⟩
 
@@ -2486,7 +2486,7 @@ private theorem func0_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 0 st ([.f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func0, [.f32], none⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func0, [.f32], some 0⟩) rfl
   unfold func0; wp_run
   apply wp_call_tw (func1_term env st sp x [] hg hp h16 hb)
   rintro st1 vs1 ⟨v1, rfl, hg1, hp1⟩
@@ -2502,7 +2502,7 @@ private theorem func2_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 2 st ([.f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func2, [.f32], none⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func2, [.f32], some 0⟩) rfl
   unfold func2; wp_run
   apply wp_call_tw (func3_term env st sp (f64PromoteF32 x) [] hg hp h16 hb)
   rintro st3 vs3 ⟨v3, rfl, hg3, hp3⟩
@@ -2518,7 +2518,7 @@ private theorem func8_term (env : HostEnv Unit) (st : Store Unit) (sp x y : UInt
     TerminatesWith env «module» 8 st ([.f32 y, .f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32, .f32], [.i32], func8, [.f32], none⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32, .f32], [.i32], func8, [.f32], some 2⟩) rfl
   unfold func8; wp_run
   simp [hg, hp]
   have hle : (16 : UInt32) ≤ sp := UInt32.le_iff_toNat_le.mpr h16
@@ -2534,7 +2534,7 @@ private theorem func7_term (env : HostEnv Unit) (st : Store Unit) (sp x y : UInt
     TerminatesWith env «module» 7 st ([.f32 y, .f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32, .f32], [], func7, [.f32], none⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32, .f32], [], func7, [.f32], some 2⟩) rfl
   unfold func7; wp_run
   apply wp_call_tw (func8_term env st sp x y [] hg hp h16 hb)
   rintro st8 vs8 ⟨v8, rfl, hg8, hp8⟩
@@ -2550,7 +2550,7 @@ private theorem func9_term (env : HostEnv Unit) (st : Store Unit) (sp x : UInt32
     TerminatesWith env «module» 9 st ([.f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func9, [.f32], none⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [], func9, [.f32], some 0⟩) rfl
   unfold func9; wp_run
   apply wp_call_tw (func5_term env st sp x [] hg hp)
   rintro st5 vs5 ⟨v5, rfl, hg5, hp5⟩
@@ -2569,7 +2569,7 @@ private theorem func4_term (env : HostEnv Unit) (st : Store Unit) (sp x y : UInt
     TerminatesWith env «module» 4 st ([.f32 y, .f32 x] ++ tail)
       (fun st' rs => ∃ v : UInt32, rs = [.f32 v] ++ tail ∧
         st'.globals.globals[0]? = some (.i32 sp) ∧ st'.mem.pages = 16) := by
-  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32, .f32], [], func4, [.f32], none⟩) rfl
+  apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32, .f32], [], func4, [.f32], some 2⟩) rfl
   unfold func4; wp_run
   apply wp_call_tw (func5_term env st sp y [] hg hp)
   rintro st5 vs5 ⟨v5, rfl, hg5, hp5⟩
@@ -2601,7 +2601,7 @@ theorem check_terminates : FloatReinterpretSpec := by
     intro env x
     have hg : («module».initialStore : Store Unit).globals.globals[0]? = some (.i32 1048576) := rfl
     have hp : («module».initialStore : Store Unit).mem.pages = 16 := rfl
-    apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32, .i32], func10, [.i32], none⟩) rfl
+    apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32], [.i32, .i32], func10, [.i32], some 3⟩) rfl
     unfold func10; wp_run; simp only [hg]
     have hg10 : ({«module».initialStore with globals := {globals := «module».initialStore.globals.globals.set 0 (.i32 (1048576 - 16))}} : Store Unit).globals.globals[0]? = some (.i32 (1048576 - 16)) :=
       globals_set0 (1048576 - 16) hg
@@ -2641,7 +2641,7 @@ theorem check_terminates : FloatReinterpretSpec := by
     intro env x y
     have hg : («module».initialStore : Store Unit).globals.globals[0]? = some (.i32 1048576) := rfl
     have hp : («module».initialStore : Store Unit).mem.pages = 16 := rfl
-    apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32, .f32], [.i32, .i32], func11, [.i32], none⟩) rfl
+    apply TerminatesWith.of_wp_entry_for (f := ⟨[.f32, .f32], [.i32, .i32], func11, [.i32], some 5⟩) rfl
     unfold func11; wp_run; simp only [hg]
     have hg11 : ({«module».initialStore with globals := {globals := «module».initialStore.globals.globals.set 0 (.i32 (1048576 - 16))}} : Store Unit).globals.globals[0]? = some (.i32 (1048576 - 16)) :=
       globals_set0 (1048576 - 16) hg

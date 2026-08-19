@@ -18,6 +18,7 @@ namespace Project.SwapElements.SmallStepSpec
 open Iris
 open Iris.BI
 open Wasm
+open Wasm.SmallStep
 open Wasm.SepLogic
 
 /-- Public small-step contract for the non-aliasing case of the generated
@@ -34,22 +35,22 @@ def SwapElementsDistinctSpec : Prop :=
     j < len →
     ((i <<< (3 % 32)) + ptr).toNat + 8 ≤ 4294967296 →
     ((j <<< (3 % 32)) + ptr).toNat + 8 ≤ 4294967296 →
-    heapAgreesWithMem σ wasm.mem →
-    heapAddressesInBounds σ wasm.mem →
+    heapAgreesWithMem σ (storeResolve (SwapSepLogic.func4ConfigFromStore wasm ptr len i j).store) →
+    heapAddressesInBounds σ (storeResolve (SwapSepLogic.func4ConfigFromStore wasm ptr len i j).store) →
     globalHeapAgrees globalσ wasm.globals →
     (∀ [WasmHeapGS Unit],
       ([∗map] address ↦ value ∈ σ,
         pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
-      pointsTo_u64 1048552 oldScratch ∗
-      pointsTo_u32 1048568 oldSpillPtr ∗
-      pointsTo_u32 1048572 oldSpillLen ∗
-      pointsTo_u64 ((i <<< (3 % 32)) + ptr) oldA ∗
-      pointsTo_u64 ((j <<< (3 % 32)) + ptr) oldB) →
+      pointsTo_u64 0 1048552 oldScratch ∗
+      pointsTo_u32 0 1048568 oldSpillPtr ∗
+      pointsTo_u32 0 1048572 oldSpillLen ∗
+      pointsTo_u64 0 ((i <<< (3 % 32)) + ptr) oldA ∗
+      pointsTo_u64 0 ((j <<< (3 % 32)) + ptr) oldB) →
     (∀ [WasmGlobalGS Unit],
       ([∗map] index ↦ value ∈ globalσ,
         globalPointsTo index value) ⊢
-      globalPointsTo 0 (.i32 1048576)) →
+      globalPointsToAt 0 0 (.i32 1048576)) →
     Wasm.SmallStep.PartiallyMeets
       (SwapSepLogic.func4ConfigFromStore wasm ptr len i j)
       (fun values store =>
@@ -78,21 +79,21 @@ def SwapElementsAliasSpec : Prop :=
     (globalσ : WasmGlobalMap Value),
     i < len →
     ((i <<< (3 % 32)) + ptr).toNat + 8 ≤ 4294967296 →
-    heapAgreesWithMem σ wasm.mem →
-    heapAddressesInBounds σ wasm.mem →
+    heapAgreesWithMem σ (storeResolve (SwapSepLogic.func4ConfigFromStore wasm ptr len i i).store) →
+    heapAddressesInBounds σ (storeResolve (SwapSepLogic.func4ConfigFromStore wasm ptr len i i).store) →
     globalHeapAgrees globalσ wasm.globals →
     (∀ [WasmHeapGS Unit],
       ([∗map] address ↦ value ∈ σ,
         pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
-      pointsTo_u64 1048552 oldScratch ∗
-      pointsTo_u32 1048568 oldSpillPtr ∗
-      pointsTo_u32 1048572 oldSpillLen ∗
-      pointsTo_u64 ((i <<< (3 % 32)) + ptr) oldValue) →
+      pointsTo_u64 0 1048552 oldScratch ∗
+      pointsTo_u32 0 1048568 oldSpillPtr ∗
+      pointsTo_u32 0 1048572 oldSpillLen ∗
+      pointsTo_u64 0 ((i <<< (3 % 32)) + ptr) oldValue) →
     (∀ [WasmGlobalGS Unit],
       ([∗map] index ↦ value ∈ globalσ,
         globalPointsTo index value) ⊢
-      globalPointsTo 0 (.i32 1048576)) →
+      globalPointsToAt 0 0 (.i32 1048576)) →
     Wasm.SmallStep.PartiallyMeets
       (SwapSepLogic.func4ConfigFromStore wasm ptr len i i)
       (fun values store =>
