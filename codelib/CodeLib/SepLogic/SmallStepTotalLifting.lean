@@ -21,7 +21,6 @@ variable [Λ : Language Expr State Obs Val]
 variable {GF : BundledGFunctors} [ι : IrisGS_gen hlc Expr GF]
 variable {s : Stuckness} {E : CoPset}
 variable {e₁ : Expr} {Φ : Val → IProp GF}
-
 /-- Total lifting for steps that fork no threads. Lived in iris-lean's
 `TotalLifting` until iris-lean#554 was merged without it; ported verbatim
 (modulo the upstream rename `twp_lift_step` → `twp.lift_step`). -/
@@ -819,42 +818,19 @@ theorem twp_store32
   · iapply Htwp
     iexact Hword
 
-<<<<<<< HEAD
-theorem twp_geS
-=======
-theorem twp_and
-    {params localValues values : List Value}
-    {lhs rhs : UInt32} {code : Program} {arity : Nat}
-    {remainder : List Value} {controls : List ControlFrame}
-    {calls : List CallFrame} :
-    WP (.running
-      ⟨⟨params, localValues, .i32 (lhs &&& rhs) :: values⟩,
-        code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
-        [{ Φ }] ⊢
-    WP (.running
-      ⟨⟨params, localValues, .i32 rhs :: .i32 lhs :: values⟩,
-        .and :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
-      [{ Φ }] :=
-  twp_pureStep _ _ _ (fun _ => Step.and)
 
-theorem twp_ne
->>>>>>> origin/main
+theorem twp_geS
     {params localValues values : List Value}
     {lhs rhs result : UInt32} {code : Program} {arity : Nat}
     {remainder : List Value} {controls : List ControlFrame}
     {calls : List CallFrame}
-<<<<<<< HEAD
     (hresult : result = if lhs.toInt32 ≥ rhs.toInt32 then 1 else 0) :
-=======
-    (hresult : result = if lhs ≠ rhs then 1 else 0) :
->>>>>>> origin/main
     WP (.running
       ⟨⟨params, localValues, .i32 result :: values⟩,
         code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
         [{ Φ }] ⊢
     WP (.running
       ⟨⟨params, localValues, .i32 rhs :: .i32 lhs :: values⟩,
-<<<<<<< HEAD
         .geS :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
       [{ Φ }] :=
   twp_pureStep _ _ _ (fun _ => Step.geS hresult)
@@ -868,8 +844,8 @@ theorem twp_memoryFill32
     (hlen : oldBytes.length = len.toNat)
     (hpos : 0 < len.toNat)
     (hnowrap : destination.toNat + len.toNat < 4294967296) :
-    pointsToBytes destination oldBytes -∗
-    (pointsToBytes destination (List.replicate oldBytes.length value.toUInt8) -∗
+    pointsToBytes 0 destination oldBytes -∗
+    (pointsToBytes 0 destination (List.replicate oldBytes.length value.toUInt8) -∗
       WP (Expr.running ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩ : Expr α) @ s; E [{ Φ }]) -∗
     WP (Expr.running ⟨⟨params, localValues,
@@ -889,7 +865,275 @@ theorem twp_memoryFill32
   have hbound : destination.toNat + len.toNat ≤ store.wasm.mem.pages * 65536 := by
     have := pointsToBytes_facts_bound Hpb (by omega) (by omega)
     omega
-=======
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
+    exact ⟨.running ⟨⟨params, localValues, values⟩,
+        code, arity, remainder, controls, calls⟩,
+      { store with wasm :=
+          { store.wasm with mem :=
+              store.wasm.mem.fill destination.toNat len.toNat value.toUInt8 } },
+      [], ⟨rfl, .instruction .memoryFill, rfl,
+        by simpa only [setMemory_eq] using Step.memoryFill32 hbound⟩⟩
+  iintro %κ %e₂ %store₂ %forks %Hstep
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst κ
+  have expectedStep : Step
+      ⟨.running ⟨⟨params, localValues,
+          .i32 len :: .i32 value :: .i32 destination :: values⟩,
+          .memoryFill :: code, arity, remainder, controls, calls⟩, store⟩
+      (.instruction .memoryFill)
+      ⟨.running ⟨⟨params, localValues, values⟩,
+          code, arity, remainder, controls, calls⟩,
+        { store with wasm :=
+            { store.wasm with mem :=
+                store.wasm.mem.fill destination.toNat oldBytes.length value.toUInt8 } }⟩ := by
+    rw [hlen]
+    simpa only [setMemory_eq] using Step.memoryFill32 hbound
+  obtain ⟨rfl, hconfig⟩ := step_deterministic expectedStep wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  imod stateInterp_fill_bytes store ns obs nt destination oldBytes value.toUInt8
+      (by rw [hlen]; exact hbound) (by rw [hlen]; exact hnowrap)
+      $$ [$Hσ $Hbytes] with ⟨Hσ, Hbytes⟩
+  imod Hclose
+  imodintro
+  isplit
+  · ipureintro
+    rfl
+  isplit
+  · ipureintro
+    rfl
+  isplitl [Hσ]
+  · iexact Hσ
+  · iapply Htwp
+    iexact Hbytes
+
+/-- `throw` instruction (total form).  Tag identity is supplied by the
+persistent `tagTableOwn` fragment handed out at adequacy setup, not by an
+invariant of the state interpretation: the rule only needs `tagIndex` to be
+canonical in the entry instance's tag table, which stays true when the machine
+tag table carries further entries from other registered modules. -/
+theorem twp_throwI
+    (runtimeModule : Module) (instanceId : ModuleInstanceId) (tagIndex : Nat) {tagType : FuncType}
+    {tagIds : List Nat}
+    {params localValues values : List Value}
+    (htag : runtimeModule.tags[tagIndex]? = some tagType)
+    (hcanonical : TagIndexCanonical tagIds tagIndex)
+    (hargs : tagType.params.length ≤ values.length)
+    {code : Program} {arity : Nat} {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame} :
+    runtimeModuleOwn instanceId runtimeModule -∗
+    tagTableOwn tagIds -∗
+    (runtimeModuleOwn instanceId runtimeModule -∗
+        WP (.running
+          ⟨⟨params, localValues, values.drop tagType.params.length⟩,
+            [], arity, remainder,
+            { kind := .throwing tagIndex (values.take tagType.params.length)
+              paramArity := 0
+              resultArity := 0
+              body := []
+              continuation := []
+              belowStack := [] } :: controls,
+            calls⟩ : Expr α) @ s; E [{ Φ }]) -∗
+    WP (.running
+      ⟨⟨params, localValues, values⟩,
+        .throwI tagIndex :: code, arity, remainder, controls, calls⟩ :
+        Expr α) @ s; E [{ Φ }] := by
+  iintro Hruntime Htags Hwp
+  iapply twp_lift_step_no_fork rfl
+  iintro %store %ns %obs %nt Hσ
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$ [Hσ Hruntime]
+  · imod stateInterp_runtimeModule_agree store ns obs nt
+        instanceId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+    ipureintro
+    exact Hmodule
+  have htag' : store.runtime.currentModule.tags[tagIndex]? = some tagType := by
+    simpa only [Hmodule] using htag
+  ihave %Hprefix : ⌜tagIds.IsPrefix store.wasm.tagIds⌝ $$ [Hσ Htags]
+  · imod stateInterp_tagTable_prefix store ns obs nt tagIds $$ [$Hσ $Htags]
+      with %Hprefix
+    ipureintro
+    exact Hprefix
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
+    exact ⟨_, store, [], ⟨rfl, .instruction (.throwI tagIndex), rfl,
+        Step.throwI htag' hargs⟩⟩
+  iintro %κ %e₂ %store₂ %forks %Hstep
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst κ
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic (Step.throwI (α := α) htag' hargs) wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  imod Hclose
+  imodintro
+  isplit
+  · ipureintro
+    rfl
+  isplit
+  · ipureintro
+    rfl
+  isplitl [Hσ]
+  · iexact Hσ
+  · have hcanonicalStore :=
+      (canonicalTagIndex_eq store tagIndex).trans
+        (canonicalTagIndex_of_prefix store tagIds tagIndex Hprefix hcanonical)
+    rw [hcanonicalStore]
+    iapply Hwp
+    iexact Hruntime
+
+/-- Total-correctness counterpart of `wp_catchException`, and restricted the
+same way: `hclause` limits it to the ref-less `.catch` / `.catchAll` clauses,
+because for `.catchRef` / `.catchAllRef` the store-universal `htarget` premise
+is unsatisfiable (`prepareCatch` puts `store.wasm.exns.length` into the pushed
+`exnref`). -/
+theorem twp_catchException
+    {locals : Locals} {tag : Nat} {arguments : List Value}
+    {throwingFrame : ControlFrame}
+    {catches : List CatchClause}
+    {handlerParamArity handlerResultArity : Nat}
+    {handlerBody handlerContinuation : Program}
+    {belowStack : List Value}
+    {outer : List ControlFrame} {arity : Nat} {remainder : List Value}
+    {calls : List CallFrame}
+    {clause : CatchClause}
+    {targetCode : Program} {targetControl : List ControlFrame}
+    {targetValues : List Value}
+    (hclause : (∃ t l, clause = .catch t l) ∨ (∃ l, clause = .catchAll l))
+    (htarget : ∀ store : MachineStore α,
+        branchTarget? arity (catchLabel clause) outer
+          ((prepareCatch tag arguments clause store).1 ++ belowStack) =
+          some (targetCode, targetControl, targetValues))
+    (hthrow : throwingFrame.kind = .throwing tag arguments)
+    (hmatch : matchingCatch? tag catches = some clause) :
+    WP (.running ⟨{ locals with values := targetValues }, targetCode,
+            arity, remainder, targetControl, calls⟩ : Expr α) @ s; E [{ Φ }] ⊢
+    WP (.running ⟨locals, [], arity, remainder,
+            throwingFrame ::
+              { kind := .tryTable catches, paramArity := handlerParamArity,
+                resultArity := handlerResultArity, body := handlerBody,
+                continuation := handlerContinuation, belowStack } :: outer,
+            calls⟩ : Expr α) @ s; E [{ Φ }] := by
+  iintro Hwp
+  iapply twp_lift_step_no_fork rfl
+  iintro %store %ns %obs %nt Hσ
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
+    exact ⟨.running ⟨{ locals with values := targetValues }, targetCode,
+        arity, remainder, targetControl, calls⟩,
+      (prepareCatch tag arguments clause store).2, [],
+      ⟨rfl, .administrative .catchException, rfl,
+        Step.catchException hthrow hmatch (htarget store)⟩⟩
+  iintro %κ %e₂ %store₂ %forks %Hstep
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst κ
+  have expectedStep : Step
+      ⟨.running ⟨locals, [], arity, remainder,
+          throwingFrame ::
+            { kind := .tryTable catches, paramArity := handlerParamArity,
+              resultArity := handlerResultArity, body := handlerBody,
+              continuation := handlerContinuation, belowStack } :: outer,
+          calls⟩, store⟩
+      (.administrative .catchException)
+      ⟨.running ⟨{ locals with values := targetValues }, targetCode,
+          arity, remainder, targetControl, calls⟩,
+        (prepareCatch tag arguments clause store).2⟩ :=
+    Step.catchException hthrow hmatch (htarget store)
+  obtain ⟨rfl, hconfig⟩ := step_deterministic expectedStep wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  imod Hclose
+  imodintro
+  isplit
+  · ipureintro
+    rfl
+  isplit
+  · ipureintro
+    rfl
+  isplitl [Hσ]
+  · have hstore_eq : (prepareCatch tag arguments clause store).2 = store := by
+      rcases hclause with ⟨t, l, rfl⟩ | ⟨l, rfl⟩ <;> rfl
+    rw [hstore_eq]
+    iexact Hσ
+  · iexact Hwp
+
+theorem twp_tryTable
+    {locals : Locals} {paramArity resultArity arity : Nat}
+    {catches : List CatchClause} {body code : Program}
+    {paramTypes resultTypes : List ValueType}
+    {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame} :
+    let frame : ControlFrame :=
+      { kind := .tryTable catches
+        paramArity
+        resultArity
+        body
+        continuation := code
+        belowStack := locals.values.drop paramArity }
+    WP (.running
+      ⟨locals, body, arity, remainder, frame :: controls, calls⟩ :
+        Expr α) @ s; E [{ Φ }] ⊢
+    WP (.running
+      ⟨locals, .tryTable paramArity resultArity catches body paramTypes resultTypes :: code,
+        arity, remainder, controls, calls⟩ : Expr α) @ s; E [{ Φ }] := by
+  dsimp only
+  exact twp_pureStep _ _ _ (fun _ => Step.tryTable)
+
+
+theorem twp_and
+    {params localValues values : List Value}
+    {lhs rhs : UInt32} {code : Program} {arity : Nat}
+    {remainder : List Value} {controls : List ControlFrame}
+    {calls : List CallFrame} :
+    WP (.running
+      ⟨⟨params, localValues, .i32 (lhs &&& rhs) :: values⟩,
+        code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+        [{ Φ }] ⊢
+    WP (.running
+      ⟨⟨params, localValues, .i32 rhs :: .i32 lhs :: values⟩,
+        .and :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+      [{ Φ }] :=
+  twp_pureStep _ _ _ (fun _ => Step.and)
+
+theorem twp_ne
+    {params localValues values : List Value}
+    {lhs rhs result : UInt32} {code : Program} {arity : Nat}
+    {remainder : List Value} {controls : List ControlFrame}
+    {calls : List CallFrame}
+    (hresult : result = if lhs ≠ rhs then 1 else 0) :
+    WP (.running
+      ⟨⟨params, localValues, .i32 result :: values⟩,
+        code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
+        [{ Φ }] ⊢
+    WP (.running
+      ⟨⟨params, localValues, .i32 rhs :: .i32 lhs :: values⟩,
         .ne :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
       [{ Φ }] :=
   twp_pureStep _ _ _ (fun _ => Step.ne hresult)
@@ -921,62 +1165,29 @@ theorem twp_globalGet
         [$Hσ $Hglobal] with %Hget
     ipureintro
     exact Hget
->>>>>>> origin/main
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
   isplitr
   · ipureintro
     cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
-<<<<<<< HEAD
-    exact ⟨.running ⟨⟨params, localValues, values⟩,
-        code, arity, remainder, controls, calls⟩,
-      { store with wasm :=
-          { store.wasm with mem :=
-              store.wasm.mem.fill destination.toNat len.toNat value.toUInt8 } },
-      [], ⟨rfl, .instruction .memoryFill, rfl,
-        by simpa only [setMemory_eq] using Step.memoryFill32 hbound⟩⟩
-=======
     exact ⟨.running ⟨⟨params, localValues, value :: values⟩,
         code, arity, remainder, controls, calls⟩,
       store, [], ⟨rfl, _, rfl, Step.globalGet (by
         simpa [globalAt?, hcanonical] using Hget)⟩⟩
->>>>>>> origin/main
   iintro %κ %e₂ %store₂ %forks %Hstep
   rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
   change forks = [] at hforks
   subst forks
   subst κ
-<<<<<<< HEAD
-  have expectedStep : Step
-      ⟨.running ⟨⟨params, localValues,
-          .i32 len :: .i32 value :: .i32 destination :: values⟩,
-          .memoryFill :: code, arity, remainder, controls, calls⟩, store⟩
-      (.instruction .memoryFill)
-      ⟨.running ⟨⟨params, localValues, values⟩,
-          code, arity, remainder, controls, calls⟩,
-        { store with wasm :=
-            { store.wasm with mem :=
-                store.wasm.mem.fill destination.toNat oldBytes.length value.toUInt8 } }⟩ := by
-    rw [hlen]
-    simpa only [setMemory_eq] using Step.memoryFill32 hbound
-  obtain ⟨rfl, hconfig⟩ := step_deterministic expectedStep wasmStep
-=======
   obtain ⟨rfl, hconfig⟩ :=
     step_deterministic (Step.globalGet (α := α) (by
       simpa [globalAt?, hcanonical] using Hget)) wasmStep
->>>>>>> origin/main
   have parts := Config.mk.inj hconfig
   have hexpr := parts.1
   have hstore := parts.2
   simp only at hexpr hstore
   subst e₂
   subst store₂
-<<<<<<< HEAD
-  imod stateInterp_fill_bytes store ns obs nt destination oldBytes value.toUInt8
-      (by rw [hlen]; exact hbound) (by rw [hlen]; exact hnowrap)
-      $$ [$Hσ $Hbytes] with ⟨Hσ, Hbytes⟩
-=======
->>>>>>> origin/main
   imod Hclose
   imodintro
   isplit
@@ -988,56 +1199,6 @@ theorem twp_globalGet
   isplitl [Hσ]
   · iexact Hσ
   · iapply Htwp
-<<<<<<< HEAD
-    iexact Hbytes
-
-/-- `throw` instruction (total form).  Tag identity is supplied by the
-persistent `tagTableOwn` fragment handed out at adequacy setup, not by an
-invariant of the state interpretation: the rule only needs `tagIndex` to be
-canonical in the entry instance's tag table, which stays true when the machine
-tag table carries further entries from other registered modules. -/
-theorem twp_throwI
-    (runtimeModule : Module) (tagIndex : Nat) {tagType : FuncType}
-    {tagIds : List Nat}
-    {params localValues values : List Value}
-    (htag : runtimeModule.tags[tagIndex]? = some tagType)
-    (hcanonical : TagIndexCanonical tagIds tagIndex)
-    (hargs : tagType.params.length ≤ values.length)
-    {code : Program} {arity : Nat} {remainder : List Value}
-    {controls : List ControlFrame} {calls : List CallFrame} :
-    runtimeModuleOwn runtimeModule -∗
-    tagTableOwn tagIds -∗
-    (runtimeModuleOwn runtimeModule -∗
-        WP (.running
-          ⟨⟨params, localValues, values.drop tagType.params.length⟩,
-            [], arity, remainder,
-            { kind := .throwing tagIndex (values.take tagType.params.length)
-              paramArity := 0
-              resultArity := 0
-              body := []
-              continuation := []
-              belowStack := [] } :: controls,
-            calls⟩ : Expr α) @ s; E [{ Φ }]) -∗
-    WP (.running
-      ⟨⟨params, localValues, values⟩,
-        .throwI tagIndex :: code, arity, remainder, controls, calls⟩ :
-        Expr α) @ s; E [{ Φ }] := by
-  iintro Hruntime Htags Hwp
-  iapply twp_lift_step_no_fork rfl
-  iintro %store %ns %obs %nt Hσ
-  ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$ [Hσ Hruntime]
-  · imod stateInterp_runtimeModule_agree store ns obs nt
-        runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
-    ipureintro
-    exact Hmodule
-  have htag' : store.runtime.module.tags[tagIndex]? = some tagType := by
-    simpa only [Hmodule] using htag
-  ihave %Hprefix : ⌜tagIds.IsPrefix store.wasm.tagIds⌝ $$ [Hσ Htags]
-  · imod stateInterp_tagTable_prefix store ns obs nt tagIds $$ [$Hσ $Htags]
-      with %Hprefix
-    ipureintro
-    exact Hprefix
-=======
     iexact Hglobal
 
 theorem twp_scalarFloat0
@@ -1130,32 +1291,22 @@ theorem twp_f32Load
   have hbound : address.toNat + offset.toNat + 4 ≤
       store.wasm.mem.pages * 65536 := by
     simpa only [hnowrap] using HinBounds
->>>>>>> origin/main
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
   isplitr
   · ipureintro
     cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
-<<<<<<< HEAD
-    exact ⟨_, store, [], ⟨rfl, .instruction (.throwI tagIndex), rfl,
-        Step.throwI htag' hargs⟩⟩
-=======
     exact ⟨.running
         ⟨⟨params, localValues, .f32 word :: values⟩,
           code, arity, remainder, controls, calls⟩,
       store, [], ⟨rfl, .instruction (.f32Load offset), rfl,
         by simpa [Hread] using
           Step.f32Load (α := α) (address := .i32 address) rfl hbound⟩⟩
->>>>>>> origin/main
   iintro %κ %e₂ %store₂ %forks %Hstep
   rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
   change forks = [] at hforks
   subst forks
   subst κ
-<<<<<<< HEAD
-  obtain ⟨rfl, hconfig⟩ :=
-    step_deterministic (Step.throwI (α := α) htag' hargs) wasmStep
-=======
   have expectedStep : Step
       ⟨.running
         ⟨⟨params, localValues, .i32 address :: values⟩,
@@ -1169,7 +1320,6 @@ theorem twp_f32Load
       (Step.f32Load (α := α) (address := .i32 address) rfl hbound)
   obtain ⟨rfl, hconfig⟩ :=
     step_deterministic expectedStep wasmStep
->>>>>>> origin/main
   have parts := Config.mk.inj hconfig
   have hexpr := parts.1
   have hstore := parts.2
@@ -1186,47 +1336,6 @@ theorem twp_f32Load
     rfl
   isplitl [Hσ]
   · iexact Hσ
-<<<<<<< HEAD
-  · have hcanonicalStore :=
-      (canonicalTagIndex_eq store tagIndex).trans
-        (canonicalTagIndex_of_prefix store tagIds tagIndex Hprefix hcanonical)
-    rw [hcanonicalStore]
-    iapply Hwp
-    iexact Hruntime
-
-theorem twp_catchException
-    {locals : Locals} {tag : Nat} {arguments : List Value}
-    {throwingFrame : ControlFrame}
-    {catches : List CatchClause}
-    {handlerParamArity handlerResultArity : Nat}
-    {handlerBody handlerContinuation : Program}
-    {belowStack : List Value}
-    {outer : List ControlFrame} {arity : Nat} {remainder : List Value}
-    {calls : List CallFrame}
-    {clause : CatchClause}
-    {targetCode : Program} {targetControl : List ControlFrame}
-    {targetValues : List Value}
-    (htarget : ∀ store : MachineStore α,
-        branchTarget? arity
-          (match clause with
-            | .catch _ l | .catchRef _ l | .catchAll l | .catchAllRef l => l)
-          outer
-          ((prepareCatch tag arguments clause store).1 ++ belowStack) =
-          some (targetCode, targetControl, targetValues))
-    (hthrow : throwingFrame.kind = .throwing tag arguments)
-    (hmatch : matchingCatch? tag catches = some clause) :
-    WP (.running ⟨{ locals with values := targetValues }, targetCode,
-            arity, remainder, targetControl, calls⟩ : Expr α) @ s; E [{ Φ }] ⊢
-    WP (.running ⟨locals, [], arity, remainder,
-            throwingFrame ::
-              { kind := .tryTable catches, paramArity := handlerParamArity,
-                resultArity := handlerResultArity, body := handlerBody,
-                continuation := handlerContinuation, belowStack } :: outer,
-            calls⟩ : Expr α) @ s; E [{ Φ }] := by
-  iintro Hwp
-  iapply twp_lift_step_no_fork rfl
-  iintro %store %ns %obs %nt Hσ
-=======
   · iapply Htwp
     iexact Hword
 
@@ -1268,19 +1377,11 @@ theorem twp_f32Store
   have hbound : address.toNat + offset.toNat + 4 ≤
       store.wasm.mem.pages * 65536 := by
     simpa only [hnowrap] using Hfacts.2
->>>>>>> origin/main
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
   isplitr
   · ipureintro
     cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
-<<<<<<< HEAD
-    exact ⟨.running ⟨{ locals with values := targetValues }, targetCode,
-        arity, remainder, targetControl, calls⟩,
-      (prepareCatch tag arguments clause store).2, [],
-      ⟨rfl, .administrative .catchException, rfl,
-        Step.catchException hthrow hmatch (htarget store)⟩⟩
-=======
     exact ⟨.running
         ⟨⟨params, localValues, values⟩,
           code, arity, remainder, controls, calls⟩,
@@ -1290,27 +1391,12 @@ theorem twp_f32Store
       [], ⟨rfl, .instruction (.f32Store offset), rfl,
         by simpa only [Wasm.SmallStep.setMemory_eq] using
           Step.f32Store (address := .i32 address) rfl hbound⟩⟩
->>>>>>> origin/main
   iintro %κ %e₂ %store₂ %forks %Hstep
   rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
   change forks = [] at hforks
   subst forks
   subst κ
   have expectedStep : Step
-<<<<<<< HEAD
-      ⟨.running ⟨locals, [], arity, remainder,
-          throwingFrame ::
-            { kind := .tryTable catches, paramArity := handlerParamArity,
-              resultArity := handlerResultArity, body := handlerBody,
-              continuation := handlerContinuation, belowStack } :: outer,
-          calls⟩, store⟩
-      (.administrative .catchException)
-      ⟨.running ⟨{ locals with values := targetValues }, targetCode,
-          arity, remainder, targetControl, calls⟩,
-        (prepareCatch tag arguments clause store).2⟩ :=
-    Step.catchException hthrow hmatch (htarget store)
-  obtain ⟨rfl, hconfig⟩ := step_deterministic expectedStep wasmStep
-=======
       ⟨.running
         ⟨⟨params, localValues, .f32 value :: .i32 address :: values⟩,
           .f32Store offset :: code, arity, remainder, controls, calls⟩,
@@ -1526,7 +1612,6 @@ theorem twp_f64Load
       (Step.f64Load (α := α) (address := .i32 address) rfl hbound)
   obtain ⟨rfl, hconfig⟩ :=
     step_deterministic expectedStep wasmStep
->>>>>>> origin/main
   have parts := Config.mk.inj hconfig
   have hexpr := parts.1
   have hstore := parts.2
@@ -1542,71 +1627,6 @@ theorem twp_f64Load
   · ipureintro
     rfl
   isplitl [Hσ]
-<<<<<<< HEAD
-  · icases (stateInterp_eq store ns obs nt).mp $$ Hσ with
-        ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ, %exceptionσ,
-          Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hexceptions, Hruntime,
-          HhostState, %Hfacts⟩
-    have hpreserve :
-        (prepareCatch tag arguments clause store).2.wasm.mem = store.wasm.mem ∧
-        (prepareCatch tag arguments clause store).2.wasm.globals = store.wasm.globals ∧
-        (prepareCatch tag arguments clause store).2.wasm.dataSegments =
-          store.wasm.dataSegments ∧
-        (prepareCatch tag arguments clause store).2.wasm.tables = store.wasm.tables ∧
-        (prepareCatch tag arguments clause store).2.wasm.elementSegments =
-          store.wasm.elementSegments := by
-      rcases clause with _ | _ | _ | _ <;> simp [prepareCatch_eq]
-    have hruntime :
-        (prepareCatch tag arguments clause store).2.runtime.module =
-          store.runtime.module := by
-      rcases clause with _ | _ | _ | _ <;> simp [prepareCatch_eq]
-    have hhost :
-        (prepareCatch tag arguments clause store).2.wasm.host = store.wasm.host := by
-      rcases clause with _ | _ | _ | _ <;> simp [prepareCatch_eq]
-    have htagIds :
-        (prepareCatch tag arguments clause store).2.wasm.tagIds =
-          store.wasm.tagIds := by
-      rcases clause with _ | _ | _ | _ <;> simp [prepareCatch_eq]
-    iapply (stateInterp_eq (prepareCatch tag arguments clause store).2 ns obs nt).mpr
-    iexists σ; iexists globalσ; iexists dataSegmentσ; iexists tableσ; iexists elementSegmentσ
-    iexists exceptionσ
-    simp only [hpreserve.1, hpreserve.2.1, hpreserve.2.2.1, hpreserve.2.2.2.1,
-      hpreserve.2.2.2.2, hruntime, hhost, htagIds]
-    iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HhostState
-    ipureintro
-    refine ⟨Hfacts.1, Hfacts.2.1, Hfacts.2.2.1, Hfacts.2.2.2.1, Hfacts.2.2.2.2.1,
-      Hfacts.2.2.2.2.2.1, ?_⟩
-    rcases clause with _ | _ | _ | _ <;> simp [prepareCatch_eq]
-    · exact Hfacts.2.2.2.2.2.2
-    · exact exceptionHeapAgrees_append Hfacts.2.2.2.2.2.2
-    · exact Hfacts.2.2.2.2.2.2
-    · exact exceptionHeapAgrees_append Hfacts.2.2.2.2.2.2
-  · iexact Hwp
-
-theorem twp_tryTable
-    {locals : Locals} {paramArity resultArity arity : Nat}
-    {catches : List CatchClause} {body code : Program}
-    {paramTypes resultTypes : List ValueType}
-    {remainder : List Value}
-    {controls : List ControlFrame} {calls : List CallFrame} :
-    let frame : ControlFrame :=
-      { kind := .tryTable catches
-        paramArity
-        resultArity
-        body
-        continuation := code
-        belowStack := locals.values.drop paramArity }
-    WP (.running
-      ⟨locals, body, arity, remainder, frame :: controls, calls⟩ :
-        Expr α) @ s; E [{ Φ }] ⊢
-    WP (.running
-      ⟨locals, .tryTable paramArity resultArity catches body paramTypes resultTypes :: code,
-        arity, remainder, controls, calls⟩ : Expr α) @ s; E [{ Φ }] := by
-  dsimp only
-  exact twp_pureStep _ _ _ (fun _ => Step.tryTable)
-
-
-=======
   · iexact Hσ
   · iapply Htwp
     iexact Hword
@@ -2394,6 +2414,92 @@ theorem twp_gtUI64
         .gtUI64 :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
       [{ Φ }] :=
   twp_pureStep _ _ _ (fun _ => Step.gtUI64 hresult)
->>>>>>> origin/main
+
+/-- `i32.load` at offset 0, phrased directly on `addr` rather than
+`addr + 0`, which keeps Iris's unifier from having to see through the
+offset addition.  Relocated here from `SmallStepAdequacy`, where it sat
+among the adequacy proofs despite being an ordinary lifting rule. -/
+theorem twp_load32_addr
+    {params localValues values : List Value}
+    {addr : UInt32} {code : Program} {arity : Nat}
+    {remainder : List Value} {controls : List ControlFrame}
+    {calls : List CallFrame}
+    (word : UInt32)
+    (h1 : (addr + 1 : UInt32).toNat = addr.toNat + 1)
+    (h2 : (addr + 2 : UInt32).toNat = addr.toNat + 2)
+    (h3 : (addr + 3 : UInt32).toNat = addr.toNat + 3) :
+    let current : ThreadState α :=
+      ⟨⟨params, localValues, .i32 addr :: values⟩,
+        .load32 0 :: code, arity, remainder, controls, calls⟩
+    let next : ThreadState α :=
+      ⟨⟨params, localValues, .i32 word :: values⟩,
+        code, arity, remainder, controls, calls⟩
+    pointsTo_u32 0 addr word -∗
+    (pointsTo_u32 0 addr word -∗
+      WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
+      WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
+  dsimp only
+  iintro Hword Htwp
+  iapply twp_lift_step_no_fork rfl
+  iintro %store %ns %obs %nt Hσ
+  ihave %Hfacts :
+      ⌜store.wasm.mem.read32 addr = word ∧
+        addr.toNat + 4 ≤ store.wasm.mem.pages * 65536⌝ $$ [Hσ Hword]
+  · imod stateInterp_pointsTo_u32_facts store ns obs nt
+      addr word h1 h2 h3 $$ [$Hσ $Hword] with %Hfacts
+    ipureintro
+    exact Hfacts
+  obtain ⟨Hread, HinBounds⟩ := Hfacts
+  have hbound : addr.toNat + (0 : UInt32).toNat + 4 ≤
+      store.wasm.mem.pages * 65536 := by
+    have h0 : (0 : UInt32).toNat = 0 := rfl
+    omega
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
+    exact ⟨.running
+        ⟨⟨params, localValues, .i32 word :: values⟩,
+          code, arity, remainder, controls, calls⟩,
+      store, [], ⟨rfl, .instruction (.load32 0), rfl,
+        by simpa only [show (addr + 0 : UInt32) = addr from by simp, Hread]
+             using Step.load32 (α := α) hbound⟩⟩
+  iintro %κ %e₂ %store₂ %forks %Hstep
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst κ
+  have expectedStep : Step
+      ⟨.running
+        ⟨⟨params, localValues, .i32 addr :: values⟩,
+          .load32 0 :: code, arity, remainder, controls, calls⟩,
+        store⟩
+      (.instruction (.load32 0))
+      ⟨.running
+        ⟨⟨params, localValues, .i32 word :: values⟩,
+          code, arity, remainder, controls, calls⟩, store⟩ := by
+    simpa only [show (addr + 0 : UInt32) = addr from by simp, Hread]
+      using Step.load32 (α := α) hbound
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic expectedStep wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  imod Hclose
+  imodintro
+  isplit
+  · ipureintro
+    rfl
+  isplit
+  · ipureintro
+    rfl
+  isplitl [Hσ]
+  · iexact Hσ
+  · iapply Htwp
+    iexact Hword
 
 end Wasm.SmallStep
