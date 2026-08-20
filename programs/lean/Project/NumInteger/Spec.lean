@@ -4621,6 +4621,95 @@ def func2Config (a b : UInt64) : Wasm.SmallStep.Config Unit :=
       { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm := initial } }
 
+/-- Closed operational partial correctness of opt0 `func0` from the canonical
+module store. -/
+theorem func0_smallStep_partiallyMeets (a b : UInt64) :
+    Wasm.SmallStep.PartiallyMeets
+      (func0Config a b)
+      (fun rs _store =>
+        rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]) := by
+  apply Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_partiallyMeets
+    (α := Unit)
+    (σ := func0InitialHeap)
+    (globalσ := func0GlobalHeap)
+    (φ := fun rs => rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))])
+  · exact func0InitialHeap_agrees
+  · exact func0InitialHeap_inBounds
+  · exact func0GlobalHeap_agrees
+  · simp only [func0Config]; decide
+  · intro gs
+    unfold func0InitialHeap
+    simp only [func0Config, Wasm.SmallStep.RuntimeEnv.currentModule_mk1]
+    iintro ⟨Hframe, Hglobals, Hruntime⟩
+    ihave Hglobal := func0GlobalHeap_pointsTo $$ Hglobals
+    ihave Hslots := gcdFrameHeap_pointsTo
+      0 0 0 0 0 0 0 0 0 0 $$ Hframe
+    icases Hslots with
+      ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
+        HouterA, HouterB⟩
+    have hpost : ∀ rs : List Value,
+        func0FramePost (iprop(⌜True⌝))
+            a b rs ⊢
+          (iprop(⌜rs =
+            [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
+      intro rs
+      unfold func0FramePost
+      iintro ⟨%hrs, _Hresources⟩
+      ipureintro
+      exact hrs
+    iapply wp_mono hpost
+    iapply func0_smallStep_wp
+      (R := iprop(⌜True⌝))
+      a b 0 0 0 0 0 0 0 0 0 0
+    isplitl []
+    · ipureintro
+      trivial
+    · iframe
+
+/-- Closed operational partial correctness of the exported opt0 `func2`
+wrapper from the canonical module store. -/
+theorem func2_smallStep_partiallyMeets (a b : UInt64) :
+    Wasm.SmallStep.PartiallyMeets
+      (func2Config a b)
+      (fun rs _store =>
+        rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]) := by
+  apply Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_partiallyMeets
+    (α := Unit)
+    (σ := func0InitialHeap)
+    (globalσ := func0GlobalHeap)
+    (φ := fun rs => rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))])
+  · exact func0InitialHeap_agrees
+  · exact func0InitialHeap_inBounds
+  · exact func0GlobalHeap_agrees
+  · simp only [func2Config]; decide
+  · intro gs
+    unfold func0InitialHeap
+    simp only [func2Config, Wasm.SmallStep.RuntimeEnv.currentModule_mk1]
+    iintro ⟨Hframe, Hglobals, Hruntime⟩
+    ihave Hglobal := func0GlobalHeap_pointsTo $$ Hglobals
+    ihave Hslots := gcdFrameHeap_pointsTo
+      0 0 0 0 0 0 0 0 0 0 $$ Hframe
+    icases Hslots with
+      ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
+        HouterA, HouterB⟩
+    have hpost : ∀ rs : List Value,
+        func0FramePost (iprop(⌜True⌝))
+            a b rs ⊢
+          (iprop(⌜rs =
+            [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
+      intro rs
+      unfold func0FramePost
+      iintro ⟨%hrs, _Hresources⟩
+      ipureintro
+      exact hrs
+    iapply wp_mono hpost
+    iapply func2_smallStep_wp
+      (R := iprop(⌜True⌝))
+      a b 0 0 0 0 0 0 0 0 0 0
+    isplitl []
+    · ipureintro
+      trivial
+    · iframe
 
 /-! ## Total weakest precondition versions of non-loop theorems -/
 
@@ -8089,10 +8178,8 @@ theorem func0_smallStep_partiallyMeets (a b : UInt64) :
   · exact func0InitialHeap_agrees
   · exact func0InitialHeap_inBounds
   · exact func0GlobalHeap_agrees
-  · simp only [func0Config]; decide
   · intro gs
     unfold func0InitialHeap
-    simp only [func0Config, Wasm.SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hframe, Hglobals, Hruntime⟩
     ihave Hglobal := func0GlobalHeap_pointsTo $$ Hglobals
     ihave Hslots := gcdFrameHeap_pointsTo
@@ -8101,7 +8188,7 @@ theorem func0_smallStep_partiallyMeets (a b : UInt64) :
       ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
         HouterA, HouterB⟩
     have hpost : ∀ rs : List Value,
-        func0FramePost (iprop(⌜True⌝))
+        func0FramePost (iprop(⌜True⌝ ∗ runtimeModuleOwn «module»))
             a b rs ⊢
           (iprop(⌜rs =
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
@@ -8110,6 +8197,7 @@ theorem func0_smallStep_partiallyMeets (a b : UInt64) :
       iintro ⟨%hrs, _Hresources⟩
       ipureintro
       exact hrs
+    simp only [func0Config]
     iapply wp_mono hpost
     iapply func0_smallStep_wp
       (R := iprop(⌜True⌝))
@@ -8134,10 +8222,8 @@ theorem func2_smallStep_partiallyMeets (a b : UInt64) :
   · exact func0InitialHeap_agrees
   · exact func0InitialHeap_inBounds
   · exact func0GlobalHeap_agrees
-  · simp only [func2Config]; decide
   · intro gs
     unfold func0InitialHeap
-    simp only [func2Config, Wasm.SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hframe, Hglobals, Hruntime⟩
     ihave Hglobal := func0GlobalHeap_pointsTo $$ Hglobals
     ihave Hslots := gcdFrameHeap_pointsTo
@@ -8146,7 +8232,7 @@ theorem func2_smallStep_partiallyMeets (a b : UInt64) :
       ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
         HouterA, HouterB⟩
     have hpost : ∀ rs : List Value,
-        func0FramePost (iprop(⌜True⌝))
+        func0FramePost (iprop(⌜True⌝ ∗ runtimeModuleOwn «module»))
             a b rs ⊢
           (iprop(⌜rs =
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
@@ -8155,6 +8241,7 @@ theorem func2_smallStep_partiallyMeets (a b : UInt64) :
       iintro ⟨%hrs, _Hresources⟩
       ipureintro
       exact hrs
+    simp only [func2Config]
     iapply wp_mono hpost
     iapply func2_smallStep_wp
       (R := iprop(⌜True⌝))
