@@ -295,19 +295,19 @@ abbrev WasmHeapGF (α : Type 0) : BundledGFunctors
   | _ => ⟨constOF Unit, by infer_instance⟩
 -- Wire genHeapPreS (following HeapLang's instHeapLangGS_HeapLangS)
 instance instWasmHeapPreS (α : Type) :
-    genHeapPreS MemoryKey (Option UInt8) (WasmHeapGF.{0} α) WasmHeapMap where
+    genHeapPreS MemoryKey (Option UInt8) (WasmHeapGF α) WasmHeapMap where
   heap := by constructor; exists 4
   metaInfo := by constructor; exists 5
   metaData := by exists 6
 -- The full genHeap instance with ghost names
 class WasmHeapGS (α : outParam Type) extends
-    genHeapGS MemoryKey (Option UInt8) (WasmHeapGF.{0} α) WasmHeapMap
+    genHeapGS MemoryKey (Option UInt8) (WasmHeapGF α) WasmHeapMap
 
 /-- Globals use a directly named ghost map instead of a second `genHeapGS`.
 All identifying parameters of `genHeapGS` are output parameters, so two
 simultaneous GenHeap instances are ambiguous to typeclass search. -/
 class WasmGlobalGS (α : outParam Type) extends
-    GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap where
+    GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap where
   globalName : GName
 
 attribute [instance] WasmGlobalGS.toGhostMapG
@@ -317,7 +317,7 @@ entry remains present after `data.drop`, but its value changes from
 `some bytes` to `none`, mirroring the instantiated store exactly at every
 owned segment index. -/
 class WasmDataSegmentGS (α : outParam Type) extends
-    GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8)) WasmDataSegmentMap where
+    GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8)) WasmDataSegmentMap where
   dataSegmentName : GName
 
 attribute [instance] WasmDataSegmentGS.toGhostMapG
@@ -326,7 +326,7 @@ attribute [instance] WasmDataSegmentGS.toGhostMapG
 keys.  A fragment owns one complete table; element-level rules preserve or
 update that fragment together with the physical table. -/
 class WasmTableGS (α : outParam Type) extends
-    GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap where
+    GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap where
   tableName : GName
 
 attribute [instance] WasmTableGS.toGhostMapG
@@ -335,34 +335,34 @@ attribute [instance] WasmTableGS.toGhostMapG
 Their optional payload is authoritative so `table.init` reads the physical
 live segment and `elem.drop` changes both views to `none`. -/
 class WasmElementSegmentGS (α : outParam Type) extends
-    GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+    GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
       WasmElementSegmentMap where
   elementSegmentName : GName
 
 attribute [instance] WasmElementSegmentGS.toGhostMapG
 
 class WasmRuntimeModuleGS (α : outParam Type) extends
-    GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap where
+    GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap where
   runtimeName : GName
 
 attribute [instance] WasmRuntimeModuleGS.toGhostMapG
 
 class WasmRuntimeInstancesGS (α : outParam Type) where
   runtimeInstancesElem :
-    ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α)))))
+    ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α)))))
   runtimeInstancesName : GName
 
 attribute [reducible, instance] WasmRuntimeInstancesGS.runtimeInstancesElem
 
 class WasmHostEnvGS (α : outParam Type) extends
-    GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap where
+    GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap where
   hostEnvName : GName
 
 attribute [instance] WasmHostEnvGS.toGhostMapG
 
 class WasmHostStateGS (α : outParam Type) where
   hostStateElem :
-    ElemG (WasmHeapGF.{0} α) (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α)))))
+    ElemG (WasmHeapGF α) (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α)))))
   hostStateName : GName
 
 attribute [reducible, instance] WasmHostStateGS.hostStateElem
@@ -371,17 +371,17 @@ attribute [reducible, instance] WasmHostStateGS.hostStateElem
 Uses ExclAuth so it can be updated on cross-instance call/return. -/
 class WasmInstanceGS (α : outParam Type) where
   instanceElem :
-    ElemG (WasmHeapGF.{0} α) (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat)))))
+    ElemG (WasmHeapGF α) (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat)))))
   instanceName : GName
 
 attribute [reducible, instance] WasmInstanceGS.instanceElem
 
 def globalPointsTo {α : Type} [gs : WasmGlobalGS α] (key : GlobalKey) (value : Value) :
-    IProp (WasmHeapGF.{0} α) :=
+    IProp (WasmHeapGF α) :=
   ghost_map_elem gs.globalName (DFrac.own 1) key value
 
 def globalPointsToAt {α : Type} [gs : WasmGlobalGS α] (instanceId : Nat) (index : Nat)
-    (value : Value) : IProp (WasmHeapGF.{0} α) :=
+    (value : Value) : IProp (WasmHeapGF α) :=
   globalPointsTo ⟨instanceId, index⟩ value
 
 theorem globalPointsToAt_eq {α : Type} [WasmGlobalGS α] (i j : Nat) (v : Value) :
@@ -413,12 +413,12 @@ theorem globalPointsTo_update {α : Type} [gs : WasmGlobalGS α]
   iapply ghost_map_update
 
 def dataSegmentPointsTo {α : Type} [gs : WasmDataSegmentGS α]
-    (key : DataSegmentKey) (value : Option (List UInt8)) : IProp (WasmHeapGF.{0} α) :=
+    (key : DataSegmentKey) (value : Option (List UInt8)) : IProp (WasmHeapGF α) :=
   ghost_map_elem gs.dataSegmentName (DFrac.own 1) key value
 
 def dataSegmentPointsToAt {α : Type} [gs : WasmDataSegmentGS α]
     (instanceId : Nat) (index : Nat) (value : Option (List UInt8)) :
-    IProp (WasmHeapGF.{0} α) :=
+    IProp (WasmHeapGF α) :=
   dataSegmentPointsTo ⟨instanceId, index⟩ value
 
 theorem dataSegmentPointsToAt_eq {α : Type} [WasmDataSegmentGS α] (i j : Nat) (v : Option (List UInt8)) :
@@ -451,12 +451,12 @@ theorem dataSegmentPointsTo_update {α : Type} [gs : WasmDataSegmentGS α]
   iapply ghost_map_update
 
 def tablePointsTo {α : Type} [gs : WasmTableGS α]
-    (key : TableKey) (table : TableInst) : IProp (WasmHeapGF.{0} α) :=
+    (key : TableKey) (table : TableInst) : IProp (WasmHeapGF α) :=
   ghost_map_elem gs.tableName (DFrac.own 1) key table
 
 def tablePointsToAt {α : Type} [gs : WasmTableGS α]
     (instanceId : Nat) (index : Nat) (table : TableInst) :
-    IProp (WasmHeapGF.{0} α) :=
+    IProp (WasmHeapGF α) :=
   tablePointsTo ⟨instanceId, index⟩ table
 
 theorem tablePointsToAt_eq {α : Type} [WasmTableGS α] (i j : Nat) (t : TableInst) :
@@ -488,12 +488,12 @@ theorem tablePointsTo_update {α : Type} [gs : WasmTableGS α]
 
 def elementSegmentPointsTo {α : Type} [gs : WasmElementSegmentGS α]
     (key : ElementSegmentKey) (value : Option (List (Option Nat))) :
-    IProp (WasmHeapGF.{0} α) :=
+    IProp (WasmHeapGF α) :=
   ghost_map_elem gs.elementSegmentName (DFrac.own 1) key value
 
 def elementSegmentPointsToAt {α : Type} [gs : WasmElementSegmentGS α]
     (instanceId : Nat) (index : Nat) (value : Option (List (Option Nat))) :
-    IProp (WasmHeapGF.{0} α) :=
+    IProp (WasmHeapGF α) :=
   elementSegmentPointsTo ⟨instanceId, index⟩ value
 
 theorem elementSegmentPointsToAt_eq {α : Type} [WasmElementSegmentGS α] (i j : Nat)
@@ -528,7 +528,7 @@ theorem elementSegmentPointsTo_update {α : Type} [gs : WasmElementSegmentGS α]
 
 -- raw ghost_map_elem for a module instance; used internally in stateInterp bigOpL
 def runtimeModuleElem {α : Type} [gs : WasmRuntimeModuleGS α]
-    (id : Nat) (m : Module) : IProp (WasmHeapGF.{0} α) :=
+    (id : Nat) (m : Module) : IProp (WasmHeapGF α) :=
   ghost_map_elem gs.runtimeName DFrac.discard id m
 
 instance {α : Type} [WasmRuntimeModuleGS α] (id : Nat) (m : Module) :
@@ -551,7 +551,7 @@ theorem runtimeModuleElem_lookup {α : Type} [gs : WasmRuntimeModuleGS α]
 copy held by `StateInterp` lets cross-instance call rules verify instance
 lookups against the actual machine. -/
 def runtimeInstancesOwn {α : Type} [gs : WasmRuntimeInstancesGS α]
-    (instances : Array (ModuleInstance α)) : IProp (WasmHeapGF.{0} α) :=
+    (instances : Array (ModuleInstance α)) : IProp (WasmHeapGF α) :=
   iOwn (E := gs.runtimeInstancesElem) gs.runtimeInstancesName (toAgree ⟨instances⟩)
 
 instance {α : Type} [WasmRuntimeInstancesGS α] (instances : Array (ModuleInstance α)) :
@@ -576,7 +576,7 @@ theorem runtimeInstancesOwn_agree {α : Type} [gs : WasmRuntimeInstancesGS α]
 
 /-- Persistent knowledge of the host environment for a given instance. -/
 def hostEnvOwn {α : Type} [gs : WasmHostEnvGS α] (instanceId : Nat) (env : HostEnv α) :
-    IProp (WasmHeapGF.{0} α) :=
+    IProp (WasmHeapGF α) :=
   ghost_map_elem gs.hostEnvName DFrac.discard instanceId env
 
 instance {α : Type} [WasmHostEnvGS α] (instanceId : Nat) (env : HostEnv α) :
@@ -597,13 +597,13 @@ theorem hostEnvOwn_lookup {α : Type} [gs : WasmHostEnvGS α]
 
 /-- Authoritative ownership of the mutable host state. Held by `StateInterp`. -/
 def hostStateAuth {α : Type} [gs : WasmHostStateGS α] (st : α) :
-    IProp (WasmHeapGF.{0} α) :=
+    IProp (WasmHeapGF α) :=
   iOwn (E := gs.hostStateElem) gs.hostStateName
     (ExclAuth.auth (⟨st⟩ : DiscreteO α))
 
 /-- Fragment ownership of the mutable host state. Given to WP proofs. -/
 def hostStateOwn {α : Type} [gs : WasmHostStateGS α] (st : α) :
-    IProp (WasmHeapGF.{0} α) :=
+    IProp (WasmHeapGF α) :=
   iOwn (E := gs.hostStateElem) gs.hostStateName
     (ExclAuth.frag (⟨st⟩ : DiscreteO α))
 
@@ -633,12 +633,12 @@ theorem hostStateOwn_update {α : Type} [gs : WasmHostStateGS α]
   iframe
 
 def currentInstanceAuthN {α : Type} [gs : WasmInstanceGS α] (n : Nat) :
-    IProp (WasmHeapGF.{0} α) :=
+    IProp (WasmHeapGF α) :=
   iOwn (E := gs.instanceElem) gs.instanceName
     (ExclAuth.auth (⟨n⟩ : DiscreteO Nat))
 
 def currentInstanceOwnN {α : Type} [gs : WasmInstanceGS α] (n : Nat) :
-    IProp (WasmHeapGF.{0} α) :=
+    IProp (WasmHeapGF α) :=
   iOwn (E := gs.instanceElem) gs.instanceName
     (ExclAuth.frag (⟨n⟩ : DiscreteO Nat))
 
@@ -657,7 +657,7 @@ open Wasm.SmallStep
 current-instance token. The exclusive part lets call rules verify that the
 caller's instance id agrees with the machine's current instance. -/
 def runtimeModuleOwn {α : Type} [gs : WasmRuntimeModuleGS α] [WasmInstanceGS α]
-    (instanceId : ModuleInstanceId) (m : Module) : IProp (WasmHeapGF.{0} α) :=
+    (instanceId : ModuleInstanceId) (m : Module) : IProp (WasmHeapGF α) :=
   iprop(runtimeModuleElem instanceId.id m ∗ currentInstanceOwnN instanceId.id)
 
 instance {α : Type} [gs : WasmRuntimeModuleGS α] [WasmInstanceGS α]
@@ -750,7 +750,7 @@ scoped notation:50 addr:50 " ↦w " v:50 => pointsTo (L := MemoryKey) (V := Opti
     (H := WasmHeapMap) addr (DFrac.own 1) (some v)
 
 def memPointsTo (memId : Nat) (addr : UInt32) (dfrac : DFrac)
-    (value : Option UInt8) : IProp (WasmHeapGF.{0} α) :=
+    (value : Option UInt8) : IProp (WasmHeapGF α) :=
   pointsTo (L := MemoryKey) (V := Option UInt8)
     (H := WasmHeapMap) ⟨memId, addr⟩ dfrac value
 
@@ -780,7 +780,7 @@ theorem u64Byte_reassemble (v : UInt64) :
   bv_decide
 
 -- Multi-byte: u64 as 8 consecutive owned bytes (little-endian)
-def pointsTo_u64 (memId : Nat) (addr : UInt32) (v : UInt64) : IProp (WasmHeapGF.{0} α) :=
+def pointsTo_u64 (memId : Nat) (addr : UInt32) (v : UInt64) : IProp (WasmHeapGF α) :=
   iprop%
     (⟨memId, addr⟩ ↦w u64Byte v 0) ∗ (⟨memId, addr + 1⟩ ↦w u64Byte v 1) ∗
     (⟨memId, addr + 2⟩ ↦w u64Byte v 2) ∗ (⟨memId, addr + 3⟩ ↦w u64Byte v 3) ∗
@@ -826,7 +826,7 @@ theorem u32Byte_reassemble (v : UInt32) :
   bv_decide
 
 -- Multi-byte: u32 as 4 consecutive owned bytes (little-endian)
-def pointsTo_u32 (memId : Nat) (addr : UInt32) (v : UInt32) : IProp (WasmHeapGF.{0} α) :=
+def pointsTo_u32 (memId : Nat) (addr : UInt32) (v : UInt32) : IProp (WasmHeapGF α) :=
   iprop%
     (⟨memId, addr⟩ ↦w u32Byte v 0) ∗ (⟨memId, addr + 1⟩ ↦w u32Byte v 1) ∗
     (⟨memId, addr + 2⟩ ↦w u32Byte v 2) ∗ (⟨memId, addr + 3⟩ ↦w u32Byte v 3)
@@ -845,7 +845,7 @@ instance instTimelessPointsToU32 (memId : Nat) (addr v : UInt32) :
   infer_instance
 
 -- Multi-byte: u16 as 2 consecutive owned bytes (little-endian)
-def pointsTo_u16 (memId : Nat) (addr : UInt32) (v : UInt32) : IProp (WasmHeapGF.{0} α) :=
+def pointsTo_u16 (memId : Nat) (addr : UInt32) (v : UInt32) : IProp (WasmHeapGF α) :=
   iprop%
     (⟨memId, addr⟩ ↦w u32Byte v 0) ∗ (⟨memId, addr + 1⟩ ↦w u32Byte v 1)
 
@@ -863,7 +863,7 @@ instance instTimelessPointsToU16 (memId : Nat) (addr v : UInt32) :
 -- Array ownership: n consecutive u32 elements at ptr
 -- arrayAt memId ptr [x₀, x₁, ..., xₙ₋₁] =
 --   pointsTo_u32 memId ptr x₀ ∗ pointsTo_u32 memId (ptr+4) x₁ ∗ ...
-def arrayAt (memId : Nat) (ptr : UInt32) (xs : List UInt32) : IProp (WasmHeapGF.{0} α) :=
+def arrayAt (memId : Nat) (ptr : UInt32) (xs : List UInt32) : IProp (WasmHeapGF α) :=
   match xs with
   | [] => iprop% emp
   | x :: rest => iprop% (pointsTo_u32 memId ptr x) ∗ (arrayAt memId (ptr + 4) rest)
@@ -986,7 +986,7 @@ region.
 -/
 
 /-- Ownership of consecutive little-endian u64 words beginning at `ptr`. -/
-def array64At (memId : Nat) (ptr : UInt32) (xs : List UInt64) : IProp (WasmHeapGF.{0} α) :=
+def array64At (memId : Nat) (ptr : UInt32) (xs : List UInt64) : IProp (WasmHeapGF α) :=
   match xs with
   | [] => iprop% emp
   | x :: rest => iprop% (pointsTo_u64 memId ptr x) ∗ (array64At memId (ptr + 8) rest)

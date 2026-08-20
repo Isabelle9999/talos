@@ -93,9 +93,9 @@ private theorem logTransfer (v : UInt32) (n : List UInt32)
     (results : List Value) (postWasm : Store (List UInt32))
     (h : logHost.invoke store.wasm [.i32 v] = .Return results postWasm) :
     hostStateOwn n ∗
-      stateInterp (GF := WasmHeapGF.{0} (List UInt32)) store ns obs nt ==∗
+      stateInterp (GF := WasmHeapGF (List UInt32)) store ns obs nt ==∗
       hostStateOwn (n ++ [v]) ∗
-      stateInterp (GF := WasmHeapGF.{0} (List UInt32))
+      stateInterp (GF := WasmHeapGF (List UInt32))
         { store with wasm := postWasm } ns obs nt := by
   simp [logHost] at h
   obtain ⟨h1, h2⟩ := h; subst h1; subst h2

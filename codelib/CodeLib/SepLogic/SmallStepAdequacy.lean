@@ -10,6 +10,75 @@ small-step semantics.  Unlike the legacy `wasm_heap_adequacy`, it refers only
 to `Wasm.SmallStep.Step` through the iris-lean `Language` instance.
 -/
 
+/-! ### Compatibility layer for merged iris-lean#554
+
+`StronglyNormalizing` moved upstream to `Relation.StronglyNormalizing`
+(an abbrev for `Acc (flip step)`), and its helpers plus the no-fork
+single-expression adequacy bridge were dropped when the PR merged.
+Ported verbatim below. -/
+
+namespace Relation.StronglyNormalizing
+
+theorem intro {α : Type _} {step : α → α → Prop} {x : α}
+    (H : ∀ y, step x y → Relation.StronglyNormalizing step y) :
+    Relation.StronglyNormalizing step x :=
+  Acc.intro x H
+
+theorem map {α β : Type _} {stepα : α → α → Prop}
+    {stepβ : β → β → Prop} (f : β → α)
+    (Hlift : ∀ x y, stepβ x y → stepα (f x) (f y))
+    {x : β} (H : Relation.StronglyNormalizing stepα (f x)) :
+    Relation.StronglyNormalizing stepβ x := by
+  unfold Relation.StronglyNormalizing at H ⊢
+  generalize hx : f x = z at H
+  induction H generalizing x with
+  | intro z Hz IH =>
+      subst z
+      apply Acc.intro
+      intro y Hy
+      exact IH (f y) (Hlift x y Hy) rfl
+
+end Relation.StronglyNormalizing
+
+namespace Iris.ProgramLogic
+
+export Relation (StronglyNormalizing)
+
+section
+open Iris Language Language.Notation
+
+variable {Expr State Obs Val : Type _} [Λ : Language Expr State Obs Val]
+
+/-- Erased single-expression reduction. -/
+def ExprErasedStep : Expr × State → Expr × State → Prop
+  | (e₁, σ₁), (e₂, σ₂) =>
+      ∃ (κ : List Obs) (efs : List Expr), (e₁, σ₁) -<κ>-> (e₂, σ₂, efs)
+
+/-- A language whose primitive steps do not fork. -/
+class LanguageNoFork (Expr State Obs Val : Type _)
+    [Language Expr State Obs Val] : Prop where
+  no_fork {e₁ e₂ : Expr} {σ₁ σ₂ : State} {κ : List Obs} {efs : List Expr} :
+    (e₁, σ₁) -<κ>-> (e₂, σ₂, efs) → efs = []
+
+/-- Derive single-expression normalization from thread-pool normalization. -/
+theorem stronglyNormalizing_expr_of_threadPool
+    [LanguageNoFork Expr State Obs Val] {e : Expr} {σ : State}
+    (H : StronglyNormalizing
+      (Language.ErasedStep (Expr := Expr) (State := State) (Obs := Obs))
+      ([e], σ)) :
+    StronglyNormalizing
+      (ExprErasedStep (Expr := Expr) (State := State) (Obs := Obs))
+      (e, σ) := by
+  apply Relation.StronglyNormalizing.map (fun ρ : Expr × State => ([ρ.1], ρ.2)) ?_ H
+  rintro ⟨e₁, σ₁⟩ ⟨e₂, σ₂⟩ ⟨κ, efs, Hstep⟩
+  have hefs : efs = [] := LanguageNoFork.no_fork Hstep
+  subst efs
+  exact ⟨κ, .atomic Hstep [] []⟩
+
+end
+
+end Iris.ProgramLogic
+
 namespace Wasm.SmallStep
 
 open Iris OFE COFE BI Iris.BI Iris.Algebra Iris.ProgramLogic
@@ -19,7 +88,7 @@ open Wasm.SepLogic
 variable {α : Type}
 
 private theorem sep_pair_pure_rotate
-    (P Q : IProp (WasmHeapGF.{0} α)) (φ : Prop) :
+    (P Q : IProp (WasmHeapGF α)) (φ : Prop) :
     (P ∗ Q) ∗ ⌜φ⌝ ⊢ ⌜φ⌝ ∗ P ∗ Q := by
   iintro ⟨⟨HP, HQ⟩, %hφ⟩
   isplitl []
@@ -90,7 +159,7 @@ theorem wp_store_adequacy
 
 /-- Ghost resources required before allocating a concrete Wasm small-step
 Iris instance. -/
-class WasmSmallStepGpreS (α : Type) extends InvGpreS (WasmHeapGF.{0} α)
+class WasmSmallStepGpreS (α : Type) extends InvGpreS (WasmHeapGF α)
 
 instance instWasmSmallStepGpreS :
     WasmSmallStepGpreS α where
@@ -126,41 +195,41 @@ theorem wasm_smallStep_adequacy
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
-      ⊢@{IProp (WasmHeapGF.{0} α)}
+      ⊢@{IProp (WasmHeapGF α)}
         (WP config.expr @ Stuckness.NotStuck; ⊤ {{ values, ⌜φ values⌝ }})) :
     adequate Stuckness.NotStuck config.expr config.store
       (fun values _ => φ values) := by
-  refine wp_adequacy (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+  refine wp_adequacy (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store φ ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) ∅ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) ∅ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap)) with ⟨%globalName, Hglobals⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -177,24 +246,24 @@ theorem wasm_smallStep_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   letI hostEnvGS : WasmHostEnvGS α :=
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -209,7 +278,7 @@ theorem wasm_smallStep_adequacy
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -224,7 +293,7 @@ theorem wasm_smallStep_adequacy
       instanceName }
   iclear HinstanceFrag
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   imod (iOwn_alloc (E := runtimeInstancesElem)
       (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -247,7 +316,7 @@ theorem wasm_smallStep_adequacy
   iclear Hpoints Hmeta
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeInstances HinstanceState HhostEnvAuth HhostState]
@@ -280,7 +349,7 @@ theorem wasm_smallStep_partiallyMeets
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
-      ⊢@{IProp (WasmHeapGF.{0} α)}
+      ⊢@{IProp (WasmHeapGF α)}
         (WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values, ⌜φ values⌝ }})) :
     PartiallyMeets config (fun values _store => φ values) :=
@@ -298,7 +367,7 @@ theorem wasm_smallStep_stronglyNormalizing
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
     (htwp : ∀ [WasmSmallStepGS .hasNoLC α],
-      ⊢@{IProp (WasmHeapGF.{0} α)}
+      ⊢@{IProp (WasmHeapGF α)}
         (WP config.expr @ Stuckness.NotStuck; ⊤
           [{ values, ⌜φ values⌝ }])) :
     StronglyNormalizing
@@ -306,38 +375,38 @@ theorem wasm_smallStep_stronglyNormalizing
         (State := MachineStore α) (Obs := StepKind))
       (config.expr, config.store) := by
   apply stronglyNormalizing_expr_of_threadPool
-  apply twp_total (hlc := .hasNoLC) (GF := WasmHeapGF.{0} α)
+  apply twp_total (hlc := .hasNoLC) (GF := WasmHeapGF α)
     Stuckness.NotStuck config.expr config.store
     (fun values => iprop(⌜φ values⌝)) 0 0
   intro inv
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) ∅ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) ∅ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap)) with ⟨%globalName, Hglobals⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -354,24 +423,24 @@ theorem wasm_smallStep_stronglyNormalizing
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   letI hostEnvGS : WasmHostEnvGS α :=
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -386,7 +455,7 @@ theorem wasm_smallStep_stronglyNormalizing
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -401,7 +470,7 @@ theorem wasm_smallStep_stronglyNormalizing
       instanceName }
   iclear HinstanceFrag
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   imod (iOwn_alloc (E := runtimeInstancesElem)
       (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -425,7 +494,7 @@ theorem wasm_smallStep_stronglyNormalizing
   imodintro
   iexists
     (fun store (_ : Nat) (observations : List StepKind) (_ : Nat) =>
-      stateInterp (GF := WasmHeapGF.{0} α) store 0 observations 0),
+      stateInterp (GF := WasmHeapGF α) store 0 observations 0),
     (fun _ => 0), (fun _ => iprop(True)),
     (fun _ _ _ _ => by
       iintro Hstate
@@ -464,14 +533,14 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
     (config : Config α)
     (σ : WasmHeapMap (Option UInt8))
     (globalσ : WasmGlobalMap Value)
-    (Φ : List Value → IProp (WasmHeapGF.{0} α))
+    (Φ : List Value → IProp (WasmHeapGF α))
     (hagree : heapAgreesWithMem σ (storeResolve config.store))
     (hinBounds : heapAddressesInBounds σ (storeResolve config.store))
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (htwp : ∀ [WasmSmallStepGS .hasNoLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value) ∗
@@ -483,39 +552,39 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
         (State := MachineStore α) (Obs := StepKind))
       (config.expr, config.store) := by
   apply stronglyNormalizing_expr_of_threadPool
-  apply twp_total (hlc := .hasNoLC) (GF := WasmHeapGF.{0} α)
+  apply twp_total (hlc := .hasNoLC) (GF := WasmHeapGF α)
     Stuckness.NotStuck config.expr config.store
     Φ 0 0
   intro inv
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) σ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap) globalσ) with
     ⟨%globalName, Hglobals, HglobalPoints⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -532,10 +601,10 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentModule)
@@ -549,16 +618,16 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   letI hostEnvGS : WasmHostEnvGS α :=
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -573,7 +642,7 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -587,7 +656,7 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   imod (iOwn_alloc (E := runtimeInstancesElem)
       (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -611,7 +680,7 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
   imodintro
   iexists
     (fun store (_ : Nat) (observations : List StepKind) (_ : Nat) =>
-      stateInterp (GF := WasmHeapGF.{0} α) store 0 observations 0),
+      stateInterp (GF := WasmHeapGF α) store 0 observations 0),
     (fun _ => 0), (fun _ => iprop(True)),
     (fun _ _ _ _ => by
       iintro Hstate
@@ -733,7 +802,7 @@ theorem wasm_smallStep_terminates
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
     (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
-      ⊢@{IProp (WasmHeapGF.{0} α)}
+      ⊢@{IProp (WasmHeapGF α)}
         (WP config.expr @ Stuckness.NotStuck; ⊤
           [{ values, ⌜φ values⌝ }])) :
     TerminatesWith config (fun values _store => φ values) := by
@@ -759,37 +828,37 @@ theorem wasm_smallStep_runtime_adequacy
           {{ values, ⌜φ values⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store
       (fun values _ => φ values) := by
-  refine wp_adequacy (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+  refine wp_adequacy (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store φ ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) ∅ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) ∅ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap)) with ⟨%globalName, Hglobals⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -806,10 +875,10 @@ theorem wasm_smallStep_runtime_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentModule)
@@ -823,16 +892,16 @@ theorem wasm_smallStep_runtime_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   letI hostEnvGS : WasmHostEnvGS α :=
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -847,7 +916,7 @@ theorem wasm_smallStep_runtime_adequacy
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -861,7 +930,7 @@ theorem wasm_smallStep_runtime_adequacy
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   imod (iOwn_alloc (E := runtimeInstancesElem)
       (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -884,7 +953,7 @@ theorem wasm_smallStep_runtime_adequacy
   iclear Hpoints Hmeta
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState]
@@ -950,37 +1019,37 @@ theorem wasm_smallStep_runtime_host_store_adequacy
           {{ values, ⌜φ values⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store
       (fun values _ => φ values) := by
-  refine wp_adequacy (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+  refine wp_adequacy (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store φ ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) ∅ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) ∅ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap)) with ⟨%globalName, Hglobals⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -997,10 +1066,10 @@ theorem wasm_smallStep_runtime_host_store_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentModule)
@@ -1014,10 +1083,10 @@ theorem wasm_smallStep_runtime_host_store_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentHost)
@@ -1032,7 +1101,7 @@ theorem wasm_smallStep_runtime_host_store_adequacy
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -1046,7 +1115,7 @@ theorem wasm_smallStep_runtime_host_store_adequacy
     { hostStateElem
       hostStateName }
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -1060,7 +1129,7 @@ theorem wasm_smallStep_runtime_host_store_adequacy
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   imod (iOwn_alloc (E := runtimeInstancesElem)
       (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -1083,7 +1152,7 @@ theorem wasm_smallStep_runtime_host_store_adequacy
   iclear Hpoints Hmeta
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth' HhostState]
@@ -1160,37 +1229,37 @@ theorem wasm_smallStep_runtime_instance_adequacy
           {{ values, ⌜φ values⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store
       (fun values _ => φ values) := by
-  refine wp_adequacy (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+  refine wp_adequacy (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store φ ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) ∅ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) ∅ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap)) with ⟨%globalName, Hglobals⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -1207,10 +1276,10 @@ theorem wasm_smallStep_runtime_instance_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentModule)
@@ -1224,16 +1293,16 @@ theorem wasm_smallStep_runtime_instance_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   letI hostEnvGS : WasmHostEnvGS α :=
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -1248,7 +1317,7 @@ theorem wasm_smallStep_runtime_instance_adequacy
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -1262,7 +1331,7 @@ theorem wasm_smallStep_runtime_instance_adequacy
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   let runtimeInstancesValue : Agree (DiscreteO (Array (ModuleInstance α))) :=
     toAgree ⟨config.store.runtime.instances⟩
@@ -1291,7 +1360,7 @@ theorem wasm_smallStep_runtime_instance_adequacy
   icases HruntimeInstancesPair with ⟨HruntimeInstancesState, HruntimeInstancesWP⟩
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstancesState HinstanceState HhostEnvAuth HhostState]
@@ -1366,37 +1435,37 @@ theorem wasm_smallStep_instance_host_state_adequacy
           {{ values, ⌜φ values⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store
       (fun values _ => φ values) := by
-  refine wp_adequacy (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+  refine wp_adequacy (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store φ ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) ∅ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) ∅ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap)) with ⟨%globalName, Hglobals⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -1413,10 +1482,10 @@ theorem wasm_smallStep_instance_host_state_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentModule)
@@ -1430,10 +1499,10 @@ theorem wasm_smallStep_instance_host_state_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentHost)
@@ -1448,7 +1517,7 @@ theorem wasm_smallStep_instance_host_state_adequacy
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -1462,7 +1531,7 @@ theorem wasm_smallStep_instance_host_state_adequacy
     { hostStateElem
       hostStateName }
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -1476,7 +1545,7 @@ theorem wasm_smallStep_instance_host_state_adequacy
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   let runtimeInstancesValue : Agree (DiscreteO (Array (ModuleInstance α))) :=
     toAgree ⟨config.store.runtime.instances⟩
@@ -1505,7 +1574,7 @@ theorem wasm_smallStep_instance_host_state_adequacy
   icases HruntimeInstancesPair with ⟨HruntimeInstancesState, HruntimeInstancesWP⟩
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstancesState HinstanceState HhostEnvAuth' HhostState]
@@ -1582,43 +1651,43 @@ theorem wasm_smallStep_heap_adequacy
     (hinBounds : heapAddressesInBounds σ (storeResolve config.store))
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       ([∗map] address ↦ value ∈ σ,
-        pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values, ⌜φ values⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store
       (fun values _ => φ values) := by
-  refine wp_adequacy (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+  refine wp_adequacy (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store φ ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) σ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap)) with ⟨%globalName, Hglobals⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -1635,24 +1704,24 @@ theorem wasm_smallStep_heap_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   letI hostEnvGS : WasmHostEnvGS α :=
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -1667,7 +1736,7 @@ theorem wasm_smallStep_heap_adequacy
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -1682,7 +1751,7 @@ theorem wasm_smallStep_heap_adequacy
       instanceName }
   iclear HinstanceFrag
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   imod (iOwn_alloc (E := runtimeInstancesElem)
       (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -1705,7 +1774,7 @@ theorem wasm_smallStep_heap_adequacy
   iclear Hmeta
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeInstances HinstanceState HhostEnvAuth HhostState]
@@ -1747,7 +1816,7 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value) ∗
@@ -1757,38 +1826,38 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
           {{ values, ⌜φ values⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store
       (fun values _ => φ values) := by
-  refine wp_adequacy (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+  refine wp_adequacy (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store φ ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) σ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap) globalσ) with
     ⟨%globalName, Hglobals, HglobalPoints⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -1805,10 +1874,10 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentModule)
@@ -1822,16 +1891,16 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   letI hostEnvGS : WasmHostEnvGS α :=
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -1846,7 +1915,7 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -1860,7 +1929,7 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   imod (iOwn_alloc (E := runtimeInstancesElem)
       (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -1883,7 +1952,7 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
   iclear Hmeta
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState]
@@ -1939,7 +2008,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value) ∗
@@ -1949,42 +2018,42 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values,
             ∀ (store : MachineStore α) (_observations : List StepKind),
-              stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0 -∗
+              stateInterp (GF := WasmHeapGF α) store 0 [] 0 -∗
               ⌜post values store⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store post := by
   refine wp_store_adequacy
-    (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+    (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store post ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) σ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap) globalσ) with
     ⟨%globalName, Hglobals, HglobalPoints⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -2001,10 +2070,10 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentModule)
@@ -2018,10 +2087,10 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentHost)
@@ -2036,7 +2105,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -2051,7 +2120,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -2065,7 +2134,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   imod (iOwn_alloc (E := runtimeInstancesElem)
       (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -2088,7 +2157,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
   iclear Hmeta
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth' HhostState]
@@ -2152,7 +2221,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_partiallyMeets
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value) ∗
@@ -2162,7 +2231,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_partiallyMeets
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values,
             ∀ (store : MachineStore α) (_observations : List StepKind),
-              stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0 -∗
+              stateInterp (GF := WasmHeapGF α) store 0 [] 0 -∗
               ⌜post values store⌝ }}) :
     PartiallyMeets config post :=
   adequate_to_partiallyMeets config post
@@ -2183,48 +2252,48 @@ theorem wasm_smallStep_heap_store_terminates
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         runtimeModuleOwn config.store.runtime.entry config.store.runtime.currentModule) ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           [{ values,
             ∀ (store : MachineStore α) (_observations : List StepKind),
-              stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0 -∗
+              stateInterp (GF := WasmHeapGF α) store 0 [] 0 -∗
               ⌜post values store⌝ }]) :
     TerminatesWith config post := by
   apply stronglyNormalizing_adequate_terminates config post
   · apply stronglyNormalizing_expr_of_threadPool
-    apply twp_total (hlc := .hasNoLC) (GF := WasmHeapGF.{0} α)
+    apply twp_total (hlc := .hasNoLC) (GF := WasmHeapGF α)
       Stuckness.NotStuck config.expr config.store
       (fun values => iprop(True)) 0 0
     intro inv
     imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-        (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) σ with
+        (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
       ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-    letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+    letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
       constructor
       exists 7
-    imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+    imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := GlobalKey)
         (V := Value) (H := WasmGlobalMap)) with ⟨%globalName, Hglobals⟩
     letI dataSegmentMapG :
-        GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+        GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
           WasmDataSegmentMap := by
       constructor
       exists 9
-    imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+    imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
         (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
       ⟨%dataSegmentName, Hsegments⟩
-    letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+    letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
       constructor
       exists 10
-    imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+    imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
         (V := TableInst) (H := WasmTableMap)) with ⟨%tableName, Htables⟩
     letI elementSegmentMapG :
-        GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+        GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
           WasmElementSegmentMap := by
       constructor
       exists 11
-    imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+    imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
         (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
       ⟨%elementSegmentName, HelementSegments⟩
     letI wasmHeapGS : WasmHeapGS α :=
@@ -2241,10 +2310,10 @@ theorem wasm_smallStep_heap_store_terminates
     letI wasmElementSegmentGS : WasmElementSegmentGS α :=
       { toGhostMapG := elementSegmentMapG
         elementSegmentName := elementSegmentName }
-    letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+    letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
       constructor
       exists 8
-    imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+    imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
         (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
     imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
         (v := config.store.runtime.currentModule)
@@ -2258,16 +2327,16 @@ theorem wasm_smallStep_heap_store_terminates
     letI runtimeGS : WasmRuntimeModuleGS α :=
       { toGhostMapG := runtimeModuleMapG
         runtimeName }
-    letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+    letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
       constructor
       exists 12
-    imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+    imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
         (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
     letI hostEnvGS : WasmHostEnvGS α :=
       { toGhostMapG := hostEnvMapG
         hostEnvName }
     letI hostStateElem :
-        ElemG (WasmHeapGF.{0} α)
+        ElemG (WasmHeapGF α)
           (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
       exists 13
     imod (iOwn_alloc (E := hostStateElem)
@@ -2282,7 +2351,7 @@ theorem wasm_smallStep_heap_store_terminates
         hostStateName }
     iclear HhostStateFrag
     letI instanceElem :
-        ElemG (WasmHeapGF.{0} α)
+        ElemG (WasmHeapGF α)
           (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
       exists 14
     imod (iOwn_alloc (E := instanceElem)
@@ -2296,7 +2365,7 @@ theorem wasm_smallStep_heap_store_terminates
       { instanceElem
         instanceName }
     letI runtimeInstancesElem :
-        ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+        ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
       exists 15
     imod (iOwn_alloc (E := runtimeInstancesElem)
         (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -2320,7 +2389,7 @@ theorem wasm_smallStep_heap_store_terminates
     imodintro
     iexists
       (fun store (_ : Nat) (observations : List StepKind) (_ : Nat) =>
-        stateInterp (GF := WasmHeapGF.{0} α) store 0 observations 0),
+        stateInterp (GF := WasmHeapGF α) store 0 observations 0),
       (fun _ => 0), (fun _ => iprop(True)),
       (fun _ _ _ _ => by
         iintro Hstate
@@ -2390,7 +2459,7 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value) ∗
@@ -2401,43 +2470,43 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values,
             ∀ (store : MachineStore α) (_observations : List StepKind),
-              stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0 -∗
+              stateInterp (GF := WasmHeapGF α) store 0 [] 0 -∗
               ⌜post values store⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store post := by
   refine wp_store_adequacy
-    (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+    (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store post ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) σ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap) globalσ) with
     ⟨%globalName, Hglobals, HglobalPoints⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)
       dataSegmentσ) with
     ⟨%dataSegmentName, HsegmentsAuth, HsegmentPoints⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -2454,10 +2523,10 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentModule)
@@ -2471,16 +2540,16 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   letI hostEnvGS : WasmHostEnvGS α :=
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -2495,7 +2564,7 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -2509,7 +2578,7 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   imod (iOwn_alloc (E := runtimeInstancesElem)
       (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -2532,7 +2601,7 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
   iclear Hmeta
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals HsegmentsAuth Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState]
@@ -2589,7 +2658,7 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_partiallyMeets
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value) ∗
@@ -2600,7 +2669,7 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_partiallyMeets
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values,
             ∀ (store : MachineStore α) (_observations : List StepKind),
-              stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0 -∗
+              stateInterp (GF := WasmHeapGF α) store 0 [] 0 -∗
               ⌜post values store⌝ }}) :
     PartiallyMeets config post :=
   adequate_to_partiallyMeets config post
@@ -2634,7 +2703,7 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value) ∗
@@ -2649,43 +2718,43 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values,
             ∀ (store : MachineStore α) (_observations : List StepKind),
-              stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0 -∗
+              stateInterp (GF := WasmHeapGF α) store 0 [] 0 -∗
               ⌜post values store⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store post := by
   refine wp_store_adequacy
-    (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+    (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store post ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) σ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap) globalσ) with
     ⟨%globalName, Hglobals, HglobalPoints⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)
       dataSegmentσ) with
     ⟨%dataSegmentName, HsegmentsAuth, HsegmentPoints⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap) tableσ) with
     ⟨%tableName, HtablesAuth, HtablePoints⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)
       elementSegmentσ) with
     ⟨%elementSegmentName, HelementSegmentsAuth,
@@ -2704,10 +2773,10 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentModule)
@@ -2721,16 +2790,16 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   letI hostEnvGS : WasmHostEnvGS α :=
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -2745,7 +2814,7 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -2759,7 +2828,7 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   imod (iOwn_alloc (E := runtimeInstancesElem)
       (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -2782,7 +2851,7 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
   iclear Hmeta
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals HsegmentsAuth HtablesAuth
@@ -2853,7 +2922,7 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_partiallyMeets
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value) ∗
@@ -2868,7 +2937,7 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_partiallyMeets
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values,
             ∀ (store : MachineStore α) (_observations : List StepKind),
-              stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0 -∗
+              stateInterp (GF := WasmHeapGF α) store 0 [] 0 -∗
               ⌜post values store⌝ }}) :
     PartiallyMeets config post :=
   adequate_to_partiallyMeets config post
@@ -2889,7 +2958,7 @@ theorem wasm_smallStep_heap_globals_adequacy
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value)) ⊢
@@ -2921,7 +2990,7 @@ theorem wasm_smallStep_heap_globals_partiallyMeets
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value)) ⊢
@@ -2946,7 +3015,7 @@ theorem wasm_smallStep_heap_globals_runtime_partiallyMeets
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value) ∗
@@ -2971,7 +3040,7 @@ theorem wasm_smallStep_heap_runtime_partiallyMeets
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         runtimeModuleOwn config.store.runtime.entry
           config.store.runtime.currentModule) ⊢
@@ -2999,7 +3068,7 @@ theorem wasm_smallStep_heap_runtime_instance_adequacy
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         runtimeModuleOwn config.store.runtime.entry
             config.store.runtime.currentModule) ⊢
@@ -3007,37 +3076,37 @@ theorem wasm_smallStep_heap_runtime_instance_adequacy
           {{ values, ⌜φ values⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store
       (fun values _ => φ values) := by
-  refine wp_adequacy (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+  refine wp_adequacy (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store φ ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) σ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap)) with ⟨%globalName, Hglobals⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -3054,10 +3123,10 @@ theorem wasm_smallStep_heap_runtime_instance_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentModule)
@@ -3071,16 +3140,16 @@ theorem wasm_smallStep_heap_runtime_instance_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   letI hostEnvGS : WasmHostEnvGS α :=
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -3095,7 +3164,7 @@ theorem wasm_smallStep_heap_runtime_instance_adequacy
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -3109,7 +3178,7 @@ theorem wasm_smallStep_heap_runtime_instance_adequacy
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   imod (iOwn_alloc (E := runtimeInstancesElem)
       (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
@@ -3132,7 +3201,7 @@ theorem wasm_smallStep_heap_runtime_instance_adequacy
   iclear Hmeta
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState]
@@ -3182,7 +3251,7 @@ theorem wasm_smallStep_heap_runtime_instances_adequacy
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         runtimeModuleOwn config.store.runtime.entry
             config.store.runtime.currentModule ∗
@@ -3191,37 +3260,37 @@ theorem wasm_smallStep_heap_runtime_instances_adequacy
           {{ values, ⌜φ values⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store
       (fun values _ => φ values) := by
-  refine wp_adequacy (GF := WasmHeapGF.{0} α) Stuckness.NotStuck
+  refine wp_adequacy (GF := WasmHeapGF α) Stuckness.NotStuck
     config.expr config.store φ ?_
   intro inv κs
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
-      (GF := WasmHeapGF.{0} α) (H := WasmHeapMap) σ with
+      (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  letI globalMapG : GhostMapG (WasmHeapGF.{0} α) GlobalKey Value WasmGlobalMap := by
+  letI globalMapG : GhostMapG (WasmHeapGF α) GlobalKey Value WasmGlobalMap := by
     constructor
     exists 7
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := GlobalKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := GlobalKey)
       (V := Value) (H := WasmGlobalMap)) with ⟨%globalName, Hglobals⟩
   letI dataSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) DataSegmentKey (Option (List UInt8))
+      GhostMapG (WasmHeapGF α) DataSegmentKey (Option (List UInt8))
         WasmDataSegmentMap := by
     constructor
     exists 9
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := DataSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := DataSegmentKey)
       (V := Option (List UInt8)) (H := WasmDataSegmentMap)) with
     ⟨%dataSegmentName, Hsegments⟩
-  letI tableMapG : GhostMapG (WasmHeapGF.{0} α) TableKey TableInst WasmTableMap := by
+  letI tableMapG : GhostMapG (WasmHeapGF α) TableKey TableInst WasmTableMap := by
     constructor
     exists 10
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := TableKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := TableKey)
       (V := TableInst) (H := WasmTableMap)) with
     ⟨%tableName, Htables⟩
   letI elementSegmentMapG :
-      GhostMapG (WasmHeapGF.{0} α) ElementSegmentKey (Option (List (Option Nat)))
+      GhostMapG (WasmHeapGF α) ElementSegmentKey (Option (List (Option Nat)))
         WasmElementSegmentMap := by
     constructor
     exists 11
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := ElementSegmentKey)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := ElementSegmentKey)
       (V := Option (List (Option Nat))) (H := WasmElementSegmentMap)) with
     ⟨%elementSegmentName, HelementSegments⟩
   letI wasmHeapGS : WasmHeapGS α :=
@@ -3238,10 +3307,10 @@ theorem wasm_smallStep_heap_runtime_instances_adequacy
   letI wasmElementSegmentGS : WasmElementSegmentGS α :=
     { toGhostMapG := elementSegmentMapG
       elementSegmentName := elementSegmentName }
-  letI runtimeModuleMapG : GhostMapG (WasmHeapGF.{0} α) Nat Module WasmRuntimeModuleMap := by
+  letI runtimeModuleMapG : GhostMapG (WasmHeapGF α) Nat Module WasmRuntimeModuleMap := by
     constructor
     exists 8
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := Module) (H := WasmRuntimeModuleMap)) with ⟨%runtimeName, HruntimeModuleAuth⟩
   imod ghost_map_insert_persist (k := config.store.runtime.entry.id)
       (v := config.store.runtime.currentModule)
@@ -3255,16 +3324,16 @@ theorem wasm_smallStep_heap_runtime_instances_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { toGhostMapG := runtimeModuleMapG
       runtimeName }
-  letI hostEnvMapG : GhostMapG (WasmHeapGF.{0} α) Nat (HostEnv α) WasmHostEnvMap := by
+  letI hostEnvMapG : GhostMapG (WasmHeapGF α) Nat (HostEnv α) WasmHostEnvMap := by
     constructor
     exists 12
-  imod (ghost_map_alloc_empty (GF := WasmHeapGF.{0} α) (K := Nat)
+  imod (ghost_map_alloc_empty (GF := WasmHeapGF α) (K := Nat)
       (V := HostEnv α) (H := WasmHostEnvMap)) with ⟨%hostEnvName, HhostEnvAuth⟩
   letI hostEnvGS : WasmHostEnvGS α :=
     { toGhostMapG := hostEnvMapG
       hostEnvName }
   letI hostStateElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α))))) := by
     exists 13
   imod (iOwn_alloc (E := hostStateElem)
@@ -3279,7 +3348,7 @@ theorem wasm_smallStep_heap_runtime_instances_adequacy
       hostStateName }
   iclear HhostStateFrag
   letI instanceElem :
-      ElemG (WasmHeapGF.{0} α)
+      ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
     exists 14
   imod (iOwn_alloc (E := instanceElem)
@@ -3293,7 +3362,7 @@ theorem wasm_smallStep_heap_runtime_instances_adequacy
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF.{0} α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
+      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
     exists 15
   let runtimeInstancesValue : Agree (DiscreteO (Array (ModuleInstance α))) :=
     toAgree ⟨config.store.runtime.instances⟩
@@ -3322,7 +3391,7 @@ theorem wasm_smallStep_heap_runtime_instances_adequacy
   icases HruntimeInstancesPair with ⟨HruntimeInstancesState, HruntimeInstancesWP⟩
   imodintro
   iexists (fun store _observations =>
-    stateInterp (GF := WasmHeapGF.{0} α) store 0 [] 0)
+    stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstancesState HinstanceState HhostEnvAuth HhostState]
@@ -3372,7 +3441,7 @@ theorem wasm_smallStep_heap_runtime_instances_partiallyMeets
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         runtimeModuleOwn config.store.runtime.entry
             config.store.runtime.currentModule ∗
@@ -3394,7 +3463,7 @@ theorem wasm_smallStep_heap_runtime_instance_partiallyMeets
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
             address (DFrac.own 1) value) ∗
         runtimeModuleOwn config.store.runtime.entry
             config.store.runtime.currentModule) ⊢
@@ -3520,7 +3589,7 @@ private def word16Heap (word : UInt32) :
 
 private theorem word16Heap_pointsTo (word : UInt32) [WasmHeapGS α] :
     ([∗map] address ↦ value ∈ word16Heap word,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u32 0 16 word := by
   let σ0 : WasmHeapMap (Option UInt8) := ∅
@@ -3540,7 +3609,7 @@ private theorem word16Heap_pointsTo (word : UInt32) [WasmHeapGS α] :
   change
     ([∗map] address ↦ value ∈
       insert σ3 (⟨0, 19⟩ : MemoryKey) (some (u32Byte word 3)),
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u32 0 16 word
   rw [(BI.BigSepM.bigSepM_insert h19).to_eq]
@@ -3702,7 +3771,7 @@ private theorem swapWordsHeap_inBounds (memory : Mem)
 
 private theorem swapWordsHeap_pointsTo [WasmHeapGS α] :
     ([∗map] address ↦ value ∈ swapWordsHeap,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u32 0 0 11 ∗ pointsTo_u32 0 4 22 := by
   unfold swapWordsHeap store32Heap
@@ -3858,7 +3927,7 @@ private theorem reverseThreeWordsHeap_inBounds (memory : Mem)
 
 private theorem reverseThreeWordsHeap_pointsTo [WasmHeapGS α] :
     ([∗map] address ↦ value ∈ reverseThreeWordsHeap,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u32 0 0 11 ∗ pointsTo_u32 0 4 22 ∗
         pointsTo_u32 0 8 33 := by
@@ -3999,7 +4068,7 @@ private theorem partitionThreeWordsHeap_inBounds (memory : Mem)
 
 private theorem partitionThreeWordsHeap_pointsTo [WasmHeapGS α] :
     ([∗map] address ↦ value ∈ partitionThreeWordsHeap,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u32 0 0 33 ∗ pointsTo_u32 0 4 11 ∗
         pointsTo_u32 0 8 22 := by
@@ -4148,7 +4217,7 @@ private theorem mergeTwoWordsHeap_inBounds (memory : Mem)
 
 private theorem mergeTwoWordsHeap_pointsTo [WasmHeapGS α] :
     ([∗map] address ↦ value ∈ mergeTwoWordsHeap,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u32 0 0 9 ∗ pointsTo_u32 0 4 4 := by
   unfold mergeTwoWordsHeap
@@ -4288,7 +4357,7 @@ private theorem fillFourBytesHeap_inBounds (memory : Mem)
 private theorem fillFourBytesHeap_pointsTo (oldWord : UInt32)
     [WasmHeapGS α] :
     ([∗map] address ↦ value ∈ fillFourBytesHeap oldWord,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u32 0 16 oldWord ∗ pointsTo_u32 0 32 0x12345678 := by
   unfold fillFourBytesHeap
@@ -4429,7 +4498,7 @@ private theorem copyWordHeap_inBounds (memory : Mem)
 private theorem copyWordHeap_pointsTo (oldDestination : UInt32)
     [WasmHeapGS α] :
     ([∗map] address ↦ value ∈ copyWordHeap oldDestination,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u32 0 0 0x04030201 ∗ pointsTo_u32 0 8 oldDestination := by
   unfold copyWordHeap
@@ -4548,7 +4617,7 @@ private theorem copyOverlapWordHeap_inBounds (memory : Mem)
 
 private theorem copyOverlapWordHeap_pointsTo [WasmHeapGS α] :
     ([∗map] address ↦ value ∈ copyOverlapWordHeap,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u64 0 0 0x8877665544332211 := by
   unfold copyOverlapWordHeap
@@ -4653,7 +4722,7 @@ private theorem memoryInitDropHeap_inBounds (memory : Mem)
 
 private theorem memoryInitDropHeap_pointsTo [WasmHeapGS α] :
     ([∗map] address ↦ value ∈ memoryInitDropHeap,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       pointsTo_u32 0 16 0 := by
   unfold memoryInitDropHeap

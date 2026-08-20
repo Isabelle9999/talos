@@ -63,9 +63,9 @@ private theorem incrTransfer (n : Nat) [WasmSmallStepGS .hasLC Nat]
     (_ : store.runtime.currentModule = counterModule)
     (results : List Value) (postWasm : Store Nat)
     (h : incrementHost.invoke store.wasm [] = .Return results postWasm) :
-    hostStateOwn n ∗ stateInterp (GF := WasmHeapGF.{0} Nat) store ns obs nt ==∗
+    hostStateOwn n ∗ stateInterp (GF := WasmHeapGF Nat) store ns obs nt ==∗
       hostStateOwn (n + 1) ∗
-      stateInterp (GF := WasmHeapGF.{0} Nat) { store with wasm := postWasm } ns obs nt := by
+      stateInterp (GF := WasmHeapGF Nat) { store with wasm := postWasm } ns obs nt := by
   simp [incrementHost] at h
   obtain ⟨h1, h2⟩ := h; subst h1; subst h2
   iintro ⟨HP, Hσ⟩
@@ -101,9 +101,9 @@ private theorem readTransfer (initial : Nat) [WasmSmallStepGS .hasLC Nat]
     (results : List Value) (postWasm : Store Nat)
     (h : readCounterHost.invoke store.wasm [] = .Return results postWasm) :
     hostStateOwn (initial + 3) ∗
-      stateInterp (GF := WasmHeapGF.{0} Nat) store ns obs nt ==∗
+      stateInterp (GF := WasmHeapGF Nat) store ns obs nt ==∗
       ⌜results = [.i32 (UInt32.ofNat (initial + 3))]⌝ ∗
-      stateInterp (GF := WasmHeapGF.{0} Nat) { store with wasm := postWasm } ns obs nt := by
+      stateInterp (GF := WasmHeapGF Nat) { store with wasm := postWasm } ns obs nt := by
   simp [readCounterHost] at h
   obtain ⟨h1, h2⟩ := h; subst h2
   iintro ⟨HP, Hσ⟩

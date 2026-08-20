@@ -98,9 +98,9 @@ private theorem sharedMemHeap_inBounds (v : UInt8) :
 
 private theorem sharedMemHeap_pointsTo [WasmHeapGS α] :
     ([∗map] address ↦ value ∈ sharedMemHeap,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         ⟨0, 0⟩ (DFrac.own 1) (some 0) := by
   unfold sharedMemHeap
   rw [(BI.BigSepM.bigSepM_insert (get?_empty (⟨0, 0⟩ : MemoryKey))).to_eq]
@@ -134,7 +134,7 @@ theorem sharedMem_partiallyMeets (v : UInt8) :
       iapply wp_localGet rfl
       inext
       ihave HptLater :
-          ▷ pointsTo (GF := WasmHeapGF.{0} Unit) (H := WasmHeapMap)
+          ▷ pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
             ⟨0, 0 + 0⟩ (DFrac.own 1) (some 0) $$ [Hpt]
       · inext
         rw [UInt32.add_zero]
@@ -153,7 +153,7 @@ theorem sharedMem_partiallyMeets (v : UInt8) :
         iapply wp_const
         inext
         ihave HptLater2 :
-            ▷ pointsTo (GF := WasmHeapGF.{0} Unit) (H := WasmHeapMap)
+            ▷ pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
               ⟨0, 0 + 0⟩ (DFrac.own 1) (some v.toUInt32.toUInt8) $$ [Hpt']
         · inext
           iexact Hpt'

@@ -648,11 +648,11 @@ theorem store32Heap_pointsTo {α : Type} [WasmHeapGS α]
     (_hn2 : (addr + 2).toNat = addr.toNat + 2)
     (_hn3 : (addr + 3).toNat = addr.toNat + 3) :
     ([∗map] address ↦ byte ∈ store32Heap σ memId addr value,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) byte) ⊢
       pointsTo_u32 memId addr value ∗
       ([∗map] address ↦ byte ∈ σ,
-        pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
           address (DFrac.own 1) byte) := by
   have h01 : (⟨memId, addr + 1⟩ : MemoryKey) ≠ ⟨memId, addr⟩ := fun h =>
     absurd (congrArg MemoryKey.addr h) (by intro h'; simp at h')
@@ -855,11 +855,11 @@ theorem store64Heap_pointsTo {α : Type} [WasmHeapGS α]
           ⟨memId, addr + 5⟩ (some (u64Byte value 5)))
         ⟨memId, addr + 6⟩ (some (u64Byte value 6))) ⟨memId, addr + 7⟩ = none) :
     ([∗map] address ↦ byte ∈ store64Heap σ memId addr value,
-      pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
         address (DFrac.own 1) byte) ⊢
       pointsTo_u64 memId addr value ∗
       ([∗map] address ↦ byte ∈ σ,
-        pointsTo (GF := WasmHeapGF.{0} α) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
           address (DFrac.own 1) byte) := by
   unfold store64Heap
   rw [(BI.BigSepM.bigSepM_insert h7).to_eq]
