@@ -458,6 +458,12 @@ instance {α : Type} [WasmDataSegmentGS α] (key : DataSegmentKey)
   unfold dataSegmentPointsTo
   infer_instance
 
+instance {α : Type} [WasmDataSegmentGS α] (instanceId index : Nat)
+    (value : Option (List UInt8)) :
+    BI.Timeless (dataSegmentPointsToAt (α := α) instanceId index value) := by
+  unfold dataSegmentPointsToAt
+  infer_instance
+
 theorem dataSegmentPointsTo_lookup {α : Type} [gs : WasmDataSegmentGS α]
     (σ : WasmDataSegmentMap (Option (List UInt8)))
     (key : DataSegmentKey) (value : Option (List UInt8)) :

@@ -1966,22 +1966,33 @@ theorem stateInterp_pointsTo_u16_facts [WasmSmallStepGS hlc α]
     (h1 : (address + 1).toNat = address.toNat + 1) :
     stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
       pointsTo_u16 0 address value ==∗
-      ⌜address.toNat + 2 ≤ store.wasm.mem.pages * 65536⌝ := by
+      ⌜store.wasm.mem.read16 address = value &&& 0xFFFF ∧
+        address.toNat + 2 ≤ store.wasm.mem.pages * 65536⌝ := by
   iintro ⟨Hstate, Hword⟩
   ihave Hword := (pointsTo_u16_eq 0 address value).mp $$ Hword
   icases Hword with ⟨H0, H1⟩
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ, %runtimeModuleσ, %hostEnvσ,
       Hheap, Hglobals, Hsegments, Htables, HelementSegments, HruntimeModuleAuth, HruntimeModuleBigSep, HruntimeInstances, HinstanceAuth, HhostEnvAuth, Hstate_auth, %Hfacts, Hexc⟩
+  ihave %hg0 :
+      ⌜get? σ ⟨0, address⟩ = some (some (u32Byte value 0))⌝ $$ [Hheap H0]
+  · imod genHeap_valid $$ [$Hheap $H0] with %hg0
+    ipureintro
+    exact hg0
   ihave %hg1 :
       ⌜get? σ ⟨0, address + 1⟩ = some (some (u32Byte value 1))⌝ $$ [Hheap H1]
   · imod genHeap_valid $$ [$Hheap $H1] with %hg1
     ipureintro
     exact hg1
+  have hr0 := fromResolver store Hfacts.1 address (u32Byte value 0) hg0
+  have hr1 := fromResolver store Hfacts.1 (address + 1) (u32Byte value 1) hg1
   have hb1 := fromResolverBounds store Hfacts.2.1 (address + 1) (by simp [hg1])
   ipureintro
-  rw [h1] at hb1
-  omega
+  refine ⟨?_, by rw [h1] at hb1; omega⟩
+  simp only [Mem.read8] at hr0 hr1
+  simp only [Mem.read16]
+  rw [hr0, ← h1, hr1]
+  exact u16Byte_reassemble value
 
 theorem stateInterp_store16 [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
@@ -2227,9 +2238,8 @@ bounds because the page count only increases. -/
 theorem stateInterp_memoryGrow [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
     (observations : List StepKind) (threads : Nat)
-    (delta : UInt32) (memory : Mem) (previousPages : Nat)
-    (hgrow : store.wasm.mem.grow delta store.runtime.currentModule.memoryCap =
-      some (memory, previousPages)) :
+    (delta : UInt32) (cap : Nat) (memory : Mem) (previousPages : Nat)
+    (hgrow : store.wasm.mem.grow delta cap = some (memory, previousPages)) :
     stateInterp (GF := WasmHeapGF α) store steps observations threads ⊢
       stateInterp (GF := WasmHeapGF α)
         { store with wasm := { store.wasm with mem := memory } }
@@ -2251,10 +2261,10 @@ theorem stateInterp_memoryGrow [WasmSmallStepGS hlc α]
   iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeModuleBigSep HruntimeInstances HinstanceAuth HhostEnvAuth Hstate_auth Hexc
   ipureintro
   have h_ag := grow_sound σ (storeResolve store) 0 store.wasm.mem memory delta
-      store.runtime.currentModule.memoryCap previousPages hgrow (storeResolve_zero store) Hfacts.1
+      cap previousPages hgrow (storeResolve_zero store) Hfacts.1
   rw [storeResolve_update_mem0] at h_ag
   have h_bn := grow_inBounds σ (storeResolve store) 0 store.wasm.mem memory delta
-      store.runtime.currentModule.memoryCap previousPages hgrow (storeResolve_zero store) Hfacts.2.1
+      cap previousPages hgrow (storeResolve_zero store) Hfacts.2.1
   rw [storeResolve_update_mem0] at h_bn
   exact ⟨h_ag, h_bn, Hfacts.2.2⟩
 
