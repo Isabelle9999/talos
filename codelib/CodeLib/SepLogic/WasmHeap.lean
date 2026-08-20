@@ -40,6 +40,7 @@ abbrev WasmHeapGF (α : Type := Unit) : BundledGFunctors
   | 13 => ⟨constOF
       (HeapView Nat (Agree (DiscreteO (Nat × List Value)))
         WasmExceptionMap), by infer_instance⟩
+  | 14 => ⟨constOF (Agree (DiscreteO (List Nat))), by infer_instance⟩
   | _ => ⟨constOF Unit, by infer_instance⟩
 -- Wire genHeapPreS (following HeapLang's instHeapLangGS_HeapLangS)
 instance instWasmHeapPreS :
@@ -101,6 +102,21 @@ class WasmRuntimeModuleGS (α : outParam Type) where
   runtimeName : GName
 
 attribute [reducible, instance] WasmRuntimeModuleGS.runtimeElem
+
+/-- Ghost knowledge about the tag-identity table of the *entry* instance.
+
+Tag identity is needed only by the exception rules, so it is kept in its own
+persistent ghost variable instead of being asserted as an invariant of the
+state interpretation.  The state interpretation only requires the agreed list
+to be a *prefix* of `MachineStore.wasm.tagIds`, which keeps it valid for
+linked stores whose tag table carries extra entries contributed by additional
+registered modules. -/
+class WasmTagTableGS (α : outParam Type) where
+  tagTableElem :
+    ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (List Nat))))
+  tagTableName : GName
+
+attribute [reducible, instance] WasmTagTableGS.tagTableElem
 
 /-- The authoritative host-state ghost variable. `StateInterp` owns the
 authority while specifications own the exclusive fragment below. -/
@@ -335,6 +351,33 @@ theorem runtimeModuleOwn_agree [gs : WasmRuntimeModuleGS α]
   icombine Hactual Hexpected gives %Hvalid
   ipureintro
   exact congrArg DiscreteO.car (toAgree_op_valid_iff_eq.mp Hvalid)
+
+/-- Persistent knowledge of the entry instance's tag-identity table.  Only the
+exception rules need it; every other rule is oblivious to tags. -/
+def tagTableOwn [gs : WasmTagTableGS α] (ids : List Nat) :
+    IProp (WasmHeapGF α) :=
+  iOwn (E := gs.tagTableElem) gs.tagTableName (toAgree ⟨ids⟩)
+
+instance [WasmTagTableGS α] (ids : List Nat) :
+    BI.Persistent (tagTableOwn ids) := by
+  unfold tagTableOwn
+  infer_instance
+
+instance [WasmTagTableGS α] (ids : List Nat) :
+    BI.Timeless (tagTableOwn ids) := by
+  unfold tagTableOwn
+  infer_instance
+
+theorem tagTableOwn_agree [gs : WasmTagTableGS α]
+    (actual expected : List Nat) :
+    tagTableOwn actual ∗ tagTableOwn expected ⊢
+      iprop(⌜actual = expected⌝) := by
+  unfold tagTableOwn
+  iintro ⟨Hactual, Hexpected⟩
+  icombine Hactual Hexpected gives %Hvalid
+  ipureintro
+  exact congrArg DiscreteO.car (toAgree_op_valid_iff_eq.mp Hvalid)
+
 /-! ## Points-to assertions
 
 Byte-level `↦w` plus multi-byte and array derived forms.

@@ -25,6 +25,7 @@ class WasmSmallStepGS (hlc : outParam HasLC) (α : outParam Type) extends
   elementSegment : WasmElementSegmentGS α
   exception : WasmExceptionGS α
   runtime : WasmRuntimeModuleGS α
+  tagTable : WasmTagTableGS α
   host : WasmHostGS α
 
 attribute [instance] WasmSmallStepGS.toInvGS_gen
@@ -35,7 +36,45 @@ attribute [reducible, instance] WasmSmallStepGS.table
 attribute [reducible, instance] WasmSmallStepGS.elementSegment
 attribute [reducible, instance] WasmSmallStepGS.exception
 attribute [reducible, instance] WasmSmallStepGS.runtime
+attribute [reducible, instance] WasmSmallStepGS.tagTable
 attribute [reducible, instance] WasmSmallStepGS.host
+
+/-- The runtime-identity component of the state interpretation.
+
+It pins the immutable instantiated module and, separately, records ghost
+knowledge about the tag-identity table.  The tag component only claims that
+the agreed list is a *prefix* of `store.wasm.tagIds`; nothing here constrains
+the physical store, so linked stores whose tag table carries entries from
+additional registered modules satisfy it unchanged. -/
+def runtimeInterp [WasmRuntimeModuleGS α] [WasmTagTableGS α]
+    (m : Module) (tagIds : List Nat) : IProp (WasmHeapGF α) := iprop%
+  runtimeModuleOwn m ∗
+    ∃ ids : List Nat, tagTableOwn ids ∗ ⌜ids.IsPrefix tagIds⌝
+
+theorem runtimeInterp_module [WasmRuntimeModuleGS α] [WasmTagTableGS α]
+    (m : Module) (tagIds : List Nat) :
+    runtimeInterp m tagIds ⊢ runtimeModuleOwn m := by
+  unfold runtimeInterp
+  iintro ⟨Hmodule, Htags⟩
+  iclear Htags
+  iexact Hmodule
+
+theorem runtimeInterp_tagPrefix [WasmRuntimeModuleGS α] [WasmTagTableGS α]
+    (m : Module) (tagIds ids : List Nat) :
+    runtimeInterp m tagIds ∗ tagTableOwn ids ⊢
+      iprop(⌜ids.IsPrefix tagIds⌝) := by
+  unfold runtimeInterp
+  iintro ⟨⟨Hmodule, %ids', Hactual, %Hprefix⟩, Howned⟩
+  iclear Hmodule
+  ihave %heq := tagTableOwn_agree ids' ids $$ [$Hactual $Howned]
+  ipureintro
+  exact heq ▸ Hprefix
+
+/-- A tag index is canonical for `ids` when it is the first position holding
+its identity; this is what the interpreter's tag canonicalisation collapses
+to, and it is decidable for a concrete tag table. -/
+def TagIndexCanonical (ids : List Nat) (index : Nat) : Prop :=
+  ∃ id, ids[index]? = some id ∧ ids.findIdx? (· = id) = some index
 
 instance instStateInterp [WasmSmallStepGS hlc α] :
     StateInterp (MachineStore α) StepKind (WasmHeapGF α) where
@@ -59,7 +98,7 @@ instance instStateInterp [WasmSmallStepGS hlc α] :
           (DFrac.own 1) elementSegmentσ ∗
         ghost_map_auth WasmSmallStepGS.exception.exceptionName
           (DFrac.own 1) exceptionσ ∗
-        runtimeModuleOwn store.runtime.module ∗
+        runtimeInterp store.runtime.module store.wasm.tagIds ∗
         hostStateAuth store.wasm.host ∗
       ⌜heapAgreesWithMem σ store.wasm.mem ∧
         heapAddressesInBounds σ store.wasm.mem ∧
@@ -68,8 +107,7 @@ instance instStateInterp [WasmSmallStepGS hlc α] :
         tableHeapAgrees tableσ store.wasm.tables ∧
         elementSegmentHeapAgrees elementSegmentσ
           store.wasm.elementSegments ∧
-        exceptionHeapAgrees exceptionσ store.wasm.exns ∧
-        store.wasm.tagIds = List.range store.runtime.module.tags.length⌝
+        exceptionHeapAgrees exceptionσ store.wasm.exns⌝
 
 theorem stateInterp_eq [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
@@ -94,7 +132,7 @@ theorem stateInterp_eq [WasmSmallStepGS hlc α]
             (DFrac.own 1) elementSegmentσ ∗
           ghost_map_auth WasmSmallStepGS.exception.exceptionName
             (DFrac.own 1) exceptionσ ∗
-          runtimeModuleOwn store.runtime.module ∗
+          runtimeInterp store.runtime.module store.wasm.tagIds ∗
           hostStateAuth store.wasm.host ∗
         ⌜heapAgreesWithMem σ store.wasm.mem ∧
           heapAddressesInBounds σ store.wasm.mem ∧
@@ -103,8 +141,7 @@ theorem stateInterp_eq [WasmSmallStepGS hlc α]
           tableHeapAgrees tableσ store.wasm.tables ∧
           elementSegmentHeapAgrees elementSegmentσ
             store.wasm.elementSegments ∧
-          exceptionHeapAgrees exceptionσ store.wasm.exns ∧
-          store.wasm.tagIds = List.range store.runtime.module.tags.length⌝) :=
+          exceptionHeapAgrees exceptionσ store.wasm.exns⌝) :=
   .rfl
 
 theorem stateInterp_pointsTo_read8 [WasmSmallStepGS hlc α]
@@ -1045,6 +1082,8 @@ theorem stateInterp_runtimeModule_agree [WasmSmallStepGS hlc α]
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ, %exceptionσ,
       Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hexceptions, Hactual, Hhost,
       %Hfacts⟩
+  ihave Hactual :=
+    runtimeInterp_module store.runtime.module store.wasm.tagIds $$ Hactual
   icombine Hactual Hexpected as Hmodules
   ihave %hagrees :=
     runtimeModuleOwn_agree store.runtime.module m $$ Hmodules
@@ -1065,20 +1104,48 @@ theorem stateInterp_exception_facts [WasmSmallStepGS hlc α]
   ihave %hlookup := exceptionPointsTo_lookup exceptionσ index dq tagAndArgs $$
       Hexceptions Hexception
   ipureintro
-  exact Hfacts.2.2.2.2.2.2.1 index tagAndArgs hlookup
+  exact Hfacts.2.2.2.2.2.2 index tagAndArgs hlookup
 
-theorem stateInterp_tagIds_facts [WasmSmallStepGS hlc α]
+/-- Ghost knowledge of the entry instance's tag table is a prefix of the
+physical tag table.  This is the *only* channel through which a rule may learn
+anything about tags; the state interpretation itself constrains nothing. -/
+theorem stateInterp_tagTable_prefix [WasmSmallStepGS hlc α]
     (store : MachineStore α) (steps : Nat)
-    (observations : List StepKind) (threads : Nat) :
-    stateInterp (GF := WasmHeapGF α) store steps observations threads ==∗
-      ⌜store.wasm.tagIds = List.range store.runtime.module.tags.length⌝ := by
-  iintro Hstate
+    (observations : List StepKind) (threads : Nat) (ids : List Nat) :
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
+      tagTableOwn ids ==∗
+      ⌜ids.IsPrefix store.wasm.tagIds⌝ := by
+  iintro ⟨Hstate, Howned⟩
   imodintro
   icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
     ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ, %exceptionσ,
       Hheap, Hglobals, Hsegments, Htables, HelementSegments, Hexceptions, Hruntime, Hhost, %Hfacts⟩
+  ihave %hprefix :=
+    runtimeInterp_tagPrefix store.runtime.module store.wasm.tagIds ids $$
+      [$Hruntime $Howned]
   ipureintro
-  exact Hfacts.2.2.2.2.2.2.2
+  exact hprefix
+
+/-- The interpreter's tag canonicalisation is the identity on indices that are
+canonical in a prefix of the physical tag table.  Entries appended by other
+registered modules cannot interfere: `findIdx?` stops at the first match. -/
+theorem canonicalTagIndex_of_prefix (store : MachineStore α)
+    (ids : List Nat) (index : Nat)
+    (hprefix : ids.IsPrefix store.wasm.tagIds)
+    (hcanonical : TagIndexCanonical ids index) :
+    (match store.wasm.tagIds[index]? with
+      | some id => (store.wasm.tagIds.findIdx? (· = id)).getD index
+      | none => index) = index := by
+  obtain ⟨rest, hrest⟩ := hprefix
+  obtain ⟨id, hget, hfind⟩ := hcanonical
+  have hlt : index < ids.length := (List.getElem?_eq_some_iff.mp hget).1
+  have hget' : store.wasm.tagIds[index]? = some id := by
+    rw [← hrest, List.getElem?_append_left hlt]
+    exact hget
+  have hfind' : store.wasm.tagIds.findIdx? (· = id) = some index := by
+    rw [← hrest, List.findIdx?_append, hfind]
+    simp
+  simp only [hget', hfind', Option.getD_some]
 
 /-- Four-byte ownership determines the physical little-endian word and proves
 the complete access is in bounds. The address equalities exclude UInt32

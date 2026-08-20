@@ -1045,7 +1045,6 @@ theorem sort_partiallyMeets (input : List UInt32) (hfit : Fits input) :
   · exact sortHeap_agrees input hfit
   · exact sortHeap_inBounds input hfit
   · exact globalHeapAgrees_empty _
-  · rfl
   · intro _
     iintro Hresources
     iapply twp.to_wp
@@ -1061,7 +1060,6 @@ theorem sort_stronglyNormalizing (input : List UInt32) (hfit : Fits input) :
   · exact sortHeap_agrees input hfit
   · exact sortHeap_inBounds input hfit
   · exact globalHeapAgrees_empty _
-  · rfl
   · intro _
     iintro Hresources
     ihave Hsort := twp_sort input hfit $$ Hresources
@@ -1078,7 +1076,6 @@ theorem sort_terminatesWith (input : List UInt32) (hfit : Fits input) :
   · exact sortHeap_agrees input hfit
   · exact sortHeap_inBounds input hfit
   · exact globalHeapAgrees_empty _
-  · rfl
   · intro _
     iintro Hresources
     iapply twp.to_wp

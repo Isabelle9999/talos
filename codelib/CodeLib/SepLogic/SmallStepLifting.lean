@@ -2204,20 +2204,24 @@ theorem wp_catchException
     have hhost :
         (prepareCatch tag arguments clause store).2.wasm.host = store.wasm.host := by
       rcases clause with _ | _ | _ | _ <;> simp [prepareCatch_eq]
+    have htagIds :
+        (prepareCatch tag arguments clause store).2.wasm.tagIds =
+          store.wasm.tagIds := by
+      rcases clause with _ | _ | _ | _ <;> simp [prepareCatch_eq]
     iapply (stateInterp_eq (prepareCatch tag arguments clause store).2 ns obs' nt).mpr
     iexists σ; iexists globalσ; iexists dataSegmentσ; iexists tableσ; iexists elementSegmentσ
     iexists exceptionσ
     simp only [hpreserve.1, hpreserve.2.1, hpreserve.2.2.1, hpreserve.2.2.2.1,
-      hpreserve.2.2.2.2, hruntime, hhost]
+      hpreserve.2.2.2.2, hruntime, hhost, htagIds]
     iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HhostState
     ipureintro
     refine ⟨Hfacts.1, Hfacts.2.1, Hfacts.2.2.1, Hfacts.2.2.2.1, Hfacts.2.2.2.2.1,
       Hfacts.2.2.2.2.2.1, ?_⟩
     rcases clause with _ | _ | _ | _ <;> simp [prepareCatch_eq]
     · exact Hfacts.2.2.2.2.2.2
-    · exact ⟨exceptionHeapAgrees_append Hfacts.2.2.2.2.2.2.1, Hfacts.2.2.2.2.2.2.2⟩
+    · exact exceptionHeapAgrees_append Hfacts.2.2.2.2.2.2
     · exact Hfacts.2.2.2.2.2.2
-    · exact ⟨exceptionHeapAgrees_append Hfacts.2.2.2.2.2.2.1, Hfacts.2.2.2.2.2.2.2⟩
+    · exact exceptionHeapAgrees_append Hfacts.2.2.2.2.2.2
   isplitl [Hwp]
   · iexact Hwp
   · itrivial

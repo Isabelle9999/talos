@@ -778,7 +778,6 @@ theorem quicksort_partiallyMeets (arr : UInt32) (input : List UInt32)
   · exact quicksortHeap_agrees arr input hfit
   · exact quicksortHeap_inBounds arr input hfit hmem
   · intro index value hget; simp [get?_empty] at hget
-  · rfl
   · intro gs
     simp only [BI.BigSepM.bigSepM_empty.to_eq]
     iintro ⟨Hbytes, _Hemp, Hruntime⟩

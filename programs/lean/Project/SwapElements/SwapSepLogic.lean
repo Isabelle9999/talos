@@ -1065,8 +1065,7 @@ theorem func4_distinct_store_partiallyMeets
     (hglobalOwn : ∀ [WasmGlobalGS Unit],
       ([∗map] index ↦ value ∈ globalσ,
         globalPointsTo index value) ⊢
-      globalPointsTo 0 (.i32 1048576))
-    (htags : wasm.tagIds = List.range «module».tags.length) :
+      globalPointsTo 0 (.i32 1048576)) :
     Wasm.SmallStep.PartiallyMeets
       (func4ConfigFromStore wasm ptr len i j)
       (fun values store =>
@@ -1114,7 +1113,6 @@ theorem func4_distinct_store_partiallyMeets
   · exact hagree
   · exact hinBounds
   · exact hglobals
-  · simpa only [func4ConfigFromStore] using htags
   · intro gs
     iintro ⟨Hheap, Hglobals, Hruntime⟩
     ihave Hresources := hresources $$ Hheap
@@ -1176,8 +1174,7 @@ theorem func4_alias_store_partiallyMeets
     (hglobalOwn : ∀ [WasmGlobalGS Unit],
       ([∗map] index ↦ value ∈ globalσ,
         globalPointsTo index value) ⊢
-      globalPointsTo 0 (.i32 1048576))
-    (htags : wasm.tagIds = List.range «module».tags.length) :
+      globalPointsTo 0 (.i32 1048576)) :
     Wasm.SmallStep.PartiallyMeets
       (func4ConfigFromStore wasm ptr len i i)
       (fun values store =>
@@ -1206,7 +1203,6 @@ theorem func4_alias_store_partiallyMeets
   · exact hagree
   · exact hinBounds
   · exact hglobals
-  · simpa only [func4ConfigFromStore] using htags
   · intro gs
     iintro ⟨Hheap, Hglobals, Hruntime⟩
     ihave Hresources := hresources $$ Hheap
@@ -1327,7 +1323,6 @@ theorem func3_smallStep (ptr len : UInt32) :
     (φ := fun values => values = [])
   · exact func3Heap_agrees ptr len
   · exact func3Heap_inBounds ptr len
-  · rfl
   · intro gs
     iintro Hheap
     ihave Hwords := func3Heap_pointsTo $$ Hheap
@@ -1466,7 +1461,6 @@ theorem func4Example_smallStep :
   · exact func4ExampleHeap_agrees
   · exact func4ExampleHeap_inBounds
   · exact func4ExampleGlobals_agree
-  · rfl
   · intro gs
     iintro ⟨Hheap, Hglobals, Hruntime⟩
     ihave Hwords := func4ExampleHeap_pointsTo $$ Hheap
@@ -1509,7 +1503,6 @@ theorem func4Example_store_smallStep :
   · exact func4ExampleHeap_agrees
   · exact func4ExampleHeap_inBounds
   · exact func4ExampleGlobals_agree
-  · rfl
   · intro gs
     iintro ⟨Hheap, Hglobals, Hruntime⟩
     ihave Hwords := func4ExampleHeap_pointsTo $$ Hheap
@@ -1647,7 +1640,6 @@ theorem func4Alias_smallStep :
   · exact func4AliasHeap_agrees
   · exact func4AliasHeap_inBounds
   · exact func4ExampleGlobals_agree
-  · rfl
   · intro gs
     iintro ⟨Hheap, Hglobals, Hruntime⟩
     ihave Hwords := func4AliasHeap_pointsTo $$ Hheap
@@ -1687,7 +1679,6 @@ theorem func4Alias_store_smallStep :
   · exact func4AliasHeap_agrees
   · exact func4AliasHeap_inBounds
   · exact func4ExampleGlobals_agree
-  · rfl
   · intro gs
     iintro ⟨Hheap, Hglobals, Hruntime⟩
     ihave Hwords := func4AliasHeap_pointsTo $$ Hheap
@@ -1820,7 +1811,6 @@ theorem func0Alias_smallStep :
   · exact func0AliasHeap_agrees
   · exact func0AliasHeap_inBounds
   · exact func0AliasGlobals_agree
-  · rfl
   · intro gs
     iintro ⟨Hheap, Hglobals, Hruntime⟩
     ihave Hwords := func0AliasHeap_pointsTo $$ Hheap

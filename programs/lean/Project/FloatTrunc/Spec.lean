@@ -141,7 +141,7 @@ theorem func1_body_smallStep_wp
 theorem func1_smallStep (x : UInt32) :
     PartiallyMeets (func1Config x)
       (fun rs _store => rs = [.i32 (i32TruncSatF32S x)]) := by
-  apply wasm_smallStep_partiallyMeets (α := Unit) (htags := rfl)
+  apply wasm_smallStep_partiallyMeets (α := Unit)
   intro gs
   simp only [func1Config]
   iapply func1_body_smallStep_wp x []
@@ -572,7 +572,6 @@ theorem func0_smallStep (x : UInt32) :
   · simpa [func0Config] using func0Heap_agrees
   · simpa [func0Config] using func0Heap_inBounds
   · simpa [func0Config] using func0Globals_agree
-  · rfl
   · intro gs
     have hreturn : ∀ word : UInt32,
         word = i32TruncSatF32S x →
@@ -658,7 +657,6 @@ theorem check_smallStep (x : UInt32) :
   · simpa [checkConfig, func0Config] using func0Heap_agrees
   · simpa [checkConfig, func0Config] using func0Heap_inBounds
   · simpa [checkConfig, func0Config] using func0Globals_agree
-  · rfl
   · intro gs
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hword := func0Heap_pointsTo $$ Hbytes

@@ -812,7 +812,6 @@ theorem recursive_sort_stronglyNormalizing
   · exact inputHeap_agrees recursive input hfit
   · exact inputHeap_inBounds recursive input hfit
   · exact globalHeapAgrees_empty _
-  · rfl
   · intro _
     iintro Hresources
     ihave Hsort := twp_recursiveSortCall input hfit $$ Hresources
@@ -832,7 +831,6 @@ theorem recursive_sort_terminatesWith
   · exact inputHeap_agrees recursive input hfit
   · exact inputHeap_inBounds recursive input hfit
   · exact globalHeapAgrees_empty _
-  · rfl
   · intro _
     iintro Hresources
     iapply twp.to_wp
@@ -850,7 +848,6 @@ theorem loop_sort_stronglyNormalizing
   · exact inputHeap_agrees loop input hfit
   · exact inputHeap_inBounds loop input hfit
   · exact globalHeapAgrees_empty _
-  · rfl
   · intro _
     iintro Hresources
     ihave Hsort := twp_loopSortCall input hfit $$ Hresources
@@ -870,7 +867,6 @@ theorem loop_sort_terminatesWith
   · exact inputHeap_agrees loop input hfit
   · exact inputHeap_inBounds loop input hfit
   · exact globalHeapAgrees_empty _
-  · rfl
   · intro _
     iintro Hresources
     iapply twp.to_wp

@@ -217,8 +217,7 @@ theorem opt3_func0_distinct_store_partiallyMeets
         pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
       pointsTo_u64 ((i <<< (3 % 32)) + ptr) oldA ∗
-      pointsTo_u64 ((j <<< (3 % 32)) + ptr) oldB)
-    (htags : wasm.tagIds = List.range Project.SwapElementsOpt3.module.tags.length) :
+      pointsTo_u64 ((j <<< (3 % 32)) + ptr) oldB) :
     Wasm.SmallStep.PartiallyMeets
       (opt3ConfigFromStore wasm ptr len i j)
       (fun values store =>
@@ -265,7 +264,6 @@ theorem opt3_func0_distinct_store_partiallyMeets
   · exact hagree
   · exact hinBounds
   · exact hglobals
-  · simpa only [opt3ConfigFromStore] using htags
   · intro gs
     iintro ⟨Hheap, Hglobals, Hruntime⟩
     ihave Hwords := hresources $$ Hheap
@@ -396,8 +394,7 @@ theorem opt3_func0_distinct_store_terminatesWith
         pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
       pointsTo_u64 ((i <<< (3 % 32)) + ptr) oldA ∗
-      pointsTo_u64 ((j <<< (3 % 32)) + ptr) oldB)
-    (htags : wasm.tagIds = List.range Project.SwapElementsOpt3.module.tags.length) :
+      pointsTo_u64 ((j <<< (3 % 32)) + ptr) oldB) :
     Wasm.SmallStep.TerminatesWith
       (opt3ConfigFromStore wasm ptr len i j)
       (fun values store =>
@@ -409,7 +406,7 @@ theorem opt3_func0_distinct_store_terminatesWith
       (fun _ _ _ => trivial))
   exact opt3_func0_distinct_store_partiallyMeets
     wasm ptr len i j oldA oldB σ globalσ hi hj hroomI hroomJ
-    hagree hinBounds hglobals hresources htags
+    hagree hinBounds hglobals hresources
 
 abbrev opt0ExampleConfig : Wasm.SmallStep.Config Unit :=
   Project.SwapElements.SwapSepLogic.func4ExampleConfig

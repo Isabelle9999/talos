@@ -1300,7 +1300,6 @@ theorem checkRound_smallStep (x : UInt32) :
   · simpa [checkRoundConfig] using roundHeap_agrees
   · simpa [checkRoundConfig] using roundHeap_inBounds
   · simpa [checkRoundConfig] using roundGlobals_agree
-  · rfl
   · intro gs
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hmemory := roundHeap_pointsTo $$ Hbytes

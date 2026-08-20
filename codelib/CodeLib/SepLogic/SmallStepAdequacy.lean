@@ -259,8 +259,6 @@ proof, allowing host-call rules to reconcile physical and ghost host state. -/
 theorem wasm_smallStep_host_adequacy
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       hostStateOwn config.store.wasm.host ⊢
         (WP config.expr @ Stuckness.NotStuck; ⊤ {{ values, ⌜φ values⌝ }})) :
@@ -332,6 +330,15 @@ theorem wasm_smallStep_host_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { runtimeElem
       runtimeName }
+  letI tagTableElem : ElemG (WasmHeapGF α)
+      (constOF (Agree (DiscreteO (List Nat)))) := by
+    exists 14
+  imod (iOwn_alloc (E := tagTableElem)
+      (toAgree ⟨config.store.wasm.tagIds⟩) (fun _ => trivial)) with
+    ⟨%tagTableName, HtagTable⟩
+  letI tagTableGS : WasmTagTableGS α :=
+    { tagTableElem
+      tagTableName }
   letI hostElem : ElemG (WasmHeapGF α)
       (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
     exists 12
@@ -349,6 +356,7 @@ theorem wasm_smallStep_host_adequacy
       elementSegment := wasmElementSegmentGS
       exception := wasmExceptionGS
       runtime := runtimeGS
+      tagTable := tagTableGS
       host := hostGS }
   iclear Hpoints Hmeta
   imodintro
@@ -356,7 +364,7 @@ theorem wasm_smallStep_host_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HhostState]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HtagTable HhostState]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists (∅ : WasmHeapMap (Option UInt8))
     iexists (∅ : WasmGlobalMap Value)
@@ -364,17 +372,22 @@ theorem wasm_smallStep_host_adequacy
     iexists (∅ : WasmTableMap TableInst)
     iexists (∅ : WasmElementSegmentMap (Option (List (Option Nat))))
     iexists (∅ : WasmExceptionMap (Nat × List Value))
-    unfold runtimeModuleOwn
-
+    unfold runtimeInterp runtimeModuleOwn tagTableOwn
     unfold hostStateAuth
     iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HhostState
+    isplitl [HtagTable]
+    · iexists config.store.wasm.tagIds
+      isplitl [HtagTable]
+      · iexact HtagTable
+      · ipureintro
+        exact List.prefix_rfl
     ipureintro
     exact ⟨heapAgreesWithMem_empty _,
       heapAddressesInBounds_empty _,
       globalHeapAgrees_empty _,
       dataSegmentHeapAgrees_empty _,
       ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _,
-        exceptionHeapAgrees_empty _, htags⟩⟩
+        exceptionHeapAgrees_empty _⟩⟩
   · iapply hwp
     unfold hostStateOwn
     iexact HhostOwn
@@ -383,14 +396,12 @@ theorem wasm_smallStep_host_adequacy
 theorem wasm_smallStep_adequacy
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       ⊢@{IProp (WasmHeapGF α)}
         (WP config.expr @ Stuckness.NotStuck; ⊤ {{ values, ⌜φ values⌝ }})) :
     adequate Stuckness.NotStuck config.expr config.store
       (fun values _ => φ values) := by
-  apply wasm_smallStep_host_adequacy config φ htags
+  apply wasm_smallStep_host_adequacy config φ
   intro _
   iintro _Hhost
   iclear _Hhost
@@ -402,15 +413,13 @@ caller-provided memory, global, or runtime ownership. -/
 theorem wasm_smallStep_partiallyMeets
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       ⊢@{IProp (WasmHeapGF α)}
         (WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values, ⌜φ values⌝ }})) :
     PartiallyMeets config (fun values _store => φ values) :=
   adequate_to_partiallyMeets config (fun values _store => φ values)
-    (wasm_smallStep_adequacy config φ htags hwp)
+    (wasm_smallStep_adequacy config φ hwp)
 
 /-- A closed total WP proof strongly normalizes the authoritative Wasm
 single-thread machine. The ghost initialization is the total-WP counterpart
@@ -418,8 +427,6 @@ of `wasm_smallStep_adequacy`; both use the same `StateInterp`. -/
 theorem wasm_smallStep_stronglyNormalizing
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (htwp : ∀ [WasmSmallStepGS .hasNoLC α],
       ⊢@{IProp (WasmHeapGF α)}
         (WP config.expr @ Stuckness.NotStuck; ⊤
@@ -492,6 +499,15 @@ theorem wasm_smallStep_stronglyNormalizing
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { runtimeElem
       runtimeName }
+  letI tagTableElem : ElemG (WasmHeapGF α)
+      (constOF (Agree (DiscreteO (List Nat)))) := by
+    exists 14
+  imod (iOwn_alloc (E := tagTableElem)
+      (toAgree ⟨config.store.wasm.tagIds⟩) (fun _ => trivial)) with
+    ⟨%tagTableName, HtagTable⟩
+  letI tagTableGS : WasmTagTableGS α :=
+    { tagTableElem
+      tagTableName }
   letI hostElem : ElemG (WasmHeapGF α)
       (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
     exists 12
@@ -510,6 +526,7 @@ theorem wasm_smallStep_stronglyNormalizing
       elementSegment := wasmElementSegmentGS
       exception := wasmExceptionGS
       runtime := runtimeGS
+      tagTable := tagTableGS
       host := hostGS }
   iclear Hpoints Hmeta
   imodintro
@@ -522,7 +539,7 @@ theorem wasm_smallStep_stronglyNormalizing
       imodintro
       iexact Hstate)
   dsimp only
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HhostState]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HtagTable HhostState]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists (∅ : WasmHeapMap (Option UInt8))
     iexists (∅ : WasmGlobalMap Value)
@@ -530,17 +547,22 @@ theorem wasm_smallStep_stronglyNormalizing
     iexists (∅ : WasmTableMap TableInst)
     iexists (∅ : WasmElementSegmentMap (Option (List (Option Nat))))
     iexists (∅ : WasmExceptionMap (Nat × List Value))
-    unfold runtimeModuleOwn
-
+    unfold runtimeInterp runtimeModuleOwn tagTableOwn
     unfold hostStateAuth
     iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HhostState
+    isplitl [HtagTable]
+    · iexists config.store.wasm.tagIds
+      isplitl [HtagTable]
+      · iexact HtagTable
+      · ipureintro
+        exact List.prefix_rfl
     ipureintro
     exact ⟨heapAgreesWithMem_empty _,
       heapAddressesInBounds_empty _,
       globalHeapAgrees_empty _,
       dataSegmentHeapAgrees_empty _,
       ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _,
-        exceptionHeapAgrees_empty _, htags⟩⟩
+        exceptionHeapAgrees_empty _⟩⟩
   · iintro _
     exact htwp
 
@@ -557,8 +579,6 @@ theorem wasm_smallStep_heap_globals_runtime_host_stronglyNormalizing
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (htwp : ∀ [WasmSmallStepGS .hasNoLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -642,6 +662,15 @@ theorem wasm_smallStep_heap_globals_runtime_host_stronglyNormalizing
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { runtimeElem
       runtimeName }
+  letI tagTableElem : ElemG (WasmHeapGF α)
+      (constOF (Agree (DiscreteO (List Nat)))) := by
+    exists 14
+  imod (iOwn_alloc (E := tagTableElem)
+      (toAgree ⟨config.store.wasm.tagIds⟩) (fun _ => trivial)) with
+    ⟨%tagTableName, HtagTable⟩
+  letI tagTableGS : WasmTagTableGS α :=
+    { tagTableElem
+      tagTableName }
   letI hostElem : ElemG (WasmHeapGF α)
       (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
     exists 12
@@ -659,6 +688,7 @@ theorem wasm_smallStep_heap_globals_runtime_host_stronglyNormalizing
       elementSegment := wasmElementSegmentGS
       exception := wasmExceptionGS
       runtime := runtimeGS
+      tagTable := tagTableGS
       host := hostGS }
   iclear Hmeta
   ihave HruntimePair := iOwn_op.mp $$ Hruntime
@@ -673,7 +703,7 @@ theorem wasm_smallStep_heap_globals_runtime_host_stronglyNormalizing
       imodintro
       iexact Hstate)
   dsimp only
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HtagTable HhostState]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
     iexists globalσ
@@ -681,15 +711,20 @@ theorem wasm_smallStep_heap_globals_runtime_host_stronglyNormalizing
     iexists (∅ : WasmTableMap TableInst)
     iexists (∅ : WasmElementSegmentMap (Option (List (Option Nat))))
     iexists (∅ : WasmExceptionMap (Nat × List Value))
-    unfold runtimeModuleOwn
-
+    unfold runtimeInterp runtimeModuleOwn tagTableOwn
     unfold hostStateAuth
     iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState
+    isplitl [HtagTable]
+    · iexists config.store.wasm.tagIds
+      isplitl [HtagTable]
+      · iexact HtagTable
+      · ipureintro
+        exact List.prefix_rfl
     ipureintro
     exact ⟨hagree, hinBounds, hglobals,
       dataSegmentHeapAgrees_empty _,
       ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _,
-        exceptionHeapAgrees_empty _, htags⟩⟩
+        exceptionHeapAgrees_empty _⟩⟩
   · iintro _
     iapply htwp
     isplitl [Hpoints]
@@ -713,8 +748,6 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (htwp : ∀ [WasmSmallStepGS .hasNoLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -725,7 +758,7 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
         WP config.expr @ Stuckness.NotStuck; ⊤ [{ Φ }]) :
     Relation.StronglyNormalizing Language.ErasedStep ([config.expr], config.store) := by
   apply wasm_smallStep_heap_globals_runtime_host_stronglyNormalizing
-    config σ globalσ Φ hagree hinBounds hglobals htags
+    config σ globalσ Φ hagree hinBounds hglobals
   intro gs
   iintro ⟨Hpoints, Hglobals, Hruntime, Hhost⟩
   iclear Hhost
@@ -826,8 +859,6 @@ postcondition. -/
 theorem wasm_smallStep_terminates
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
       ⊢@{IProp (WasmHeapGF α)}
         (WP config.expr @ Stuckness.NotStuck; ⊤
@@ -835,22 +866,21 @@ theorem wasm_smallStep_terminates
     TerminatesWith config (fun values _store => φ values) := by
   apply stronglyNormalizing_adequate_terminates config
     (fun values _store => φ values)
-    (wasm_smallStep_stronglyNormalizing config φ htags
+    (wasm_smallStep_stronglyNormalizing config φ
       (htwp .hasNoLC))
-  apply wasm_smallStep_adequacy config φ htags
+  apply wasm_smallStep_adequacy config φ
   intro gs
   iapply twp.to_wp
   exact htwp .hasLC
 
 /-- Closed adequacy with persistent knowledge of the concrete runtime module.
 This is the call-capable counterpart of `wasm_smallStep_adequacy`. -/
-theorem wasm_smallStep_runtime_adequacy
+theorem wasm_smallStep_runtime_tags_adequacy
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
-      runtimeModuleOwn config.store.runtime.module ⊢
+      runtimeModuleOwn config.store.runtime.module ∗
+          tagTableOwn config.store.wasm.tagIds ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values, ⌜φ values⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store
@@ -925,6 +955,19 @@ theorem wasm_smallStep_runtime_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { runtimeElem
       runtimeName }
+  letI tagTableElem : ElemG (WasmHeapGF α)
+      (constOF (Agree (DiscreteO (List Nat)))) := by
+    exists 14
+  let tagTableValue : Agree (DiscreteO (List Nat)) :=
+    toAgree ⟨config.store.wasm.tagIds⟩
+  imod (iOwn_alloc (E := tagTableElem)
+      (tagTableValue • tagTableValue) (fun n =>
+        CMRA.valid_iff_validN.mp
+          (toAgree_op_valid_iff_eq.mpr rfl) n)) with
+    ⟨%tagTableName, HtagTableBoth⟩
+  letI tagTableGS : WasmTagTableGS α :=
+    { tagTableElem
+      tagTableName }
   letI hostElem : ElemG (WasmHeapGF α)
       (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
     exists 12
@@ -943,16 +986,19 @@ theorem wasm_smallStep_runtime_adequacy
       elementSegment := wasmElementSegmentGS
       exception := wasmExceptionGS
       runtime := runtimeGS
+      tagTable := tagTableGS
       host := hostGS }
   iclear Hpoints Hmeta
   ihave HruntimePair := iOwn_op.mp $$ Hruntime
   icases HruntimePair with ⟨HruntimeState, HruntimeWP⟩
+  ihave HtagPair := iOwn_op.mp $$ HtagTableBoth
+  icases HtagPair with ⟨HtagTable, HtagWP⟩
   imodintro
   iexists (fun store _observations =>
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HtagTable HhostState]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists (∅ : WasmHeapMap (Option UInt8))
     iexists (∅ : WasmGlobalMap Value)
@@ -960,34 +1006,57 @@ theorem wasm_smallStep_runtime_adequacy
     iexists (∅ : WasmTableMap TableInst)
     iexists (∅ : WasmElementSegmentMap (Option (List (Option Nat))))
     iexists (∅ : WasmExceptionMap (Nat × List Value))
-    unfold runtimeModuleOwn
-
+    unfold runtimeInterp runtimeModuleOwn tagTableOwn
     unfold hostStateAuth
     iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState
+    isplitl [HtagTable]
+    · iexists config.store.wasm.tagIds
+      isplitl [HtagTable]
+      · iexact HtagTable
+      · ipureintro
+        exact List.prefix_rfl
     ipureintro
     exact ⟨heapAgreesWithMem_empty _,
       heapAddressesInBounds_empty _,
       globalHeapAgrees_empty _,
       dataSegmentHeapAgrees_empty _,
       ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _,
-        exceptionHeapAgrees_empty _, htags⟩⟩
+        exceptionHeapAgrees_empty _⟩⟩
   · iapply hwp
-    unfold runtimeModuleOwn
-    iexact HruntimeWP
+    unfold runtimeModuleOwn tagTableOwn
+    isplitl [HruntimeWP]
+    · iexact HruntimeWP
+    · iexact HtagWP
+
+/-- Call-capable runtime adequacy without tag knowledge: the exception-free
+entry point used by every generated specification. -/
+theorem wasm_smallStep_runtime_adequacy
+    [WasmSmallStepGpreS α]
+    (config : Config α) (φ : List Value → Prop)
+    (hwp : ∀ [WasmSmallStepGS .hasLC α],
+      runtimeModuleOwn config.store.runtime.module ⊢
+        WP config.expr @ Stuckness.NotStuck; ⊤
+          {{ values, ⌜φ values⌝ }}) :
+    adequate Stuckness.NotStuck config.expr config.store
+      (fun values _ => φ values) := by
+  apply wasm_smallStep_runtime_tags_adequacy config φ
+  intro _
+  iintro ⟨Hruntime, Htags⟩
+  iclear Htags
+  iapply hwp
+  iexact Hruntime
 
 /-- Relational partial-correctness form of call-capable runtime adequacy. -/
 theorem wasm_smallStep_runtime_partiallyMeets
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       runtimeModuleOwn config.store.runtime.module ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values, ⌜φ values⌝ }}) :
     PartiallyMeets config (fun values _store => φ values) :=
   adequate_to_partiallyMeets config (fun values _store => φ values)
-    (wasm_smallStep_runtime_adequacy config φ htags hwp)
+    (wasm_smallStep_runtime_adequacy config φ hwp)
 
 /-- Adequacy with an explicit authoritative byte footprint. `genHeap_init`
 allocates both the authoritative map used by `StateInterp` and the matching
@@ -998,8 +1067,6 @@ theorem wasm_smallStep_heap_adequacy
     (φ : List Value → Prop)
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       ([∗map] address ↦ value ∈ σ,
         pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -1074,6 +1141,15 @@ theorem wasm_smallStep_heap_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { runtimeElem
       runtimeName }
+  letI tagTableElem : ElemG (WasmHeapGF α)
+      (constOF (Agree (DiscreteO (List Nat)))) := by
+    exists 14
+  imod (iOwn_alloc (E := tagTableElem)
+      (toAgree ⟨config.store.wasm.tagIds⟩) (fun _ => trivial)) with
+    ⟨%tagTableName, HtagTable⟩
+  letI tagTableGS : WasmTagTableGS α :=
+    { tagTableElem
+      tagTableName }
   letI hostElem : ElemG (WasmHeapGF α)
       (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
     exists 12
@@ -1092,6 +1168,7 @@ theorem wasm_smallStep_heap_adequacy
       elementSegment := wasmElementSegmentGS
       exception := wasmExceptionGS
       runtime := runtimeGS
+      tagTable := tagTableGS
       host := hostGS }
   iclear Hmeta
   imodintro
@@ -1099,7 +1176,7 @@ theorem wasm_smallStep_heap_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HhostState]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HtagTable HhostState]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
     iexists (∅ : WasmGlobalMap Value)
@@ -1107,16 +1184,21 @@ theorem wasm_smallStep_heap_adequacy
     iexists (∅ : WasmTableMap TableInst)
     iexists (∅ : WasmElementSegmentMap (Option (List (Option Nat))))
     iexists (∅ : WasmExceptionMap (Nat × List Value))
-    unfold runtimeModuleOwn
-
+    unfold runtimeInterp runtimeModuleOwn tagTableOwn
     unfold hostStateAuth
     iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HhostState
+    isplitl [HtagTable]
+    · iexists config.store.wasm.tagIds
+      isplitl [HtagTable]
+      · iexact HtagTable
+      · ipureintro
+        exact List.prefix_rfl
     ipureintro
     exact ⟨hagree, hinBounds,
       globalHeapAgrees_empty _,
       dataSegmentHeapAgrees_empty _,
       ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _,
-        exceptionHeapAgrees_empty _, htags⟩⟩
+        exceptionHeapAgrees_empty _⟩⟩
   · iapply hwp
     iexact Hpoints
 
@@ -1126,8 +1208,6 @@ theorem wasm_smallStep_heap_terminates
     (φ : List Value → Prop)
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
       ([∗map] address ↦ value ∈ σ,
         pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -1204,6 +1284,15 @@ theorem wasm_smallStep_heap_terminates
     letI runtimeGS : WasmRuntimeModuleGS α :=
       { runtimeElem
         runtimeName }
+    letI tagTableElem : ElemG (WasmHeapGF α)
+        (constOF (Agree (DiscreteO (List Nat)))) := by
+      exists 14
+    imod (iOwn_alloc (E := tagTableElem)
+        (toAgree ⟨config.store.wasm.tagIds⟩) (fun _ => trivial)) with
+      ⟨%tagTableName, HtagTable⟩
+    letI tagTableGS : WasmTagTableGS α :=
+      { tagTableElem
+        tagTableName }
     letI hostElem : ElemG (WasmHeapGF α)
         (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
       exists 12
@@ -1222,6 +1311,7 @@ theorem wasm_smallStep_heap_terminates
         elementSegment := wasmElementSegmentGS
         exception := wasmExceptionGS
         runtime := runtimeGS
+        tagTable := tagTableGS
         host := hostGS }
     iclear Hmeta
     imodintro
@@ -1234,7 +1324,7 @@ theorem wasm_smallStep_heap_terminates
         imodintro
         iexact Hstate)
     dsimp only
-    isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HhostState]
+    isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HtagTable HhostState]
     · iapply (stateInterp_eq config.store 0 [] 0).mpr
       iexists σ
       iexists (∅ : WasmGlobalMap Value)
@@ -1242,19 +1332,25 @@ theorem wasm_smallStep_heap_terminates
       iexists (∅ : WasmTableMap TableInst)
       iexists (∅ : WasmElementSegmentMap (Option (List (Option Nat))))
       iexists (∅ : WasmExceptionMap (Nat × List Value))
-      unfold runtimeModuleOwn
+      unfold runtimeInterp runtimeModuleOwn tagTableOwn
       unfold hostStateAuth
       iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HhostState
+      isplitl [HtagTable]
+      · iexists config.store.wasm.tagIds
+        isplitl [HtagTable]
+        · iexact HtagTable
+        · ipureintro
+          exact List.prefix_rfl
       ipureintro
       exact ⟨hagree, hinBounds,
         globalHeapAgrees_empty _,
         dataSegmentHeapAgrees_empty _,
         ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _,
-          exceptionHeapAgrees_empty _, htags⟩⟩
+          exceptionHeapAgrees_empty _⟩⟩
     · iintro _
       iapply htwp .hasNoLC
       iexact Hpoints
-  · exact wasm_smallStep_heap_adequacy config σ φ hagree hinBounds htags
+  · exact wasm_smallStep_heap_adequacy config σ φ hagree hinBounds
       (fun [_] => by
         iintro Hpoints
         iapply twp.to_wp
@@ -1265,13 +1361,12 @@ theorem wasm_smallStep_heap_terminates
 provides strong normalization (via `twp_total` with `hasNoLC`) and the
 postcondition (via `twp.to_wp` with `hasLC`). Runtime-module ownership is
 required for both passes. -/
-theorem wasm_smallStep_runtime_terminates
+theorem wasm_smallStep_runtime_tags_terminates
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
-      runtimeModuleOwn config.store.runtime.module ⊢
+      runtimeModuleOwn config.store.runtime.module ∗
+          tagTableOwn config.store.wasm.tagIds ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           [{ values, ⌜φ values⌝ }]) :
     TerminatesWith config (fun values _store => φ values) := by
@@ -1348,6 +1443,19 @@ theorem wasm_smallStep_runtime_terminates
     letI runtimeGS : WasmRuntimeModuleGS α :=
       { runtimeElem
         runtimeName }
+    letI tagTableElem : ElemG (WasmHeapGF α)
+        (constOF (Agree (DiscreteO (List Nat)))) := by
+      exists 14
+    let tagTableValue : Agree (DiscreteO (List Nat)) :=
+      toAgree ⟨config.store.wasm.tagIds⟩
+    imod (iOwn_alloc (E := tagTableElem)
+        (tagTableValue • tagTableValue) (fun n =>
+          CMRA.valid_iff_validN.mp
+            (toAgree_op_valid_iff_eq.mpr rfl) n)) with
+      ⟨%tagTableName, HtagTableBoth⟩
+    letI tagTableGS : WasmTagTableGS α :=
+      { tagTableElem
+        tagTableName }
     letI hostElem : ElemG (WasmHeapGF α)
         (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
       exists 12
@@ -1366,10 +1474,13 @@ theorem wasm_smallStep_runtime_terminates
         elementSegment := wasmElementSegmentGS
         exception := wasmExceptionGS
         runtime := runtimeGS
+        tagTable := tagTableGS
         host := hostGS }
     iclear Hmeta Hpoints
     ihave HruntimePair := iOwn_op.mp $$ Hruntime
     icases HruntimePair with ⟨HruntimeState, HruntimeTWP⟩
+    ihave HtagPair := iOwn_op.mp $$ HtagTableBoth
+    icases HtagPair with ⟨HtagTable, HtagTWP⟩
     imodintro
     iexists
       (fun store (_ : Nat) (observations : List StepKind) (_ : Nat) =>
@@ -1380,7 +1491,7 @@ theorem wasm_smallStep_runtime_terminates
         imodintro
         iexact Hstate)
     dsimp only
-    isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState]
+    isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HtagTable HhostState]
     · iapply (stateInterp_eq config.store 0 [] 0).mpr
       iexists (∅ : WasmHeapMap (Option UInt8))
       iexists (∅ : WasmGlobalMap Value)
@@ -1388,26 +1499,50 @@ theorem wasm_smallStep_runtime_terminates
       iexists (∅ : WasmTableMap TableInst)
       iexists (∅ : WasmElementSegmentMap (Option (List (Option Nat))))
       iexists (∅ : WasmExceptionMap (Nat × List Value))
-      unfold runtimeModuleOwn
+      unfold runtimeInterp runtimeModuleOwn tagTableOwn
       unfold hostStateAuth
       iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState
+      isplitl [HtagTable]
+      · iexists config.store.wasm.tagIds
+        isplitl [HtagTable]
+        · iexact HtagTable
+        · ipureintro
+          exact List.prefix_rfl
       ipureintro
       exact ⟨heapAgreesWithMem_empty _,
         heapAddressesInBounds_empty _,
         globalHeapAgrees_empty _,
         dataSegmentHeapAgrees_empty _,
         ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _,
-          exceptionHeapAgrees_empty _, htags⟩⟩
+          exceptionHeapAgrees_empty _⟩⟩
     · iintro _
       iapply htwp .hasNoLC
-      unfold runtimeModuleOwn
-      iexact HruntimeTWP
-  · exact wasm_smallStep_runtime_adequacy config φ htags
+      unfold runtimeModuleOwn tagTableOwn
+      isplitl [HruntimeTWP]
+      · iexact HruntimeTWP
+      · iexact HtagTWP
+  · exact wasm_smallStep_runtime_tags_adequacy config φ
       (fun [_] => by
-        iintro Hruntime
+        iintro Hboth
         iapply twp.to_wp
         iapply htwp .hasLC
-        iexact Hruntime)
+        iexact Hboth)
+
+/-- Total-correctness runtime entry point without tag knowledge. -/
+theorem wasm_smallStep_runtime_terminates
+    [WasmSmallStepGpreS α]
+    (config : Config α) (φ : List Value → Prop)
+    (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
+      runtimeModuleOwn config.store.runtime.module ⊢
+        WP config.expr @ Stuckness.NotStuck; ⊤
+          [{ values, ⌜φ values⌝ }]) :
+    TerminatesWith config (fun values _store => φ values) := by
+  apply wasm_smallStep_runtime_tags_terminates config φ
+  intro hlc _
+  iintro ⟨Hruntime, Htags⟩
+  iclear Htags
+  iapply htwp hlc
+  iexact Hruntime
 
 /-- Adequacy with authoritative ownership for both physical memory bytes and
 instantiated globals. This is the entry point used by generated functions
@@ -1422,8 +1557,6 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -1506,6 +1639,15 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { runtimeElem
       runtimeName }
+  letI tagTableElem : ElemG (WasmHeapGF α)
+      (constOF (Agree (DiscreteO (List Nat)))) := by
+    exists 14
+  imod (iOwn_alloc (E := tagTableElem)
+      (toAgree ⟨config.store.wasm.tagIds⟩) (fun _ => trivial)) with
+    ⟨%tagTableName, HtagTable⟩
+  letI tagTableGS : WasmTagTableGS α :=
+    { tagTableElem
+      tagTableName }
   letI hostElem : ElemG (WasmHeapGF α)
       (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
     exists 12
@@ -1524,6 +1666,7 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
       elementSegment := wasmElementSegmentGS
       exception := wasmExceptionGS
       runtime := runtimeGS
+      tagTable := tagTableGS
       host := hostGS }
   iclear Hmeta
   ihave HruntimePair := iOwn_op.mp $$ Hruntime
@@ -1533,7 +1676,7 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HtagTable HhostState]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
     iexists globalσ
@@ -1541,15 +1684,20 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
     iexists (∅ : WasmTableMap TableInst)
     iexists (∅ : WasmElementSegmentMap (Option (List (Option Nat))))
     iexists (∅ : WasmExceptionMap (Nat × List Value))
-    unfold runtimeModuleOwn
-
+    unfold runtimeInterp runtimeModuleOwn tagTableOwn
     unfold hostStateAuth
     iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState
+    isplitl [HtagTable]
+    · iexists config.store.wasm.tagIds
+      isplitl [HtagTable]
+      · iexact HtagTable
+      · ipureintro
+        exact List.prefix_rfl
     ipureintro
     exact ⟨hagree, hinBounds, hglobals,
       dataSegmentHeapAgrees_empty _,
       ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _,
-        exceptionHeapAgrees_empty _, htags⟩⟩
+        exceptionHeapAgrees_empty _⟩⟩
   · iapply hwp
     isplitl [Hpoints]
     · iexact Hpoints
@@ -1570,8 +1718,6 @@ private theorem wasm_smallStep_heap_globals_runtime_host_store_adequacy_raw
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -1658,6 +1804,15 @@ private theorem wasm_smallStep_heap_globals_runtime_host_store_adequacy_raw
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { runtimeElem
       runtimeName }
+  letI tagTableElem : ElemG (WasmHeapGF α)
+      (constOF (Agree (DiscreteO (List Nat)))) := by
+    exists 14
+  imod (iOwn_alloc (E := tagTableElem)
+      (toAgree ⟨config.store.wasm.tagIds⟩) (fun _ => trivial)) with
+    ⟨%tagTableName, HtagTable⟩
+  letI tagTableGS : WasmTagTableGS α :=
+    { tagTableElem
+      tagTableName }
   letI hostElem : ElemG (WasmHeapGF α)
       (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
     exists 12
@@ -1675,6 +1830,7 @@ private theorem wasm_smallStep_heap_globals_runtime_host_store_adequacy_raw
       elementSegment := wasmElementSegmentGS
       exception := wasmExceptionGS
       runtime := runtimeGS
+      tagTable := tagTableGS
       host := hostGS }
   iclear Hmeta
   ihave HruntimePair := iOwn_op.mp $$ Hruntime
@@ -1684,7 +1840,7 @@ private theorem wasm_smallStep_heap_globals_runtime_host_store_adequacy_raw
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HtagTable HhostState]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
     iexists globalσ
@@ -1692,15 +1848,20 @@ private theorem wasm_smallStep_heap_globals_runtime_host_store_adequacy_raw
     iexists (∅ : WasmTableMap TableInst)
     iexists (∅ : WasmElementSegmentMap (Option (List (Option Nat))))
     iexists (∅ : WasmExceptionMap (Nat × List Value))
-    unfold runtimeModuleOwn
-
+    unfold runtimeInterp runtimeModuleOwn tagTableOwn
     unfold hostStateAuth
     iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState
+    isplitl [HtagTable]
+    · iexists config.store.wasm.tagIds
+      isplitl [HtagTable]
+      · iexact HtagTable
+      · ipureintro
+        exact List.prefix_rfl
     ipureintro
     exact ⟨hagree, hinBounds, hglobals,
       dataSegmentHeapAgrees_empty _,
       ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _,
-        exceptionHeapAgrees_empty _, htags⟩⟩
+        exceptionHeapAgrees_empty _⟩⟩
   · iapply hwp
     isplitl [Hpoints]
     · iexact Hpoints
@@ -1727,8 +1888,6 @@ theorem wasm_smallStep_heap_globals_runtime_host_store_adequacy
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -1741,7 +1900,7 @@ theorem wasm_smallStep_heap_globals_runtime_host_store_adequacy
           {{ values, HostStorePost post values }}) :
     adequate Stuckness.NotStuck config.expr config.store post := by
   apply wasm_smallStep_heap_globals_runtime_host_store_adequacy_raw
-    config σ globalσ post hagree hinBounds hglobals htags
+    config σ globalσ post hagree hinBounds hglobals
   intro gs
   iintro Hresources
   iapply wp_mono (fun values => hostStorePost_to_storePost post values)
@@ -1758,8 +1917,6 @@ theorem wasm_smallStep_heap_globals_runtime_host_store_partiallyMeets
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -1773,7 +1930,7 @@ theorem wasm_smallStep_heap_globals_runtime_host_store_partiallyMeets
     PartiallyMeets config post :=
   adequate_to_partiallyMeets config post
     (wasm_smallStep_heap_globals_runtime_host_store_adequacy
-      config σ globalσ post hagree hinBounds hglobals htags hwp)
+      config σ globalσ post hagree hinBounds hglobals hwp)
 
 /-- Host-aware total/store adequacy. The same TWP proof is instantiated with
 and without later credits: the no-credit instance establishes strong
@@ -1789,8 +1946,6 @@ theorem wasm_smallStep_heap_globals_runtime_host_store_terminates
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -1805,14 +1960,14 @@ theorem wasm_smallStep_heap_globals_runtime_host_store_terminates
   apply stronglyNormalizing_adequate_terminates config post
   · apply wasm_smallStep_heap_globals_runtime_host_stronglyNormalizing
       config σ globalσ (fun _ => iprop(True))
-      hagree hinBounds hglobals htags
+      hagree hinBounds hglobals
     intro gs
     iintro Hresources
     iapply twp.mono (fun _ => BI.true_intro)
     iapply htwp .hasNoLC
     iexact Hresources
   · apply wasm_smallStep_heap_globals_runtime_host_store_adequacy
-      config σ globalσ post hagree hinBounds hglobals htags
+      config σ globalσ post hagree hinBounds hglobals
     intro gs
     iintro Hresources
     iapply twp.to_wp
@@ -1831,8 +1986,6 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -1847,7 +2000,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
               ⌜post values store⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store post := by
   apply wasm_smallStep_heap_globals_runtime_host_store_adequacy_raw
-    config σ globalσ post hagree hinBounds hglobals htags
+    config σ globalσ post hagree hinBounds hglobals
   intro gs
   iintro ⟨Hpoints, Hglobals, Hruntime, Hhost⟩
   iclear Hhost
@@ -1865,8 +2018,6 @@ theorem wasm_smallStep_heap_globals_runtime_store_partiallyMeets
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -1882,7 +2033,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_partiallyMeets
     PartiallyMeets config post :=
   adequate_to_partiallyMeets config post
     (wasm_smallStep_heap_globals_runtime_store_adequacy
-      config σ globalσ post hagree hinBounds hglobals htags hwp)
+      config σ globalσ post hagree hinBounds hglobals hwp)
 
 /-- Heap-aware store-sensitive total-WP adequacy. The TWP post must include
 `stateInterp -∗ ⌜post values store⌝` so adequacy can read the physical store;
@@ -1895,8 +2046,6 @@ theorem wasm_smallStep_heap_store_terminates
     (post : List Value → MachineStore α → Prop)
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -1979,6 +2128,15 @@ theorem wasm_smallStep_heap_store_terminates
     letI runtimeGS : WasmRuntimeModuleGS α :=
       { runtimeElem
         runtimeName }
+    letI tagTableElem : ElemG (WasmHeapGF α)
+        (constOF (Agree (DiscreteO (List Nat)))) := by
+      exists 14
+    imod (iOwn_alloc (E := tagTableElem)
+        (toAgree ⟨config.store.wasm.tagIds⟩) (fun _ => trivial)) with
+      ⟨%tagTableName, HtagTable⟩
+    letI tagTableGS : WasmTagTableGS α :=
+      { tagTableElem
+        tagTableName }
     letI hostElem : ElemG (WasmHeapGF α)
         (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
       exists 12
@@ -1997,6 +2155,7 @@ theorem wasm_smallStep_heap_store_terminates
         elementSegment := wasmElementSegmentGS
         exception := wasmExceptionGS
         runtime := runtimeGS
+        tagTable := tagTableGS
         host := hostGS }
     iclear Hmeta
     ihave HruntimePair := iOwn_op.mp $$ Hruntime
@@ -2011,7 +2170,7 @@ theorem wasm_smallStep_heap_store_terminates
         imodintro
         iexact Hstate)
     dsimp only
-    isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState]
+    isplitl [Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HtagTable HhostState]
     · iapply (stateInterp_eq config.store 0 [] 0).mpr
       iexists σ
       iexists (∅ : WasmGlobalMap Value)
@@ -2019,15 +2178,20 @@ theorem wasm_smallStep_heap_store_terminates
       iexists (∅ : WasmTableMap TableInst)
       iexists (∅ : WasmElementSegmentMap (Option (List (Option Nat))))
       iexists (∅ : WasmExceptionMap (Nat × List Value))
-      unfold runtimeModuleOwn
-
+      unfold runtimeInterp runtimeModuleOwn tagTableOwn
       unfold hostStateAuth
       iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions HruntimeState HhostState
+      isplitl [HtagTable]
+      · iexists config.store.wasm.tagIds
+        isplitl [HtagTable]
+        · iexact HtagTable
+        · ipureintro
+          exact List.prefix_rfl
       ipureintro
       exact ⟨hagree, hinBounds, globalHeapAgrees_empty _,
         dataSegmentHeapAgrees_empty _,
         ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _,
-          exceptionHeapAgrees_empty _, htags⟩⟩
+          exceptionHeapAgrees_empty _⟩⟩
     · iintro _
       iapply (twp.mono (fun _ => BI.true_intro))
       iapply htwp .hasNoLC
@@ -2036,7 +2200,7 @@ theorem wasm_smallStep_heap_store_terminates
       · unfold runtimeModuleOwn
         iexact HruntimeWP
   · apply wasm_smallStep_heap_globals_runtime_store_adequacy config σ ∅ post
-      hagree hinBounds (globalHeapAgrees_empty _) htags
+      hagree hinBounds (globalHeapAgrees_empty _)
     intro gs
     simp only [BI.BigSepM.bigSepM_empty.to_eq]
     iintro ⟨Hpoints, _Hempty, Hruntime⟩
@@ -2060,8 +2224,6 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
     (hsegments :
       dataSegmentHeapAgrees dataSegmentσ config.store.wasm.dataSegments)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -2150,6 +2312,15 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { runtimeElem
       runtimeName }
+  letI tagTableElem : ElemG (WasmHeapGF α)
+      (constOF (Agree (DiscreteO (List Nat)))) := by
+    exists 14
+  imod (iOwn_alloc (E := tagTableElem)
+      (toAgree ⟨config.store.wasm.tagIds⟩) (fun _ => trivial)) with
+    ⟨%tagTableName, HtagTable⟩
+  letI tagTableGS : WasmTagTableGS α :=
+    { tagTableElem
+      tagTableName }
   letI hostElem : ElemG (WasmHeapGF α)
       (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
     exists 12
@@ -2168,6 +2339,7 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
       elementSegment := wasmElementSegmentGS
       exception := wasmExceptionGS
       runtime := runtimeGS
+      tagTable := tagTableGS
       host := hostGS }
   iclear Hmeta
   ihave HruntimePair := iOwn_op.mp $$ Hruntime
@@ -2177,7 +2349,7 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  isplitl [Hheap Hglobals HsegmentsAuth Htables HelementSegments Hexceptions HruntimeState HhostState]
+  isplitl [Hheap Hglobals HsegmentsAuth Htables HelementSegments Hexceptions HruntimeState HtagTable HhostState]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
     iexists globalσ
@@ -2185,14 +2357,13 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
     iexists (∅ : WasmTableMap TableInst)
     iexists (∅ : WasmElementSegmentMap (Option (List (Option Nat))))
     iexists (∅ : WasmExceptionMap (Nat × List Value))
-    unfold runtimeModuleOwn
-
+    unfold runtimeInterp runtimeModuleOwn tagTableOwn
     unfold hostStateAuth
     iframe
     ipureintro
-    exact ⟨hagree, hinBounds, hglobals, hsegments,
+    exact ⟨List.prefix_rfl, hagree, hinBounds, hglobals, hsegments,
       ⟨tableHeapAgrees_empty _, elementSegmentHeapAgrees_empty _,
-        exceptionHeapAgrees_empty _, htags⟩⟩
+        exceptionHeapAgrees_empty _⟩⟩
   · iapply hwp
     isplitl [Hpoints]
     · iexact Hpoints
@@ -2217,8 +2388,6 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_partiallyMeets
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
     (hsegments :
       dataSegmentHeapAgrees dataSegmentσ config.store.wasm.dataSegments)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -2237,7 +2406,7 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_partiallyMeets
   adequate_to_partiallyMeets config post
     (wasm_smallStep_heap_globals_segments_runtime_store_adequacy
       config σ globalσ dataSegmentσ post hagree hinBounds hglobals
-      hsegments htags hwp)
+      hsegments hwp)
 
 /-- Fully state-sensitive adequacy including authoritative table ownership.
 This is the entry point for proofs using `table.get`/`table.set`: each owned
@@ -2262,8 +2431,6 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
     (helementSegments :
       elementSegmentHeapAgrees elementSegmentσ
         config.store.wasm.elementSegments)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -2358,6 +2525,15 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
   letI runtimeGS : WasmRuntimeModuleGS α :=
     { runtimeElem
       runtimeName }
+  letI tagTableElem : ElemG (WasmHeapGF α)
+      (constOF (Agree (DiscreteO (List Nat)))) := by
+    exists 14
+  imod (iOwn_alloc (E := tagTableElem)
+      (toAgree ⟨config.store.wasm.tagIds⟩) (fun _ => trivial)) with
+    ⟨%tagTableName, HtagTable⟩
+  letI tagTableGS : WasmTagTableGS α :=
+    { tagTableElem
+      tagTableName }
   letI hostElem : ElemG (WasmHeapGF α)
       (ExclAuth.ExclAuthURF (constOF (DiscreteO α))) := by
     exists 12
@@ -2376,6 +2552,7 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
       elementSegment := wasmElementSegmentGS
       exception := wasmExceptionGS
       runtime := runtimeGS
+      tagTable := tagTableGS
       host := hostGS }
   iclear Hmeta
   ihave HruntimePair := iOwn_op.mp $$ Hruntime
@@ -2386,7 +2563,7 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
   iexists (fun _ => iprop(True))
   dsimp only
   isplitl [Hheap Hglobals HsegmentsAuth HtablesAuth
-      HelementSegmentsAuth Hexceptions HruntimeState HhostState]
+      HelementSegmentsAuth Hexceptions HruntimeState HtagTable HhostState]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
     iexists globalσ
@@ -2394,14 +2571,13 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
     iexists tableσ
     iexists elementSegmentσ
     iexists (∅ : WasmExceptionMap (Nat × List Value))
-    unfold runtimeModuleOwn
-
+    unfold runtimeInterp runtimeModuleOwn tagTableOwn
     unfold hostStateAuth
     iframe
     ipureintro
-    exact ⟨hagree, hinBounds, hglobals, hsegments,
+    exact ⟨List.prefix_rfl, hagree, hinBounds, hglobals, hsegments,
       ⟨htables, helementSegments,
-        exceptionHeapAgrees_empty _, htags⟩⟩
+        exceptionHeapAgrees_empty _⟩⟩
   · iapply hwp
     isplitl [Hpoints]
     · iexact Hpoints
@@ -2439,8 +2615,6 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_partiallyMeets
     (helementSegments :
       elementSegmentHeapAgrees elementSegmentσ
         config.store.wasm.elementSegments)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -2463,7 +2637,7 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_partiallyMeets
   adequate_to_partiallyMeets config post
     (wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
       config σ globalσ dataSegmentσ tableσ elementSegmentσ post
-      hagree hinBounds hglobals hsegments htables helementSegments htags hwp)
+      hagree hinBounds hglobals hsegments htables helementSegments hwp)
 
 /-- Backwards-compatible adequacy rule for clients that do not execute calls. -/
 theorem wasm_smallStep_heap_globals_adequacy
@@ -2475,8 +2649,6 @@ theorem wasm_smallStep_heap_globals_adequacy
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -2488,7 +2660,7 @@ theorem wasm_smallStep_heap_globals_adequacy
     adequate Stuckness.NotStuck config.expr config.store
       (fun values _ => φ values) := by
   apply wasm_smallStep_heap_globals_runtime_adequacy config σ globalσ φ
-    hagree hinBounds hglobals htags
+    hagree hinBounds hglobals
   intro gs
   iintro ⟨Hheap, Hglobals, Hruntime⟩
   iclear Hruntime
@@ -2508,8 +2680,6 @@ theorem wasm_smallStep_heap_globals_partiallyMeets
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -2521,7 +2691,7 @@ theorem wasm_smallStep_heap_globals_partiallyMeets
     PartiallyMeets config (fun values _store => φ values) :=
   adequate_to_partiallyMeets config (fun values _store => φ values)
     (wasm_smallStep_heap_globals_adequacy config σ globalσ φ
-      hagree hinBounds hglobals htags hwp)
+      hagree hinBounds hglobals hwp)
 
 /-- Call-capable partial-correctness wrapper with authoritative memory,
 globals, and persistent ownership of the instantiated runtime module. -/
@@ -2534,8 +2704,6 @@ theorem wasm_smallStep_heap_globals_runtime_partiallyMeets
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
     (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -2548,7 +2716,7 @@ theorem wasm_smallStep_heap_globals_runtime_partiallyMeets
     PartiallyMeets config (fun values _store => φ values) :=
   adequate_to_partiallyMeets config (fun values _store => φ values)
     (wasm_smallStep_heap_globals_runtime_adequacy config σ globalσ φ
-      hagree hinBounds hglobals htags hwp)
+      hagree hinBounds hglobals hwp)
 
 /-- Call-capable partial correctness with an authoritative byte footprint and
 no owned globals. -/
@@ -2559,8 +2727,6 @@ theorem wasm_smallStep_heap_runtime_partiallyMeets
     (φ : List Value → Prop)
     (hagree : heapAgreesWithMem σ config.store.wasm.mem)
     (hinBounds : heapAddressesInBounds σ config.store.wasm.mem)
-    (htags : config.store.wasm.tagIds =
-      List.range config.store.runtime.module.tags.length)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       (([∗map] address ↦ value ∈ σ,
           pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
@@ -2571,7 +2737,7 @@ theorem wasm_smallStep_heap_runtime_partiallyMeets
     PartiallyMeets config (fun values _store => φ values) := by
   apply wasm_smallStep_heap_globals_runtime_partiallyMeets
     config σ (∅ : WasmGlobalMap Value) φ hagree hinBounds
-    (globalHeapAgrees_empty _) htags
+    (globalHeapAgrees_empty _)
   · intro gs
     simp only [BI.BigSepM.bigSepM_empty.to_eq]
     iintro ⟨Hheap, _Hempty, Hruntime⟩
@@ -2620,7 +2786,7 @@ theorem globalGet_adequate :
     adequate Stuckness.NotStuck
       globalGetAdequacyConfig.expr globalGetAdequacyConfig.store
       (fun values _ => values = [.i32 42]) := by
-  apply wasm_smallStep_heap_globals_adequacy (α := Unit) (htags := rfl)
+  apply wasm_smallStep_heap_globals_adequacy (α := Unit)
     (σ := (∅ : WasmHeapMap (Option UInt8)))
     (globalσ := global0Heap)
     (φ := fun values => values = [.i32 42])
@@ -2664,7 +2830,7 @@ premise detached from the physical `MachineStore`. -/
 theorem noopCall_adequate :
     adequate Stuckness.NotStuck noopCallConfig.expr noopCallConfig.store
       (fun values _ => values = []) := by
-  apply wasm_smallStep_runtime_adequacy (α := Unit) (htags := rfl)
+  apply wasm_smallStep_runtime_adequacy (α := Unit)
     (φ := fun values => values = [])
   intro gs
   simp only [noopCallConfig]
@@ -2766,7 +2932,7 @@ theorem wordRoundtrip_adequate (oldWord : UInt32) :
       (wordRoundtripAdequacyConfig oldWord).expr
       (wordRoundtripAdequacyConfig oldWord).store
       (fun values _ => values = [.i32 0x12345678]) := by
-  apply wasm_smallStep_heap_adequacy (α := Unit) (htags := rfl)
+  apply wasm_smallStep_heap_adequacy (α := Unit)
     (σ := word16Heap oldWord)
     (φ := fun values => values = [.i32 0x12345678])
   · unfold word16Heap
@@ -2805,7 +2971,7 @@ theorem wordRoundtrip_store_partiallyMeets (oldWord : UInt32) :
         values = [.i32 0x12345678] ∧
           store.wasm.mem.read32 16 = 0x12345678) := by
   apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets
-    (α := Unit) (htags := rfl)
+    (α := Unit)
     (σ := word16Heap oldWord)
     (globalσ := (∅ : WasmGlobalMap Value))
   · unfold word16Heap
@@ -2949,7 +3115,7 @@ theorem swapWords_adequate :
     adequate Stuckness.NotStuck
       swapWordsAdequacyConfig.expr swapWordsAdequacyConfig.store
       (fun values _ => values = [.i32 11, .i32 22]) := by
-  apply wasm_smallStep_heap_adequacy (α := Unit) (htags := rfl)
+  apply wasm_smallStep_heap_adequacy (α := Unit)
     (σ := swapWordsHeap)
     (φ := fun values => values = [.i32 11, .i32 22])
   · apply swapWordsHeap_agrees
@@ -2981,7 +3147,7 @@ theorem swapWords_store_partiallyMeets :
           store.wasm.mem.read32 0 = 22 ∧
           store.wasm.mem.read32 4 = 11) := by
   apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets
-    (α := Unit) (htags := rfl)
+    (α := Unit)
     (σ := swapWordsHeap)
     (globalσ := (∅ : WasmGlobalMap Value))
   · apply swapWordsHeap_agrees
@@ -3110,7 +3276,7 @@ theorem reverseThreeWords_store_partiallyMeets :
           store.wasm.mem.read32 4 = 22 ∧
           store.wasm.mem.read32 8 = 11) := by
   apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets
-    (α := Unit) (htags := rfl)
+    (α := Unit)
     (σ := reverseThreeWordsHeap)
     (globalσ := (∅ : WasmGlobalMap Value))
   · apply reverseThreeWordsHeap_agrees
@@ -3275,7 +3441,7 @@ theorem partitionThreeWords_store_partiallyMeets :
           store.wasm.mem.read32 0 ≤ store.wasm.mem.read32 4 ∧
           store.wasm.mem.read32 4 ≤ store.wasm.mem.read32 8) := by
   apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets
-    (α := Unit) (htags := rfl)
+    (α := Unit)
     (σ := partitionThreeWordsHeap)
     (globalσ := (∅ : WasmGlobalMap Value))
   · apply partitionThreeWordsHeap_agrees
@@ -3428,7 +3594,7 @@ theorem mergeTwoWords_store_partiallyMeets :
           store.wasm.mem.read32 4 = 9 ∧
           store.wasm.mem.read32 0 ≤ store.wasm.mem.read32 4) := by
   apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets
-    (α := Unit) (htags := rfl)
+    (α := Unit)
     (σ := mergeTwoWordsHeap)
     (globalσ := (∅ : WasmGlobalMap Value))
   · apply mergeTwoWordsHeap_agrees
@@ -3580,7 +3746,7 @@ theorem fillFourBytes_store_partiallyMeets (oldWord : UInt32) :
           store.wasm.mem.read32 16 = 0xABABABAB ∧
           store.wasm.mem.read32 32 = 0x12345678) := by
   apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets
-    (α := Unit) (htags := rfl)
+    (α := Unit)
     (σ := fillFourBytesHeap oldWord)
     (globalσ := (∅ : WasmGlobalMap Value))
   · apply fillFourBytesHeap_agrees
@@ -3718,7 +3884,7 @@ theorem copyWord_store_partiallyMeets (oldDestination : UInt32) :
           store.wasm.mem.read32 0 = 0x04030201 ∧
           store.wasm.mem.read32 8 = 0x04030201) := by
   apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets
-    (α := Unit) (htags := rfl)
+    (α := Unit)
     (σ := copyWordHeap oldDestination)
     (globalσ := (∅ : WasmGlobalMap Value))
   · apply copyWordHeap_agrees
@@ -3826,7 +3992,7 @@ theorem copyOverlapWord_store_partiallyMeets :
         values = [.i64 0x8877443322112211] ∧
           store.wasm.mem.read64 0 = 0x8877443322112211) := by
   apply wasm_smallStep_heap_globals_runtime_store_partiallyMeets
-    (α := Unit) (htags := rfl)
+    (α := Unit)
     (σ := copyOverlapWordHeap)
     (globalσ := (∅ : WasmGlobalMap Value))
   · apply copyOverlapWordHeap_agrees
@@ -3966,7 +4132,6 @@ theorem memoryInitDrop_store_partiallyMeets :
     rw [get?_empty] at hget
     contradiction
   · exact memoryInitDropSegments_agree
-  · native_decide
   · intro gs
     simp only [BI.BigSepM.bigSepM_empty.to_eq]
     iintro ⟨Hbytes, _Hglobals, Hsegments, _Hruntime⟩
@@ -4071,7 +4236,6 @@ theorem tableSetGet_store_partiallyMeets :
   · exact dataSegmentHeapAgrees_empty _
   · exact tableSetGetMap_agrees
   · exact elementSegmentHeapAgrees_empty _
-  · native_decide
   · intro gs
     simp only [BI.BigSepM.bigSepM_empty.to_eq]
     iintro ⟨_Hbytes, _Hglobals, _Hsegments, Htables, _HelementSegments, _Hruntime⟩
@@ -4171,7 +4335,6 @@ theorem tableGrowFill_store_partiallyMeets :
   · exact dataSegmentHeapAgrees_empty _
   · exact tableSetGetMap_agrees
   · exact elementSegmentHeapAgrees_empty _
-  · native_decide
   · intro gs
     simp only [BI.BigSepM.bigSepM_empty.to_eq,
       tableGrowFillAdequacyConfig]
@@ -4294,7 +4457,6 @@ theorem tableGrow64Failure_store_partiallyMeets :
   · exact dataSegmentHeapAgrees_empty _
   · exact tableSetGetMap_agrees
   · exact elementSegmentHeapAgrees_empty _
-  · native_decide
   · intro gs
     simp only [BI.BigSepM.bigSepM_empty.to_eq,
       tableGrow64FailureAdequacyConfig]
@@ -4423,7 +4585,6 @@ theorem tableCopyOverlap_store_partiallyMeets :
   · exact dataSegmentHeapAgrees_empty _
   · exact tableCopyOverlapMap_agrees
   · exact elementSegmentHeapAgrees_empty _
-  · native_decide
   · intro gs
     simp only [BI.BigSepM.bigSepM_empty.to_eq,
       tableCopyOverlapAdequacyConfig]
@@ -4577,7 +4738,6 @@ theorem tableCopyDistinct_store_partiallyMeets :
   · exact dataSegmentHeapAgrees_empty _
   · exact tableCopyDistinctMap_agrees
   · exact elementSegmentHeapAgrees_empty _
-  · native_decide
   · intro gs
     simp only [BI.BigSepM.bigSepM_empty.to_eq,
       tableCopyDistinctAdequacyConfig]
@@ -4776,7 +4936,6 @@ theorem tableInitDrop_store_partiallyMeets :
   · exact dataSegmentHeapAgrees_empty _
   · exact tableInitDropTableMap_agrees
   · exact tableInitDropElementMap_agrees
-  · native_decide
   · intro gs
     simp only [BI.BigSepM.bigSepM_empty.to_eq,
       tableInitDropAdequacyConfig]
@@ -4884,7 +5043,7 @@ theorem signedBranch_terminatesWith (a b : UInt32) :
       (fun values _store => values = [.i32 (if a.toInt32 ≥ b.toInt32 then 1 else 0)]) := by
   apply wasm_smallStep_terminates (signedBranchConfig a b)
     (fun values => values = [.i32 (if a.toInt32 ≥ b.toInt32 then 1 else 0)])
-    (htags := rfl)
+
   intro hlc gs
   simp only [signedBranchConfig,
     show signedBranchModule.funcs[0]!.body =
@@ -5091,7 +5250,7 @@ theorem fillThenRead_terminatesWith (val : UInt32) :
     (fun values =>
       values = [.i32 (val.toUInt8.toUInt32 ||| (val.toUInt8.toUInt32 <<< 8) |||
                       (val.toUInt8.toUInt32 <<< 16) ||| (val.toUInt8.toUInt32 <<< 24))])
-    (htags := rfl)
+
   · apply fillThenReadInitialHeap_agrees
   · apply fillThenReadInitialHeap_inBounds
     native_decide
@@ -5134,22 +5293,31 @@ def exceptionLifecycleConfig (arg : UInt32) : Config Unit :=
     store := { runtime := { module := exceptionLifecycleModule, host := {} }
                wasm := exceptionLifecycleModule.initialStore } }
 
+/-- Tag 0 is the first entry of the entry module's tag table, so the
+interpreter's tag canonicalisation is the identity on it. -/
+private theorem exceptionLifecycle_tagCanonical :
+    TagIndexCanonical
+      (exceptionLifecycleModule.initialStore : Store Unit).tagIds 0 :=
+  ⟨0, by decide, by decide⟩
+
 -- tryTable catches a throwI and returns the thrown value, parametric over arg.
 theorem exceptionLifecycle_terminatesWith (arg : UInt32) :
     TerminatesWith (exceptionLifecycleConfig arg)
       (fun values _store => values = [.i32 arg]) := by
-  apply wasm_smallStep_runtime_terminates (exceptionLifecycleConfig arg)
+  apply wasm_smallStep_runtime_tags_terminates (exceptionLifecycleConfig arg)
     (fun values => values = [.i32 arg])
-    (htags := rfl)
   intro hlc gs
   simp only [exceptionLifecycleConfig,
     show exceptionLifecycleModule.funcs[0]!.body =
         [.tryTable 0 1 [.catch 0 0] [.localGet 0, .throwI 0], .const 99] from rfl]
-  iintro Hruntime
+  iintro ⟨Hruntime, Htags⟩
   iapply twp_tryTable
   iapply twp_localGet rfl
   iapply (twp_throwI exceptionLifecycleModule 0
-    (tagType := { params := [.i32] }) (htag := rfl) (hargs := by simp)) $$ Hruntime
+    (tagType := { params := [.i32] }) (htag := rfl)
+    (tagIds := (exceptionLifecycleModule.initialStore : Store Unit).tagIds)
+    (hcanonical := exceptionLifecycle_tagCanonical)
+    (hargs := by simp)) $$ Hruntime Htags
   iintro Hruntime'
   iapply twp_catchException
     (clause := .catch 0 0) (targetCode := []) (targetControl := []) (targetValues := [.i32 arg])

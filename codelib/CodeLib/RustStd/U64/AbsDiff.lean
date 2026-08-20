@@ -423,8 +423,7 @@ theorem absDiff_smallStep_partiallyMeets_of_store
     (runtimeModule : Module) (initial : Store Unit)
     (a b oldScratch : UInt64)
     (hglobal : initial.globals.globals[0]? = some (.i32 1048576))
-    (hpages : 1048576 ≤ initial.mem.pages * 65536)
-    (htags : initial.tagIds = List.range runtimeModule.tags.length) :
+    (hpages : 1048576 ≤ initial.mem.pages * 65536) :
     Wasm.SmallStep.PartiallyMeets
       (absDiffBodyConfig runtimeModule initial a b oldScratch)
       (fun result _store =>
@@ -435,7 +434,6 @@ theorem absDiff_smallStep_partiallyMeets_of_store
       (globalσ := absDiffGlobals)
       (φ := fun result =>
         result = [.i64 (if a < b then b - a else a - b)])
-      (htags := by simp only [absDiffBodyConfig]; exact htags)
   · exact absDiffBodyHeap_agrees runtimeModule initial a b oldScratch
   · exact absDiffBodyHeap_inBounds runtimeModule initial a b oldScratch hpages
   · exact absDiffBodyGlobals_agree runtimeModule initial a b oldScratch hglobal
@@ -476,6 +474,5 @@ theorem absDiff_smallStep_partiallyMeets
   apply absDiff_smallStep_partiallyMeets_of_store
   · rfl
   · decide
-  · rfl
 
 end Wasm.RustStd.U64

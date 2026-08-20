@@ -853,36 +853,22 @@ theorem twp_memoryFill32
   · iapply Htwp
     iexact Hbytes
 
-private theorem findIdx?_range' (m start i : Nat) (hge : start ≤ i) (hlt : i < start + m) :
-    (List.range' start m 1).findIdx? (· = i) = some (i - start) := by
-  induction m generalizing start with
-  | zero => omega
-  | succ m ih =>
-    simp only [List.range'_succ, List.findIdx?_cons]
-    by_cases h : start = i
-    · simp [h]
-    · have hlt2 : i < start + 1 + m := by omega
-      have hge2 : start + 1 ≤ i := by omega
-      simp only [show decide (start = i) = false from by simp [h]]
-      have key := ih (start + 1) hge2 hlt2
-      simp only [key, Option.map_some,
-        show i - (start + 1) + 1 = i - start from by omega]
-      simp
-
-private theorem findIdx?_range (n i : Nat) (h : i < n) :
-    (List.range n).findIdx? (· = i) = some i := by
-  rw [List.range_eq_range']
-  have := findIdx?_range' n 0 i (by omega) (by omega)
-  simpa using this
-
+/-- `throw` instruction (total form).  Tag identity is supplied by the
+persistent `tagTableOwn` fragment handed out at adequacy setup, not by an
+invariant of the state interpretation: the rule only needs `tagIndex` to be
+canonical in the entry instance's tag table, which stays true when the machine
+tag table carries further entries from other registered modules. -/
 theorem twp_throwI
     (runtimeModule : Module) (tagIndex : Nat) {tagType : FuncType}
+    {tagIds : List Nat}
     {params localValues values : List Value}
     (htag : runtimeModule.tags[tagIndex]? = some tagType)
+    (hcanonical : TagIndexCanonical tagIds tagIndex)
     (hargs : tagType.params.length ≤ values.length)
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame} :
     runtimeModuleOwn runtimeModule -∗
+    tagTableOwn tagIds -∗
     (runtimeModuleOwn runtimeModule -∗
         WP (.running
           ⟨⟨params, localValues, values.drop tagType.params.length⟩,
@@ -898,7 +884,7 @@ theorem twp_throwI
       ⟨⟨params, localValues, values⟩,
         .throwI tagIndex :: code, arity, remainder, controls, calls⟩ :
         Expr α) @ s; E [{ Φ }] := by
-  iintro Hruntime Hwp
+  iintro Hruntime Htags Hwp
   iapply twp_lift_step_no_fork rfl
   iintro %store %ns %obs %nt Hσ
   ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$ [Hσ Hruntime]
@@ -908,10 +894,11 @@ theorem twp_throwI
     exact Hmodule
   have htag' : store.runtime.module.tags[tagIndex]? = some tagType := by
     simpa only [Hmodule] using htag
-  ihave %Htagids : ⌜store.wasm.tagIds = List.range store.runtime.module.tags.length⌝ $$ [Hσ]
-  · imod stateInterp_tagIds_facts store ns obs nt $$ [$Hσ] with %Htagids
+  ihave %Hprefix : ⌜tagIds.IsPrefix store.wasm.tagIds⌝ $$ [Hσ Htags]
+  · imod stateInterp_tagTable_prefix store ns obs nt tagIds $$ [$Hσ $Htags]
+      with %Hprefix
     ipureintro
-    exact Htagids
+    exact Hprefix
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
   isplitr
@@ -932,8 +919,6 @@ theorem twp_throwI
   simp only at hexpr hstore
   subst e₂
   subst store₂
-  have hlt : tagIndex < store.runtime.module.tags.length :=
-    (List.getElem?_eq_some_iff.mp htag').1
   imod Hclose
   imodintro
   isplit
@@ -944,8 +929,10 @@ theorem twp_throwI
     rfl
   isplitl [Hσ]
   · iexact Hσ
-  · simp only [canonicalTagIndex_eq, Htagids, List.getElem?_range hlt,
-               findIdx?_range _ _ hlt, Option.getD_some]
+  · have hcanonicalStore :=
+      (canonicalTagIndex_eq store tagIndex).trans
+        (canonicalTagIndex_of_prefix store tagIds tagIndex Hprefix hcanonical)
+    rw [hcanonicalStore]
     iapply Hwp
     iexact Hruntime
 
@@ -1044,20 +1031,24 @@ theorem twp_catchException
     have hhost :
         (prepareCatch tag arguments clause store).2.wasm.host = store.wasm.host := by
       rcases clause with _ | _ | _ | _ <;> simp [prepareCatch_eq]
+    have htagIds :
+        (prepareCatch tag arguments clause store).2.wasm.tagIds =
+          store.wasm.tagIds := by
+      rcases clause with _ | _ | _ | _ <;> simp [prepareCatch_eq]
     iapply (stateInterp_eq (prepareCatch tag arguments clause store).2 ns obs nt).mpr
     iexists σ; iexists globalσ; iexists dataSegmentσ; iexists tableσ; iexists elementSegmentσ
     iexists exceptionσ
     simp only [hpreserve.1, hpreserve.2.1, hpreserve.2.2.1, hpreserve.2.2.2.1,
-      hpreserve.2.2.2.2, hruntime, hhost]
+      hpreserve.2.2.2.2, hruntime, hhost, htagIds]
     iframe Hheap Hglobals Hsegments Htables HelementSegments Hexceptions Hruntime HhostState
     ipureintro
     refine ⟨Hfacts.1, Hfacts.2.1, Hfacts.2.2.1, Hfacts.2.2.2.1, Hfacts.2.2.2.2.1,
       Hfacts.2.2.2.2.2.1, ?_⟩
     rcases clause with _ | _ | _ | _ <;> simp [prepareCatch_eq]
     · exact Hfacts.2.2.2.2.2.2
-    · exact ⟨exceptionHeapAgrees_append Hfacts.2.2.2.2.2.2.1, Hfacts.2.2.2.2.2.2.2⟩
+    · exact exceptionHeapAgrees_append Hfacts.2.2.2.2.2.2
     · exact Hfacts.2.2.2.2.2.2
-    · exact ⟨exceptionHeapAgrees_append Hfacts.2.2.2.2.2.2.1, Hfacts.2.2.2.2.2.2.2⟩
+    · exact exceptionHeapAgrees_append Hfacts.2.2.2.2.2.2
   · iexact Hwp
 
 theorem twp_tryTable

@@ -50,7 +50,6 @@ def SwapElementsDistinctSpec : Prop :=
       ([∗map] index ↦ value ∈ globalσ,
         globalPointsTo index value) ⊢
       globalPointsTo 0 (.i32 1048576)) →
-    wasm.tagIds = List.range «module».tags.length →
     Wasm.SmallStep.PartiallyMeets
       (SwapSepLogic.func4ConfigFromStore wasm ptr len i j)
       (fun values store =>
@@ -62,11 +61,11 @@ def SwapElementsDistinctSpec : Prop :=
 theorem swap_elements_distinct_correct : SwapElementsDistinctSpec := by
   intro wasm ptr len i j oldSpillPtr oldSpillLen oldScratch oldA oldB
     σ globalσ hi hj hroomI hroomJ hagree hinBounds hglobals
-    hresources hglobalOwn htags
+    hresources hglobalOwn
   exact SwapSepLogic.func4_distinct_store_partiallyMeets
     wasm ptr len i j oldSpillPtr oldSpillLen oldScratch oldA oldB
     σ globalσ hi hj hroomI hroomJ hagree hinBounds hglobals
-    hresources hglobalOwn htags
+    hresources hglobalOwn
 
 /-- Public small-step contract for equal indices.  It deliberately asks for
 one array-word owner, so it remains usable with exclusive byte ownership. -/
@@ -94,7 +93,6 @@ def SwapElementsAliasSpec : Prop :=
       ([∗map] index ↦ value ∈ globalσ,
         globalPointsTo index value) ⊢
       globalPointsTo 0 (.i32 1048576)) →
-    wasm.tagIds = List.range «module».tags.length →
     Wasm.SmallStep.PartiallyMeets
       (SwapSepLogic.func4ConfigFromStore wasm ptr len i i)
       (fun values store =>
@@ -104,9 +102,9 @@ def SwapElementsAliasSpec : Prop :=
 @[proves SwapElementsAliasSpec]
 theorem swap_elements_alias_correct : SwapElementsAliasSpec := by
   intro wasm ptr len i oldSpillPtr oldSpillLen oldScratch oldValue
-    σ globalσ hi hroom hagree hinBounds hglobals hresources hglobalOwn htags
+    σ globalσ hi hroom hagree hinBounds hglobals hresources hglobalOwn
   exact SwapSepLogic.func4_alias_store_partiallyMeets
     wasm ptr len i oldSpillPtr oldSpillLen oldScratch oldValue
-    σ globalσ hi hroom hagree hinBounds hglobals hresources hglobalOwn htags
+    σ globalσ hi hroom hagree hinBounds hglobals hresources hglobalOwn
 
 end Project.SwapElements.SmallStepSpec
