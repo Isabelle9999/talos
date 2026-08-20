@@ -42,6 +42,7 @@ import CodeLib.SepLogic.SmallStepAdequacy
 import CodeLib.Examples.MergeSort.TotalProof
 import CodeLib.Examples.Quicksort.TotalProof
 import CodeLib.Examples.SelectionSort.StdIOProof
+import CodeLib.Examples.MergeSort.Adequacy
 
 /-!
 # CodeLib — umbrella import for downstream code
