@@ -13,6 +13,7 @@ namespace Wasm.SmallStep
 open Iris Iris.ProgramLogic Language.Notation
 open Wasm.SepLogic
 
+variable {α : Type}
 variable [WasmSmallStepGS hlc α]
 local instance instWasmIrisGS :
     IrisGS_gen hlc (Expr α) (WasmHeapGF α) :=
@@ -53,58 +54,6 @@ theorem wp_pureStep
   subst e₂
   subst store₂
   simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
-  imod Hclose
-  imodintro
-  isplitl [Hσ]
-  · iexact Hσ
-  isplitl [Hwp]
-  · iexact Hwp
-  · itrivial
-
-/-- Primitive lifting rule for a deterministic host step whose result may
-change any part of the physical Wasm store.  The transition premise must
-reconcile the complete old and new state interpretations; in particular it
-cannot update a returned, trapped, or thrown host state without jointly
-updating `hostStateAuth`. -/
-theorem wp_hostStep
-    (kind : StepKind) (current : ThreadState α)
-    (next : MachineStore α → Config α)
-    (hstep : ∀ store : MachineStore α,
-      Step ⟨.running current, store⟩ kind (next store)) :
-    (iprop% ∀ (store : MachineStore α) (steps : Nat)
-        (observations : List StepKind) (threads : Nat),
-      stateInterp (GF := WasmHeapGF α) store steps observations threads -∗
-        (|={∅}=> stateInterp (GF := WasmHeapGF α) (next store).store
-            steps observations threads ∗
-          WP (next store).expr @ s; E {{ Φ }})) ⊢
-      WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
-  iintro Htransition
-  iapply wp_lift_step rfl
-  iintro %store %ns %obs %obs' %nt Hσ
-  iapply fupd_mask_intro Std.LawfulSet.empty_subset
-  iintro Hclose
-  isplitr
-  · ipureintro
-    cases s <;> simp only [Stuckness.MaybeReducible]
-    exact ⟨[], (next store).expr, (next store).store, [],
-      ⟨rfl, kind, rfl, hstep store⟩⟩
-  iintro !> %e₂ %store₂ %forks %Hprim Hcredit
-  rcases Hprim with ⟨hforks, actualKind, hobs, wasmStep⟩
-  change forks = [] at hforks
-  subst forks
-  subst obs
-  obtain ⟨rfl, hconfig⟩ :=
-    step_deterministic (hstep store) wasmStep
-  have parts := Config.mk.inj hconfig
-  have hexpr := parts.1
-  have hstore := parts.2
-  simp only at hexpr hstore
-  subst e₂
-  subst store₂
-  simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
-  ihave Htransition' := Htransition $$ %store %ns %obs' %nt
-  ispecialize Htransition' $$ Hσ
-  imod Htransition' with ⟨Hσ, Hwp⟩
   imod Hclose
   imodintro
   isplitl [Hσ]
@@ -1198,39 +1147,46 @@ theorem wp_call
       functionIndex - runtimeModule.imports.length]? = some fn)
     {params localValues values : List Value}
     {code : Program} {arity : Nat} {remainder : List Value}
-    {controls : List ControlFrame} {calls : List CallFrame} :
-    let caller : CallFrame :=
-      { locals := ⟨params, localValues, values.drop fn.numParams⟩
-        continuation := code
-        resultArity := arity
-        callerRemainder := remainder
-        control := controls }
+    {controls : List ControlFrame} {calls : List CallFrame}
+    (callerId : ModuleInstanceId) :
     let current : ThreadState α :=
       ⟨⟨params, localValues, values⟩, .call functionIndex :: code,
         arity, remainder, controls, calls⟩
-    let next : ThreadState α :=
-      ⟨fn.toLocals (values.take fn.numParams).reverse,
-        fn.body, fn.results.length, [], [], caller :: calls⟩
-    ▷ runtimeModuleOwn runtimeModule -∗
-    ▷ (runtimeModuleOwn runtimeModule -∗
-      WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
+    ▷ runtimeModuleOwn callerId runtimeModule -∗
+    ▷ (runtimeModuleOwn callerId runtimeModule -∗
+      WP (Expr.running
+        ⟨fn.toLocals (values.take fn.numParams).reverse,
+          fn.body, fn.results.length, [], [],
+          { locals := ⟨params, localValues, values.drop fn.numParams⟩
+            continuation := code
+            resultArity := arity
+            callerRemainder := remainder
+            control := controls
+            returningInstance := callerId } :: calls⟩ : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
   iintro >Hruntime Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
-  ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$
-      [Hσ Hruntime]
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$ [Hσ Hruntime]
   · imod stateInterp_runtimeModule_agree store ns (obs ++ obs') nt
-      runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+      callerId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
     ipureintro
     exact Hmodule
   have himports' :
-      ¬functionIndex < store.runtime.module.imports.length := by
+      ¬functionIndex < store.runtime.currentModule.imports.length := by
     simpa only [Hmodule] using himports
-  have hfn' : store.runtime.module.funcs[
-      functionIndex - store.runtime.module.imports.length]? = some fn := by
+  have hfn' : store.runtime.currentModule.funcs[
+      functionIndex - store.runtime.currentModule.imports.length]? = some fn := by
     simpa only [Hmodule] using hfn
+  simp only [runtimeModuleOwn]
+  icases Hruntime with ⟨HruntimeElem, HinstanceOwn⟩
+  ihave %Hentry : ⌜store.runtime.entry = callerId⌝ $$ [Hσ HinstanceOwn]
+  · imod stateInterp_currentInstance_agree store ns (obs ++ obs') nt callerId $$
+        [$Hσ $HinstanceOwn] with %Hentry
+    ipureintro
+    exact Hentry
+  have hsame : callerId = store.runtime.entry := Hentry.symm
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
   isplitr
@@ -1244,7 +1200,8 @@ theorem wp_call
             continuation := code
             resultArity := arity
             callerRemainder := remainder
-            control := controls } :: calls⟩,
+            control := controls
+            returningInstance := store.runtime.entry } :: calls⟩,
       store, [], ⟨rfl, _, rfl, Step.call himports' hfn'⟩⟩
   iintro !> %e₂ %store₂ %forks %Hstep Hcredit
   rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
@@ -1264,9 +1221,314 @@ theorem wp_call
   imodintro
   isplitl [Hσ]
   · iexact Hσ
-  isplitl [Hwp Hruntime]
+  isplitl [Hwp HruntimeElem HinstanceOwn]
+  · rw [← hsame]
+    iapply Hwp
+    isplitl [HruntimeElem]
+    · iexact HruntimeElem
+    · iexact HinstanceOwn
+  · itrivial
+
+/-- Execute an imported (host) function call.
+`runtimeModule` and `hhostFn` tie the proof-time host function to the
+physical store seen by `PrimStep`. `P` is a ghost resource consumed by the
+host, and `QRet`/`QTrap`/`QThrow` are the resources delivered to each
+continuation. The three transfer lemmas are `==∗` proofs that shuttle
+`P ∗ stateInterp` through the host's store update for each outcome. -/
+theorem wp_callHost
+    (runtimeModule : Module) (functionIndex : Nat) (imp : ImportDecl)
+    (hostFn : HostFn α)
+    (himports : functionIndex < runtimeModule.imports.length)
+    (himp : runtimeModule.imports[functionIndex] = imp)
+    (hostEnv : HostEnv α)
+    (hfuncs : hostEnv.funcs[functionIndex]? = some hostFn)
+    {params localValues values : List Value}
+    {code : Program} {arity : Nat} {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame}
+    (P : IProp (WasmHeapGF α))
+    (QRet : List Value → IProp (WasmHeapGF α))
+    (QTrap : IProp (WasmHeapGF α))
+    (QThrow : IProp (WasmHeapGF α))
+    (callerId : ModuleInstanceId)
+    (hRetTransfer : ∀ (store : MachineStore α) (ns : Nat)
+        (obs : List StepKind) (nt : Nat),
+        store.runtime.currentModule = runtimeModule →
+        ∀ results postWasm,
+        hostFn.invoke store.wasm (values.take imp.params.length).reverse =
+          .Return results postWasm →
+        P ∗ stateInterp (GF := WasmHeapGF α) store ns obs nt ==∗
+        QRet results ∗
+        stateInterp (GF := WasmHeapGF α) { store with wasm := postWasm } ns obs nt)
+    (hTrapTransfer : ∀ (store : MachineStore α) (ns : Nat)
+        (obs : List StepKind) (nt : Nat),
+        store.runtime.currentModule = runtimeModule →
+        ∀ postWasm msg,
+        hostFn.invoke store.wasm (values.take imp.params.length).reverse =
+          .Trap postWasm msg →
+        P ∗ stateInterp (GF := WasmHeapGF α) store ns obs nt ==∗
+        QTrap ∗
+        stateInterp (GF := WasmHeapGF α) { store with wasm := postWasm } ns obs nt)
+    (hThrowTransfer : ∀ (store : MachineStore α) (ns : Nat)
+        (obs : List StepKind) (nt : Nat),
+        store.runtime.currentModule = runtimeModule →
+        ∀ postWasm tag xs,
+        hostFn.invoke store.wasm (values.take imp.params.length).reverse =
+          .Throw postWasm tag xs →
+        P ∗ stateInterp (GF := WasmHeapGF α) store ns obs nt ==∗
+        QThrow ∗
+        stateInterp (GF := WasmHeapGF α) { store with wasm := postWasm } ns obs nt) :
+    let current : ThreadState α :=
+      ⟨⟨params, localValues, values⟩, .call functionIndex :: code,
+        arity, remainder, controls, calls⟩
+    P -∗
+    ▷ runtimeModuleOwn callerId runtimeModule -∗
+    ▷ hostEnvOwn callerId.id hostEnv -∗
+    ▷ (∀ preWasm results postWasm
+          (_h : hostFn.invoke preWasm (values.take imp.params.length).reverse =
+            .Return results postWasm),
+        QRet results ∗ runtimeModuleOwn callerId runtimeModule -∗
+        WP (Expr.running
+            ⟨⟨params, localValues,
+                results.take imp.results.length ++
+                  values.drop imp.params.length⟩,
+              code, arity, remainder, controls, calls⟩ : Expr α)
+          @ s; E {{ Φ }}) -∗
+    ▷ (∀ preWasm postWasm msg
+          (_h : hostFn.invoke preWasm (values.take imp.params.length).reverse =
+            .Trap postWasm msg),
+        QTrap -∗
+        WP (Expr.trapped (.host msg) : Expr α) @ s; E {{ Φ }}) -∗
+    ▷ (∀ preWasm postWasm tag xs
+          (h : hostFn.invoke preWasm (values.take imp.params.length).reverse =
+            .Throw postWasm tag xs),
+        QThrow -∗
+        WP (Expr.running
+            ⟨⟨params, localValues, values.drop imp.params.length⟩,
+              [], arity, remainder,
+              [{ kind := .throwing tag xs
+                 paramArity := 0
+                 resultArity := 0
+                 body := []
+                 continuation := []
+                 belowStack := [] }] ++ controls,
+              calls⟩ : Expr α)
+          @ s; E {{ Φ }}) -∗
+    WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
+  dsimp only
+  iintro HP >Hruntime >Henv HwpRet HwpTrap HwpThrow
+  iapply wp_lift_step rfl
+  iintro %store %ns %obs %obs' %nt Hσ
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$ [Hσ Hruntime]
+  · imod stateInterp_runtimeModule_agree store ns (obs ++ obs') nt
+      callerId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+    ipureintro
+    exact Hmodule
+  simp only [runtimeModuleOwn]
+  icases Hruntime with ⟨HruntimeElem, HinstanceOwn⟩
+  have himports' : functionIndex < store.runtime.currentModule.imports.length := by
+    simpa only [Hmodule] using himports
+  have himp' : store.runtime.currentModule.imports[functionIndex] = imp := by
+    simpa only [Hmodule] using himp
+  ihave %Hhost : ⌜store.runtime.currentHost = hostEnv⌝ $$ [Hσ HinstanceOwn Henv]
+  · imod stateInterp_hostEnv store ns (obs ++ obs') nt
+        callerId.id hostEnv $$ [$Hσ $HinstanceOwn $Henv] with %Hhost
+    ipureintro
+    exact Hhost
+  have hhost' : store.runtime.currentHost.funcs[functionIndex]? = some hostFn := by
+    rw [Hhost]; exact hfuncs
+  match h : hostFn.invoke store.wasm (values.take imp.params.length).reverse with
+  | .Return results newWasm =>
+    iapply fupd_mask_intro Std.LawfulSet.empty_subset
+    iintro Hclose
+    isplitr
+    · ipureintro
+      cases s <;> simp only [Stuckness.MaybeReducible]
+      exact ⟨[],
+        .running ⟨⟨params, localValues,
+            results.take imp.results.length ++
+              values.drop imp.params.length⟩,
+          code, arity, remainder, controls, calls⟩,
+        { store with wasm := newWasm }, [],
+        ⟨rfl, _, rfl, Step.callHostReturn himports' himp' hhost' h⟩⟩
+    iintro !> %e₂ %store₂ %forks %Hstep Hcredit
+    rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+    change forks = [] at hforks
+    subst forks
+    subst obs
+    obtain ⟨rfl, hconfig⟩ :=
+      step_deterministic (Step.callHostReturn (α := α) himports' himp' hhost' h) wasmStep
+    have parts := Config.mk.inj hconfig
+    have hexpr := parts.1
+    have hstore := parts.2
+    simp only at hexpr hstore
+    subst e₂
+    subst store₂
+    simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
+    imod hRetTransfer store ns obs' nt Hmodule results newWasm h $$ [$HP $Hσ] with ⟨HQ, Hσ⟩
+    imod Hclose
+    imodintro
+    isplitl [Hσ]
+    · iexact Hσ
+    ispecialize HwpRet $$ %(store.wasm) %results %newWasm %h
+    isplitl [HwpRet HQ HruntimeElem HinstanceOwn]
+    · iapply HwpRet
+      isplitl [HQ]
+      · iexact HQ
+      · isplitl [HruntimeElem]
+        · iexact HruntimeElem
+        · iexact HinstanceOwn
+    · itrivial
+  | .Trap newWasm msg =>
+    iclear HinstanceOwn HruntimeElem
+    iapply fupd_mask_intro Std.LawfulSet.empty_subset
+    iintro Hclose
+    isplitr
+    · ipureintro
+      cases s <;> simp only [Stuckness.MaybeReducible]
+      exact ⟨[],
+        .trapped (.host msg),
+        { store with wasm := newWasm }, [],
+        ⟨rfl, _, rfl, Step.callHostTrap himports' himp' hhost' h⟩⟩
+    iintro !> %e₂ %store₂ %forks %Hstep Hcredit
+    rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+    change forks = [] at hforks
+    subst forks
+    subst obs
+    obtain ⟨rfl, hconfig⟩ :=
+      step_deterministic (Step.callHostTrap (α := α) himports' himp' hhost' h) wasmStep
+    have parts := Config.mk.inj hconfig
+    have hexpr := parts.1
+    have hstore := parts.2
+    simp only at hexpr hstore
+    subst e₂
+    subst store₂
+    simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
+    imod hTrapTransfer store ns obs' nt Hmodule newWasm msg h $$ [$HP $Hσ] with ⟨HQ, Hσ⟩
+    imod Hclose
+    imodintro
+    isplitl [Hσ]
+    · iexact Hσ
+    ispecialize HwpTrap $$ %(store.wasm) %newWasm %msg %h
+    isplitl [HwpTrap HQ]
+    · iapply HwpTrap
+      iexact HQ
+    · itrivial
+  | .Throw newWasm tag xs =>
+    iclear HinstanceOwn HruntimeElem
+    iapply fupd_mask_intro Std.LawfulSet.empty_subset
+    iintro Hclose
+    isplitr
+    · ipureintro
+      cases s <;> simp only [Stuckness.MaybeReducible]
+      exact ⟨[],
+        .running ⟨⟨params, localValues, values.drop imp.params.length⟩,
+          [], arity, remainder,
+          [{ kind := .throwing tag xs
+             paramArity := 0
+             resultArity := 0
+             body := []
+             continuation := []
+             belowStack := [] }] ++ controls,
+          calls⟩,
+        { store with wasm := newWasm }, [],
+        ⟨rfl, _, rfl, Step.callHostThrow himports' himp' hhost' h⟩⟩
+    iintro !> %e₂ %store₂ %forks %Hstep Hcredit
+    rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+    change forks = [] at hforks
+    subst forks
+    subst obs
+    obtain ⟨rfl, hconfig⟩ :=
+      step_deterministic (Step.callHostThrow (α := α) himports' himp' hhost' h) wasmStep
+    have parts := Config.mk.inj hconfig
+    have hexpr := parts.1
+    have hstore := parts.2
+    simp only at hexpr hstore
+    subst e₂
+    subst store₂
+    simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
+    imod hThrowTransfer store ns obs' nt Hmodule newWasm tag xs h $$ [$HP $Hσ] with ⟨HQ, Hσ⟩
+    imod Hclose
+    imodintro
+    isplitl [Hσ]
+    · iexact Hσ
+    ispecialize HwpThrow $$ %(store.wasm) %newWasm %tag %xs %h
+    isplitl [HwpThrow HQ]
+    · iapply HwpThrow
+      iexact HQ
+    · itrivial
+
+/-- Resume caller after explicit return; runtime-module ownership is returned
+    unchanged for chained same-instance calls. -/
+theorem wp_returnFromCallExplicit'
+    {calleeLocals callerLocals : Locals}
+    {calleeCode callerCode : Program}
+    {calleeArity callerArity : Nat}
+    {calleeRemainder callerRemainder : List Value}
+    {calleeControls callerControls : List ControlFrame}
+    {returningInstance : ModuleInstanceId}
+    {module : Module}
+    {calls : List CallFrame} :
+    let caller : CallFrame :=
+      { locals := callerLocals
+        continuation := callerCode
+        resultArity := callerArity
+        callerRemainder := callerRemainder
+        control := callerControls
+        returningInstance := returningInstance }
+    let current : ThreadState α :=
+      ⟨calleeLocals, .ret :: calleeCode, calleeArity, calleeRemainder,
+        calleeControls, caller :: calls⟩
+    let next : ThreadState α :=
+      ⟨{ callerLocals with
+          values :=
+            calleeLocals.values.take calleeArity ++ callerLocals.values },
+        callerCode, callerArity, callerRemainder, callerControls, calls⟩
+    ▷ runtimeModuleOwn returningInstance module -∗
+    ▷ (runtimeModuleOwn returningInstance module -∗
+      WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
+      WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
+  dsimp only
+  iintro >Hruntime Hwp
+  iapply wp_lift_step rfl
+  iintro %store %ns %obs %obs' %nt Hσ
+  simp only [runtimeModuleOwn]
+  icases Hruntime with ⟨HruntimeElem, HinstanceOwn⟩
+  ihave %Hentry : ⌜store.runtime.entry = returningInstance⌝ $$ [Hσ HinstanceOwn]
+  · imod stateInterp_currentInstance_agree store ns (obs ++ obs') nt returningInstance $$
+        [$Hσ $HinstanceOwn] with %Hentry
+    ipureintro
+    exact Hentry
+  have hsame : returningInstance = store.runtime.entry := Hentry.symm
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducible]
+    exact ⟨[], _, store, [],
+      ⟨rfl, _, rfl, Step.returnFromCallExplicit hsame⟩⟩
+  iintro !> %e₂ %store₂ %forks %Hstep Hcredit
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst obs
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic (Step.returnFromCallExplicit (α := α) hsame) wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil, resumeCaller]
+  imod Hclose
+  imodintro
+  isplitl [Hσ]
+  · iexact Hσ
+  isplitl [Hwp HruntimeElem HinstanceOwn]
   · iapply Hwp
-    iexact Hruntime
+    isplitl [HruntimeElem]
+    · iexact HruntimeElem
+    · iexact HinstanceOwn
   · itrivial
 
 /-- Resume a suspended caller after an explicit callee return. -/
@@ -1276,13 +1538,16 @@ theorem wp_returnFromCallExplicit
     {calleeArity callerArity : Nat}
     {calleeRemainder callerRemainder : List Value}
     {calleeControls callerControls : List ControlFrame}
+    {returningInstance : ModuleInstanceId}
+    {module : Module}
     {calls : List CallFrame} :
     let caller : CallFrame :=
       { locals := callerLocals
         continuation := callerCode
         resultArity := callerArity
         callerRemainder := callerRemainder
-        control := callerControls }
+        control := callerControls
+        returningInstance := returningInstance }
     let current : ThreadState α :=
       ⟨calleeLocals, .ret :: calleeCode, calleeArity, calleeRemainder,
         calleeControls, caller :: calls⟩
@@ -1291,40 +1556,43 @@ theorem wp_returnFromCallExplicit
           values :=
             calleeLocals.values.take calleeArity ++ callerLocals.values },
         callerCode, callerArity, callerRemainder, callerControls, calls⟩
-    ▷ WP (Expr.running next : Expr α) @ s; E {{ Φ }} ⊢
+    ▷ runtimeModuleOwn returningInstance module -∗
+    ▷ WP (Expr.running next : Expr α) @ s; E {{ Φ }} -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
-  iintro Hwp
+  iintro >Hruntime Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
+  simp only [runtimeModuleOwn]
+  icases Hruntime with ⟨HruntimeElem, HinstanceOwn⟩
+  ihave %Hentry : ⌜store.runtime.entry = returningInstance⌝ $$ [Hσ HinstanceOwn]
+  · imod stateInterp_currentInstance_agree store ns (obs ++ obs') nt returningInstance $$
+        [$Hσ $HinstanceOwn] with %Hentry
+    ipureintro
+    exact Hentry
+  have hsame : returningInstance = store.runtime.entry := Hentry.symm
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
   isplitr
   · ipureintro
     cases s <;> simp only [Stuckness.MaybeReducible]
-    exact ⟨[],
-      .running
-        ⟨{ callerLocals with
-            values :=
-              calleeLocals.values.take calleeArity ++ callerLocals.values },
-          callerCode, callerArity, callerRemainder, callerControls, calls⟩,
-      store, [], ⟨rfl, _, rfl, Step.returnFromCallExplicit⟩⟩
+    exact ⟨[], _, store, [],
+      ⟨rfl, _, rfl, Step.returnFromCallExplicit hsame⟩⟩
   iintro !> %e₂ %store₂ %forks %Hstep Hcredit
   rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
   change forks = [] at hforks
   subst forks
   subst obs
   obtain ⟨rfl, hconfig⟩ :=
-    step_deterministic
-      (Step.returnFromCallExplicit (α := α)) wasmStep
+    step_deterministic (Step.returnFromCallExplicit (α := α) hsame) wasmStep
   have parts := Config.mk.inj hconfig
   have hexpr := parts.1
   have hstore := parts.2
   simp only at hexpr hstore
   subst e₂
   subst store₂
-  simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
-  simp only [resumeCaller]
+  simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil, resumeCaller]
+  iclear HruntimeElem HinstanceOwn
   imod Hclose
   imodintro
   isplitl [Hσ]
@@ -1349,14 +1617,16 @@ theorem wp_globalGet_of_canonical
     let next : ThreadState α :=
       ⟨⟨params, localValues, value :: values⟩, code,
         arity, remainder, controls, calls⟩
-    ▷ globalPointsTo index value -∗
-    ▷ (globalPointsTo index value -∗
+    ▷ globalPointsToAt 0 index value -∗
+    ▷ (globalPointsToAt 0 index value -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
+  simp only [globalPointsToAt]
   iintro >Hglobal Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
+  simp only [← globalPointsToAt_eq]
   ihave %Hget :
       ⌜store.wasm.globals.globals[index]? = some value⌝ $$ [Hσ Hglobal]
   · imod stateInterp_global_facts store ns (obs ++ obs') nt index value $$
@@ -1413,14 +1683,16 @@ theorem wp_globalSet_of_canonical
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ globalPointsTo index oldValue -∗
-    ▷ (globalPointsTo index newValue -∗
+    ▷ globalPointsToAt 0 index oldValue -∗
+    ▷ (globalPointsToAt 0 index newValue -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
+  simp only [globalPointsToAt]
   iintro >Hglobal Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
+  simp only [← globalPointsToAt_eq]
   ihave %Hget :
       ⌜store.wasm.globals.globals[index]? = some oldValue⌝ $$
       [Hσ Hglobal]
@@ -1503,8 +1775,8 @@ theorem wp_globalGet
     let next : ThreadState α :=
       ⟨⟨params, localValues, value :: values⟩, code,
         arity, remainder, controls, calls⟩
-    ▷ globalPointsTo 0 value -∗
-    ▷ (globalPointsTo 0 value -∗
+    ▷ globalPointsToAt 0 0 value -∗
+    ▷ (globalPointsToAt 0 0 value -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} :=
   wp_globalGet_of_canonical (fun _ => rfl)
@@ -1521,8 +1793,8 @@ theorem wp_globalSet
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ globalPointsTo 0 oldValue -∗
-    ▷ (globalPointsTo 0 newValue -∗
+    ▷ globalPointsToAt 0 0 oldValue -∗
+    ▷ (globalPointsToAt 0 0 newValue -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} :=
   wp_globalSet_of_canonical (fun _ => rfl)
@@ -1543,14 +1815,16 @@ theorem wp_tableGet
     let next : ThreadState α :=
       ⟨⟨params, localValues, value :: values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ tablePointsTo tableIndex table -∗
-    ▷ (tablePointsTo tableIndex table -∗
+    ▷ tablePointsToAt 0 tableIndex table -∗
+    ▷ (tablePointsToAt 0 tableIndex table -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
+  simp only [tablePointsToAt]
   iintro >Htable Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
+  simp only [← tablePointsToAt_eq]
   ihave %Hphysical :
       ⌜store.wasm.tables[tableIndex]? = some table⌝ $$ [Hσ Htable]
   · imod stateInterp_table_facts_frame store ns (obs ++ obs') nt
@@ -1597,7 +1871,7 @@ theorem wp_tableGet
 whether the result is represented as an `i32` or `i64`; table ownership
 determines the physical length. Both resources are read-only. -/
 theorem wp_tableSize
-    (runtimeModule : Module)
+    (runtimeModule : Module) (callerId : ModuleInstanceId)
     {params localValues values : List Value}
     {tableIndex : Nat} {table : TableInst}
     {code : Program} {arity : Nat}
@@ -1611,10 +1885,9 @@ theorem wp_tableSize
           sizeValue (runtimeModule.tableIs64 tableIndex) table.length ::
             values⟩,
         code, arity, remainder, controls, calls⟩
-    (tablePointsTo tableIndex table ∗
-      runtimeModuleOwn runtimeModule) -∗
-    ▷ (tablePointsTo tableIndex table -∗
-      runtimeModuleOwn runtimeModule -∗
+    (tablePointsToAt 0 tableIndex table ∗ runtimeModuleOwn callerId runtimeModule) -∗
+    ▷ (tablePointsToAt 0 tableIndex table -∗
+      runtimeModuleOwn callerId runtimeModule -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -1628,10 +1901,10 @@ theorem wp_tableSize
       ⟨Hσ, Htable, %Hphysical⟩
     ipureintro
     exact Hphysical
-  ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$
       [Hσ Hruntime]
   · imod stateInterp_runtimeModule_agree store ns (obs ++ obs') nt
-        runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+        callerId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
     ipureintro
     exact Hmodule
   subst runtimeModule
@@ -1642,7 +1915,7 @@ theorem wp_tableSize
     cases s <;> simp only [Stuckness.MaybeReducible]
     exact ⟨[],
       .running ⟨⟨params, localValues,
-          sizeValue (store.runtime.module.tableIs64 tableIndex) table.length ::
+          sizeValue (store.runtime.currentModule.tableIs64 tableIndex) table.length ::
             values⟩,
         code, arity, remainder, controls, calls⟩,
       store, [], ⟨rfl, _, rfl, Step.tableSize Hphysical⟩⟩
@@ -1659,7 +1932,7 @@ theorem wp_tableSize
       (.instruction (.tableSize tableIndex))
       ⟨.running
         ⟨⟨params, localValues,
-            sizeValue (store.runtime.module.tableIs64 tableIndex)
+            sizeValue (store.runtime.currentModule.tableIs64 tableIndex)
               table.length :: values⟩,
           code, arity, remainder, controls, calls⟩,
         store⟩ :=
@@ -1699,14 +1972,16 @@ theorem wp_tableSet
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ tablePointsTo tableIndex table -∗
-    ▷ (tablePointsTo tableIndex newTable -∗
+    ▷ tablePointsToAt 0 tableIndex table -∗
+    ▷ (tablePointsToAt 0 tableIndex newTable -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
+  simp only [tablePointsToAt]
   iintro >Htable Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
+  simp only [← tablePointsToAt_eq]
   ihave %Hphysical :
       ⌜store.wasm.tables[tableIndex]? = some table⌝ $$ [Hσ Htable]
   · imod stateInterp_table_facts_frame store ns (obs ++ obs') nt
@@ -1769,7 +2044,7 @@ theorem wp_tableSet
 /-- Successful 32-bit `table.grow`. Stable table identity is preserved while
 the physical table and its authoritative contents are extended together. -/
 theorem wp_tableGrow32
-    (runtimeModule : Module)
+    (runtimeModule : Module) (callerId : ModuleInstanceId)
     {params localValues values : List Value}
     {tableIndex : Nat} {table : TableInst}
     {delta : UInt32} {initial : Value}
@@ -1785,10 +2060,9 @@ theorem wp_tableGrow32
     let next : ThreadState α :=
       ⟨⟨params, localValues, .i32 table.length.toUInt32 :: values⟩,
         code, arity, remainder, controls, calls⟩
-    (tablePointsTo tableIndex table ∗
-      runtimeModuleOwn runtimeModule) -∗
-    ▷ (tablePointsTo tableIndex newTable -∗
-      runtimeModuleOwn runtimeModule -∗
+    (tablePointsToAt 0 tableIndex table ∗ runtimeModuleOwn callerId runtimeModule) -∗
+    ▷ (tablePointsToAt 0 tableIndex newTable -∗
+      runtimeModuleOwn callerId runtimeModule -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -1802,15 +2076,15 @@ theorem wp_tableGrow32
       ⟨Hσ, Htable, %Hphysical⟩
     ipureintro
     exact Hphysical
-  ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$
       [Hσ Hruntime]
   · imod stateInterp_runtimeModule_agree store ns (obs ++ obs') nt
-        runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+        callerId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
     ipureintro
     exact Hmodule
   have hbound' :
       table.length + delta.toNat ≤
-        store.runtime.module.tableCap tableIndex := by
+        store.runtime.currentModule.tableCap tableIndex := by
     simpa only [Hmodule] using hbound
   let newTable := table ++ List.replicate delta.toNat initial
   let updatedStore : MachineStore α :=
@@ -1867,7 +2141,7 @@ theorem wp_tableGrow32
 /-- Successful 64-bit `table.grow`. This is the table64 counterpart of
 `wp_tableGrow32`; it updates the same stable authoritative table identity. -/
 theorem wp_tableGrow64
-    (runtimeModule : Module)
+    (runtimeModule : Module) (callerId : ModuleInstanceId)
     {params localValues values : List Value}
     {tableIndex : Nat} {table : TableInst}
     {delta : UInt64} {initial : Value}
@@ -1883,10 +2157,9 @@ theorem wp_tableGrow64
     let next : ThreadState α :=
       ⟨⟨params, localValues, .i64 table.length.toUInt64 :: values⟩,
         code, arity, remainder, controls, calls⟩
-    (tablePointsTo tableIndex table ∗
-      runtimeModuleOwn runtimeModule) -∗
-    ▷ (tablePointsTo tableIndex newTable -∗
-      runtimeModuleOwn runtimeModule -∗
+    (tablePointsToAt 0 tableIndex table ∗ runtimeModuleOwn callerId runtimeModule) -∗
+    ▷ (tablePointsToAt 0 tableIndex newTable -∗
+      runtimeModuleOwn callerId runtimeModule -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -1900,15 +2173,15 @@ theorem wp_tableGrow64
       ⟨Hσ, Htable, %Hphysical⟩
     ipureintro
     exact Hphysical
-  ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$
       [Hσ Hruntime]
   · imod stateInterp_runtimeModule_agree store ns (obs ++ obs') nt
-        runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+        callerId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
     ipureintro
     exact Hmodule
   have hbound' :
       table.length + delta.toNat ≤
-        store.runtime.module.tableCap tableIndex := by
+        store.runtime.currentModule.tableCap tableIndex := by
     simpa only [Hmodule] using hbound
   let newTable := table ++ List.replicate delta.toNat initial
   let updatedStore : MachineStore α :=
@@ -1966,7 +2239,7 @@ theorem wp_tableGrow64
 instruction result (`-1`), not a trap, and leaves the authoritative table and
 physical store unchanged. -/
 theorem wp_tableGrow32Failure
-    (runtimeModule : Module)
+    (runtimeModule : Module) (callerId : ModuleInstanceId)
     {params localValues values : List Value}
     {tableIndex : Nat} {table : TableInst}
     {delta : UInt32} {initial : Value}
@@ -1981,10 +2254,9 @@ theorem wp_tableGrow32Failure
     let next : ThreadState α :=
       ⟨⟨params, localValues, .i32 (0xFFFFFFFF : UInt32) :: values⟩,
         code, arity, remainder, controls, calls⟩
-    (tablePointsTo tableIndex table ∗
-      runtimeModuleOwn runtimeModule) -∗
-    ▷ (tablePointsTo tableIndex table -∗
-      runtimeModuleOwn runtimeModule -∗
+    (tablePointsToAt 0 tableIndex table ∗ runtimeModuleOwn callerId runtimeModule) -∗
+    ▷ (tablePointsToAt 0 tableIndex table -∗
+      runtimeModuleOwn callerId runtimeModule -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -1998,15 +2270,15 @@ theorem wp_tableGrow32Failure
       ⟨Hσ, Htable, %Hphysical⟩
     ipureintro
     exact Hphysical
-  ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$
       [Hσ Hruntime]
   · imod stateInterp_runtimeModule_agree store ns (obs ++ obs') nt
-        runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+        callerId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
     ipureintro
     exact Hmodule
   have hbound' :
       ¬table.length + delta.toNat ≤
-        store.runtime.module.tableCap tableIndex := by
+        store.runtime.currentModule.tableCap tableIndex := by
     simpa only [Hmodule] using hbound
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
@@ -2057,7 +2329,7 @@ theorem wp_tableGrow32Failure
 /-- Failed table64 `table.grow`; returns the 64-bit all-ones sentinel and
 preserves complete ownership of the unchanged table. -/
 theorem wp_tableGrow64Failure
-    (runtimeModule : Module)
+    (runtimeModule : Module) (callerId : ModuleInstanceId)
     {params localValues values : List Value}
     {tableIndex : Nat} {table : TableInst}
     {delta : UInt64} {initial : Value}
@@ -2073,10 +2345,9 @@ theorem wp_tableGrow64Failure
       ⟨⟨params, localValues,
           .i64 (0xFFFFFFFFFFFFFFFF : UInt64) :: values⟩,
         code, arity, remainder, controls, calls⟩
-    (tablePointsTo tableIndex table ∗
-      runtimeModuleOwn runtimeModule) -∗
-    ▷ (tablePointsTo tableIndex table -∗
-      runtimeModuleOwn runtimeModule -∗
+    (tablePointsToAt 0 tableIndex table ∗ runtimeModuleOwn callerId runtimeModule) -∗
+    ▷ (tablePointsToAt 0 tableIndex table -∗
+      runtimeModuleOwn callerId runtimeModule -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -2090,15 +2361,15 @@ theorem wp_tableGrow64Failure
       ⟨Hσ, Htable, %Hphysical⟩
     ipureintro
     exact Hphysical
-  ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$
       [Hσ Hruntime]
   · imod stateInterp_runtimeModule_agree store ns (obs ++ obs') nt
-        runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+        callerId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
     ipureintro
     exact Hmodule
   have hbound' :
       ¬table.length + delta.toNat ≤
-        store.runtime.module.tableCap tableIndex := by
+        store.runtime.currentModule.tableCap tableIndex := by
     simpa only [Hmodule] using hbound
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
@@ -2166,14 +2437,16 @@ theorem wp_tableFill
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ tablePointsTo tableIndex table -∗
-    ▷ (tablePointsTo tableIndex newTable -∗
+    ▷ tablePointsToAt 0 tableIndex table -∗
+    ▷ (tablePointsToAt 0 tableIndex newTable -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
+  simp only [tablePointsToAt]
   iintro >Htable Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
+  simp only [← tablePointsToAt_eq]
   ihave %Hphysical :
       ⌜store.wasm.tables[tableIndex]? = some table⌝ $$ [Hσ Htable]
   · imod stateInterp_table_facts_frame store ns (obs ++ obs') nt
@@ -2260,14 +2533,16 @@ theorem wp_tableCopySame
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ tablePointsTo tableIndex table -∗
-    ▷ (tablePointsTo tableIndex newTable -∗
+    ▷ tablePointsToAt 0 tableIndex table -∗
+    ▷ (tablePointsToAt 0 tableIndex newTable -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
+  simp only [tablePointsToAt]
   iintro >Htable Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
+  simp only [← tablePointsToAt_eq]
   ihave %Hphysical :
       ⌜store.wasm.tables[tableIndex]? = some table⌝ $$ [Hσ Htable]
   · imod stateInterp_table_facts_frame store ns (obs ++ obs') nt
@@ -2361,16 +2636,18 @@ theorem wp_tableCopyDistinct
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ (tablePointsTo destinationTableIndex destinationTable ∗
-      tablePointsTo sourceTableIndex sourceTable) -∗
-    ▷ (tablePointsTo destinationTableIndex newDestinationTable -∗
-      tablePointsTo sourceTableIndex sourceTable -∗
+    ▷ (tablePointsToAt 0 destinationTableIndex destinationTable ∗
+      tablePointsToAt 0 sourceTableIndex sourceTable) -∗
+    ▷ (tablePointsToAt 0 destinationTableIndex newDestinationTable -∗
+      tablePointsToAt 0 sourceTableIndex sourceTable -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
+  simp only [tablePointsToAt]
   iintro >⟨Hdestination, Hsource⟩ Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
+  simp only [← tablePointsToAt_eq]
   ihave %HdestinationPhysical :
       ⌜store.wasm.tables[destinationTableIndex]? =
         some destinationTable⌝ $$ [Hσ Hdestination]
@@ -2467,9 +2744,9 @@ theorem wp_load8U
       ⟨⟨params, localValues, .i32 byte.toUInt32 :: values⟩,
         code, arity, remainder, controls, calls⟩
     ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-        (address + offset) (DFrac.own 1) (some byte) -∗
+        ⟨0, address + offset⟩ (DFrac.own 1) (some byte) -∗
     ▷ (pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-        (address + offset) (DFrac.own 1) (some byte) -∗
+        ⟨0, address + offset⟩ (DFrac.own 1) (some byte) -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -2540,9 +2817,9 @@ theorem wp_load8UI64
       ⟨⟨params, localValues, .i64 byte.toUInt64 :: values⟩,
         code, arity, remainder, controls, calls⟩
     ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-        (address + offset) (DFrac.own 1) (some byte) -∗
+        ⟨0, address + offset⟩ (DFrac.own 1) (some byte) -∗
     ▷ (pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-        (address + offset) (DFrac.own 1) (some byte) -∗
+        ⟨0, address + offset⟩ (DFrac.own 1) (some byte) -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -2615,9 +2892,9 @@ theorem wp_store8
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩, code, arity, remainder, controls, calls⟩
     ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-        (address + offset) (DFrac.own 1) (some oldByte) -∗
+        ⟨0, address + offset⟩ (DFrac.own 1) (some oldByte) -∗
     ▷ (pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-        (address + offset) (DFrac.own 1) (some value.toUInt8) -∗
+        ⟨0, address + offset⟩ (DFrac.own 1) (some value.toUInt8) -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -2694,9 +2971,9 @@ theorem wp_store8I64
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩, code, arity, remainder, controls, calls⟩
     ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-        (address + offset) (DFrac.own 1) (some oldByte) -∗
+        ⟨0, address + offset⟩ (DFrac.own 1) (some oldByte) -∗
     ▷ (pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-        (address + offset) (DFrac.own 1) (some value.toUInt8) -∗
+        ⟨0, address + offset⟩ (DFrac.own 1) (some value.toUInt8) -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -2774,8 +3051,8 @@ theorem wp_load32
     let next : ThreadState α :=
       ⟨⟨params, localValues, .i32 word :: values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo_u32 (address + offset) word -∗
-    ▷ (pointsTo_u32 (address + offset) word -∗
+    ▷ pointsTo_u32 0 (address + offset) word -∗
+    ▷ (pointsTo_u32 0 (address + offset) word -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -2847,8 +3124,8 @@ theorem wp_store32
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo_u32 (address + offset) oldWord -∗
-    ▷ (pointsTo_u32 (address + offset) value -∗
+    ▷ pointsTo_u32 0 (address + offset) oldWord -∗
+    ▷ (pointsTo_u32 0 (address + offset) value -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -2930,8 +3207,8 @@ theorem wp_f32Load
     let next : ThreadState α :=
       ⟨⟨params, localValues, .f32 word :: values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo_u32 (address + offset) word -∗
-    ▷ (pointsTo_u32 (address + offset) word -∗
+    ▷ pointsTo_u32 0 (address + offset) word -∗
+    ▷ (pointsTo_u32 0 (address + offset) word -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -3005,8 +3282,8 @@ theorem wp_f32Store
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo_u32 (address + offset) oldWord -∗
-    ▷ (pointsTo_u32 (address + offset) value -∗
+    ▷ pointsTo_u32 0 (address + offset) oldWord -∗
+    ▷ (pointsTo_u32 0 (address + offset) value -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -3095,8 +3372,8 @@ theorem wp_load64
     let next : ThreadState α :=
       ⟨⟨params, localValues, .i64 word :: values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo_u64 (address + offset) word -∗
-    ▷ (pointsTo_u64 (address + offset) word -∗
+    ▷ pointsTo_u64 0 (address + offset) word -∗
+    ▷ (pointsTo_u64 0 (address + offset) word -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -3177,8 +3454,8 @@ theorem wp_store64
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo_u64 (address + offset) oldWord -∗
-    ▷ (pointsTo_u64 (address + offset) value -∗
+    ▷ pointsTo_u64 0 (address + offset) oldWord -∗
+    ▷ (pointsTo_u64 0 (address + offset) value -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -3266,8 +3543,8 @@ theorem wp_f64Load
     let next : ThreadState α :=
       ⟨⟨params, localValues, .f64 word :: values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo_u64 (address + offset) word -∗
-    ▷ (pointsTo_u64 (address + offset) word -∗
+    ▷ pointsTo_u64 0 (address + offset) word -∗
+    ▷ (pointsTo_u64 0 (address + offset) word -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -3348,8 +3625,8 @@ theorem wp_f64Store
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo_u64 (address + offset) oldWord -∗
-    ▷ (pointsTo_u64 (address + offset) value -∗
+    ▷ pointsTo_u64 0 (address + offset) oldWord -∗
+    ▷ (pointsTo_u64 0 (address + offset) value -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -3435,8 +3712,8 @@ theorem wp_fill16_four_AB
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo_u32 16 oldWord -∗
-    ▷ (pointsTo_u32 16 0xABABABAB -∗
+    ▷ pointsTo_u32 0 16 oldWord -∗
+    ▷ (pointsTo_u32 0 16 0xABABABAB -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -3512,16 +3789,17 @@ theorem wp_memoryInit16_four
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ (pointsTo_u32 16 oldWord ∗
-      dataSegmentPointsTo 0 (some [1, 2, 3, 4])) -∗
-    ▷ (pointsTo_u32 16 0x04030201 ∗
-      dataSegmentPointsTo 0 (some [1, 2, 3, 4]) -∗
+    ▷ (pointsTo_u32 0 16 oldWord ∗
+      dataSegmentPointsTo ⟨0, 0⟩ (some [1, 2, 3, 4])) -∗
+    ▷ (pointsTo_u32 0 16 0x04030201 ∗
+      dataSegmentPointsTo ⟨0, 0⟩ (some [1, 2, 3, 4]) -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
   iintro >⟨Hword, Hsegment⟩ Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
+  simp only [← dataSegmentPointsToAt_eq]
   imod stateInterp_dataSegment_facts_frame store ns (obs ++ obs') nt
       0 (some [1, 2, 3, 4]) $$ [$Hσ $Hsegment] with
     ⟨Hσ, Hsegment, %hsegment⟩
@@ -3595,14 +3873,15 @@ theorem wp_dataDrop0
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ dataSegmentPointsTo 0 (some bytes) -∗
-    ▷ (dataSegmentPointsTo 0 none -∗
+    ▷ dataSegmentPointsTo ⟨0, 0⟩ (some bytes) -∗
+    ▷ (dataSegmentPointsTo ⟨0, 0⟩ none -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
   iintro >Hsegment Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
+  simp only [← dataSegmentPointsToAt_eq]
   imod stateInterp_dataSegment_facts_frame store ns (obs ++ obs') nt
       0 (some bytes) $$ [$Hσ $Hsegment] with
     ⟨Hσ, Hsegment, %hsegment⟩
@@ -3674,14 +3953,16 @@ theorem wp_elemDrop
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ elementSegmentPointsTo elementIndex (some entries) -∗
-    ▷ (elementSegmentPointsTo elementIndex none -∗
+    ▷ elementSegmentPointsToAt 0 elementIndex (some entries) -∗
+    ▷ (elementSegmentPointsToAt 0 elementIndex none -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
+  simp only [elementSegmentPointsToAt]
   iintro >Hsegment Hwp
   iapply wp_lift_step rfl
   iintro %store %ns %obs %obs' %nt Hσ
+  simp only [← elementSegmentPointsToAt_eq]
   imod stateInterp_elementSegment_facts_frame
       store ns (obs ++ obs') nt elementIndex (some entries) $$
       [$Hσ $Hsegment] with
@@ -3746,7 +4027,7 @@ theorem wp_elemDrop
 ownership fixes the instantiated reference values while element and table
 fragments connect both reads and the destination update to physical state. -/
 theorem wp_tableInitLive
-    (runtimeModule : Module)
+    (runtimeModule : Module) (callerId : ModuleInstanceId)
     {params localValues values : List Value}
     {tableIndex elementIndex destinationNat : Nat}
     {destination : Value} {source length : UInt32}
@@ -3775,12 +4056,12 @@ theorem wp_tableInitLive
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    (tablePointsTo tableIndex table ∗
-      elementSegmentPointsTo elementIndex (some entries) ∗
-      runtimeModuleOwn runtimeModule) -∗
-    ▷ (tablePointsTo tableIndex newTable -∗
-      elementSegmentPointsTo elementIndex (some entries) -∗
-      runtimeModuleOwn runtimeModule -∗
+    (tablePointsToAt 0 tableIndex table ∗
+      elementSegmentPointsToAt 0 elementIndex (some entries) ∗
+      runtimeModuleOwn callerId runtimeModule) -∗
+    ▷ (tablePointsToAt 0 tableIndex newTable -∗
+      elementSegmentPointsToAt 0 elementIndex (some entries) -∗
+      runtimeModuleOwn callerId runtimeModule -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -3803,10 +4084,10 @@ theorem wp_tableInitLive
       ⟨Hσ, Hsegment, %HsegmentPhysical⟩
     ipureintro
     exact HsegmentPhysical
-  ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$
       [Hσ Hruntime]
   · imod stateInterp_runtimeModule_agree store ns (obs ++ obs') nt
-        runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+        callerId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
     ipureintro
     exact Hmodule
   let segmentValues :=
@@ -3894,8 +4175,8 @@ theorem wp_copy2_zero_four
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ pointsTo_u64 0 0x8877665544332211 -∗
-    ▷ (pointsTo_u64 0 0x8877443322112211 -∗
+    ▷ pointsTo_u64 0 0 0x8877665544332211 -∗
+    ▷ (pointsTo_u64 0 0 0x8877443322112211 -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -3974,10 +4255,10 @@ theorem wp_copy8_zero_four
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    ▷ (pointsTo_u32 0 0x04030201 ∗
-      pointsTo_u32 8 oldDestination) -∗
-    ▷ (pointsTo_u32 0 0x04030201 ∗
-      pointsTo_u32 8 0x04030201 -∗
+    ▷ (pointsTo_u32 0 0 0x04030201 ∗
+      pointsTo_u32 0 8 oldDestination) -∗
+    ▷ (pointsTo_u32 0 0 0x04030201 ∗
+      pointsTo_u32 0 8 0x04030201 -∗
       WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   dsimp only
@@ -4058,12 +4339,12 @@ theorem wp_swapElementsFunc2Prefix
     (hroomA : ptrA.toNat + 8 ≤ 4294967296)
     (hroomB : ptrB.toNat + 8 ≤ 4294967296)
     {calls : List CallFrame} :
-    (globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldScratch ∗
-      pointsTo_u64 ptrA oldA ∗ pointsTo_u64 ptrB oldB) ∗
-    ▷^[16] ((globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldA ∗
-      pointsTo_u64 ptrA oldB ∗ pointsTo_u64 ptrB oldA) -∗
+    (globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldScratch ∗
+      pointsTo_u64 0 ptrA oldA ∗ pointsTo_u64 0 ptrB oldB) ∗
+    ▷^[16] ((globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldA ∗
+      pointsTo_u64 0 ptrA oldB ∗ pointsTo_u64 0 ptrB oldA) -∗
       WP (.running
         ⟨⟨[.i32 ptrA, .i32 ptrB], [.i32 1048544], []⟩,
           [.ret], 0, [], [], calls⟩ : Expr α) @ s; E {{ Φ }}) ⊢
@@ -4118,7 +4399,7 @@ theorem wp_swapElementsFunc2Prefix
   inext
   iapply wp_localGet rfl
   inext
-  ihave HALater : ▷ pointsTo_u64 (ptrA + 0) oldA $$ [HA]
+  ihave HALater : ▷ pointsTo_u64 0 (ptrA + 0) oldA $$ [HA]
   · inext
     rw [UInt32.add_zero]
     iexact HA
@@ -4129,7 +4410,7 @@ theorem wp_swapElementsFunc2Prefix
   inext
   iintro HA
   ihave HscratchLater :
-      ▷ pointsTo_u64 ((1048544 : UInt32) + 8) oldScratch $$ [Hscratch]
+      ▷ pointsTo_u64 0 ((1048544 : UInt32) + 8) oldScratch $$ [Hscratch]
   · inext
     rw [show (1048544 : UInt32) + 8 = 1048552 from rfl]
     iexact Hscratch
@@ -4141,7 +4422,7 @@ theorem wp_swapElementsFunc2Prefix
   inext
   iapply wp_localGet rfl
   inext
-  ihave HBLater : ▷ pointsTo_u64 (ptrB + 0) oldB $$ [HB]
+  ihave HBLater : ▷ pointsTo_u64 0 (ptrB + 0) oldB $$ [HB]
   · inext
     rw [UInt32.add_zero]
     iexact HB
@@ -4151,7 +4432,7 @@ theorem wp_swapElementsFunc2Prefix
     (by simpa using hb7) $$ HBLater
   inext
   iintro HB
-  ihave HALater : ▷ pointsTo_u64 (ptrA + 0) oldA $$ [HA]
+  ihave HALater : ▷ pointsTo_u64 0 (ptrA + 0) oldA $$ [HA]
   · inext
     rw [UInt32.add_zero]
     iexact HA
@@ -4166,7 +4447,7 @@ theorem wp_swapElementsFunc2Prefix
   iapply wp_localGet rfl
   inext
   ihave HscratchLater :
-      ▷ pointsTo_u64 ((1048544 : UInt32) + 8) oldA $$ [Hscratch]
+      ▷ pointsTo_u64 0 ((1048544 : UInt32) + 8) oldA $$ [Hscratch]
   · inext
     rw [show (1048544 : UInt32) + 8 = 1048552 from rfl]
     iexact Hscratch
@@ -4174,7 +4455,7 @@ theorem wp_swapElementsFunc2Prefix
     HscratchLater
   inext
   iintro Hscratch
-  ihave HBLater : ▷ pointsTo_u64 (ptrB + 0) oldB $$ [HB]
+  ihave HBLater : ▷ pointsTo_u64 0 (ptrB + 0) oldB $$ [HB]
   · inext
     rw [UInt32.add_zero]
     iexact HB
@@ -4196,10 +4477,10 @@ theorem wp_swapElementsFunc2AliasPrefix
     (ptr : UInt32) (oldScratch oldValue : UInt64)
     (hroom : ptr.toNat + 8 ≤ 4294967296)
     {calls : List CallFrame} :
-    (globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldScratch ∗ pointsTo_u64 ptr oldValue) ∗
-    ▷^[16] ((globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldValue ∗ pointsTo_u64 ptr oldValue) -∗
+    (globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldScratch ∗ pointsTo_u64 0 ptr oldValue) ∗
+    ▷^[16] ((globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldValue ∗ pointsTo_u64 0 ptr oldValue) -∗
       WP (.running
         ⟨⟨[.i32 ptr, .i32 ptr], [.i32 1048544], []⟩,
           [.ret], 0, [], [], calls⟩ : Expr α) @ s; E {{ Φ }}) ⊢
@@ -4240,7 +4521,7 @@ theorem wp_swapElementsFunc2AliasPrefix
   inext
   iapply wp_localGet rfl
   inext
-  ihave HcellLater : ▷ pointsTo_u64 (ptr + 0) oldValue $$ [Hcell]
+  ihave HcellLater : ▷ pointsTo_u64 0 (ptr + 0) oldValue $$ [Hcell]
   · inext
     rw [UInt32.add_zero]
     iexact Hcell
@@ -4251,7 +4532,7 @@ theorem wp_swapElementsFunc2AliasPrefix
   inext
   iintro Hcell
   ihave HscratchLater :
-      ▷ pointsTo_u64 ((1048544 : UInt32) + 8) oldScratch $$ [Hscratch]
+      ▷ pointsTo_u64 0 ((1048544 : UInt32) + 8) oldScratch $$ [Hscratch]
   · inext
     rw [show (1048544 : UInt32) + 8 = 1048552 from rfl]
     iexact Hscratch
@@ -4263,7 +4544,7 @@ theorem wp_swapElementsFunc2AliasPrefix
   inext
   iapply wp_localGet rfl
   inext
-  ihave HcellLater : ▷ pointsTo_u64 (ptr + 0) oldValue $$ [Hcell]
+  ihave HcellLater : ▷ pointsTo_u64 0 (ptr + 0) oldValue $$ [Hcell]
   · inext
     rw [UInt32.add_zero]
     iexact Hcell
@@ -4273,7 +4554,7 @@ theorem wp_swapElementsFunc2AliasPrefix
     (by simpa using h7) $$ HcellLater
   inext
   iintro Hcell
-  ihave HcellLater : ▷ pointsTo_u64 (ptr + 0) oldValue $$ [Hcell]
+  ihave HcellLater : ▷ pointsTo_u64 0 (ptr + 0) oldValue $$ [Hcell]
   · inext
     rw [UInt32.add_zero]
     iexact Hcell
@@ -4288,7 +4569,7 @@ theorem wp_swapElementsFunc2AliasPrefix
   iapply wp_localGet rfl
   inext
   ihave HscratchLater :
-      ▷ pointsTo_u64 ((1048544 : UInt32) + 8) oldValue $$ [Hscratch]
+      ▷ pointsTo_u64 0 ((1048544 : UInt32) + 8) oldValue $$ [Hscratch]
   · inext
     rw [show (1048544 : UInt32) + 8 = 1048552 from rfl]
     iexact Hscratch
@@ -4296,7 +4577,7 @@ theorem wp_swapElementsFunc2AliasPrefix
     HscratchLater
   inext
   iintro Hscratch
-  ihave HcellLater : ▷ pointsTo_u64 (ptr + 0) oldValue $$ [Hcell]
+  ihave HcellLater : ▷ pointsTo_u64 0 (ptr + 0) oldValue $$ [Hcell]
   · inext
     rw [UInt32.add_zero]
     iexact Hcell
@@ -4315,9 +4596,9 @@ theorem wp_swapElementsFunc2
     (ptrA ptrB : UInt32) (oldScratch oldA oldB : UInt64)
     (hroomA : ptrA.toNat + 8 ≤ 4294967296)
     (hroomB : ptrB.toNat + 8 ≤ 4294967296) :
-    globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldScratch ∗
-      pointsTo_u64 ptrA oldA ∗ pointsTo_u64 ptrB oldB ⊢
+    globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldScratch ∗
+      pointsTo_u64 0 ptrA oldA ∗ pointsTo_u64 0 ptrB oldB ⊢
     WP (.running
       ⟨⟨[.i32 ptrA, .i32 ptrB], [.i32 0], []⟩,
         [ .globalGet 0, .const 16, .sub, .localSet 2,
@@ -4326,9 +4607,9 @@ theorem wp_swapElementsFunc2
           .localGet 1, .localGet 2, .load64 8, .store64 0, .ret ],
         0, [], [], []⟩ : Expr α) @ s; E
       {{ result, ⌜result = []⌝ ∗
-        globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048552 oldA ∗
-        pointsTo_u64 ptrA oldB ∗ pointsTo_u64 ptrB oldA }} := by
+        globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048552 oldA ∗
+        pointsTo_u64 0 ptrA oldB ∗ pointsTo_u64 0 ptrB oldA }} := by
   iintro Hresources
   iapply wp_swapElementsFunc2Prefix ptrA ptrB oldScratch oldA oldB
     hroomA hroomB (calls := [])
@@ -4348,8 +4629,8 @@ theorem wp_swapElementsFunc2
 theorem wp_swapElementsFunc2Alias
     (ptr : UInt32) (oldScratch oldValue : UInt64)
     (hroom : ptr.toNat + 8 ≤ 4294967296) :
-    globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldScratch ∗ pointsTo_u64 ptr oldValue ⊢
+    globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldScratch ∗ pointsTo_u64 0 ptr oldValue ⊢
     WP (.running
       ⟨⟨[.i32 ptr, .i32 ptr], [.i32 0], []⟩,
         [ .globalGet 0, .const 16, .sub, .localSet 2,
@@ -4358,9 +4639,9 @@ theorem wp_swapElementsFunc2Alias
           .localGet 1, .localGet 2, .load64 8, .store64 0, .ret ],
         0, [], [], []⟩ : Expr α) @ s; E
       {{ result, ⌜result = []⌝ ∗
-        globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048552 oldValue ∗
-        pointsTo_u64 ptr oldValue }} := by
+        globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048552 oldValue ∗
+        pointsTo_u64 0 ptr oldValue }} := by
   iintro Hresources
   iapply wp_swapElementsFunc2AliasPrefix ptr oldScratch oldValue
     hroom (calls := [])
@@ -4381,21 +4662,21 @@ theorem wp_swapElementsFunc2Alias
 32-bit words and returns no Wasm values. -/
 theorem wp_swapElementsFunc3
     (oldPtr oldLen ptr len : UInt32) :
-    pointsTo_u32 1048568 oldPtr ∗ pointsTo_u32 1048572 oldLen ⊢
+    pointsTo_u32 0 1048568 oldPtr ∗ pointsTo_u32 0 1048572 oldLen ⊢
     WP (.running
       ⟨⟨[.i32 1048568, .i32 ptr, .i32 len, .i32 1048652], [], []⟩,
         [ .localGet 0, .localGet 2, .store32 4,
           .localGet 0, .localGet 1, .store32 0, .ret ],
         0, [], [], []⟩ : Expr α) @ s; E
       {{ result, ⌜result = []⌝ ∗
-        pointsTo_u32 1048568 ptr ∗ pointsTo_u32 1048572 len }} := by
+        pointsTo_u32 0 1048568 ptr ∗ pointsTo_u32 0 1048572 len }} := by
   iintro ⟨Hptr, Hlen⟩
   iapply wp_localGet rfl
   inext
   iapply wp_localGet rfl
   inext
   ihave HlenLater :
-      ▷ pointsTo_u32 ((1048568 : UInt32) + 4) oldLen $$ [Hlen]
+      ▷ pointsTo_u32 0 ((1048568 : UInt32) + 4) oldLen $$ [Hlen]
   · inext
     rw [show (1048568 : UInt32) + 4 = 1048572 from rfl]
     iexact Hlen
@@ -4407,7 +4688,7 @@ theorem wp_swapElementsFunc3
   iapply wp_localGet rfl
   inext
   ihave HptrLater :
-      ▷ pointsTo_u32 ((1048568 : UInt32) + 0) oldPtr $$ [Hptr]
+      ▷ pointsTo_u32 0 ((1048568 : UInt32) + 0) oldPtr $$ [Hptr]
   · inext
     rw [UInt32.add_zero]
     iexact Hptr
@@ -4430,7 +4711,7 @@ theorem wp_swapElementsFunc3
 by `Interpreter.Wasm.Examples.SmallStep`. -/
 theorem wp_byteRoundtrip (oldByte : UInt8) :
     pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-      24 (DFrac.own 1) (some oldByte) ⊢
+      ⟨0, 24⟩ (DFrac.own 1) (some oldByte) ⊢
     WP (.running
       ⟨⟨[], [], []⟩,
         [ .const 24, .const 0x1234AB, .store8 0,
@@ -4438,7 +4719,7 @@ theorem wp_byteRoundtrip (oldByte : UInt8) :
         1, [], [], []⟩ : Expr α) @ s; E
       {{ result, ⌜result = [.i32 0xAB]⌝ ∗
         pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-          24 (DFrac.own 1) (some (0xAB : UInt8)) }} := by
+          ⟨0, 24⟩ (DFrac.own 1) (some (0xAB : UInt8)) }} := by
   iintro Hpt
   iapply wp_const
   inext
@@ -4446,7 +4727,7 @@ theorem wp_byteRoundtrip (oldByte : UInt8) :
   inext
   ihave HptLater :
       ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-        (24 + 0) (DFrac.own 1) (some oldByte) $$ [Hpt]
+        ⟨0, 24 + 0⟩ (DFrac.own 1) (some oldByte) $$ [Hpt]
   · inext
     rw [UInt32.add_zero]
     iexact Hpt
@@ -4457,7 +4738,7 @@ theorem wp_byteRoundtrip (oldByte : UInt8) :
   inext
   ihave HptLater :
       ▷ pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
-        (24 + 0) (DFrac.own 1) (some (0xAB : UInt8)) $$ [Hpt]
+        ⟨0, 24 + 0⟩ (DFrac.own 1) (some (0xAB : UInt8)) $$ [Hpt]
   · inext
     rw [show (0x1234AB : UInt32).toUInt8 = (0xAB : UInt8) by decide]
     iexact Hpt
@@ -4477,20 +4758,20 @@ theorem wp_byteRoundtrip (oldByte : UInt8) :
 The physical word and its four authoritative ghost bytes are updated by the
 same `store32` transition. -/
 theorem wp_wordRoundtrip (oldWord : UInt32) :
-    pointsTo_u32 16 oldWord ⊢
+    pointsTo_u32 0 16 oldWord ⊢
     WP (.running
       ⟨⟨[], [], []⟩,
         [ .const 16, .const 0x12345678, .store32 0,
           .const 16, .load32 0 ],
         1, [], [], []⟩ : Expr α) @ s; E
       {{ result, ⌜result = [.i32 0x12345678]⌝ ∗
-        pointsTo_u32 16 0x12345678 }} := by
+        pointsTo_u32 0 16 0x12345678 }} := by
   iintro Hword
   iapply wp_const
   inext
   iapply wp_const
   inext
-  ihave HwordLater : ▷ pointsTo_u32 (16 + 0) oldWord $$ [Hword]
+  ihave HwordLater : ▷ pointsTo_u32 0 (16 + 0) oldWord $$ [Hword]
   · inext
     rw [UInt32.add_zero]
     iexact Hword
@@ -4499,7 +4780,7 @@ theorem wp_wordRoundtrip (oldWord : UInt32) :
   iintro Hword
   iapply wp_const
   inext
-  ihave HwordLater : ▷ pointsTo_u32 (16 + 0) 0x12345678 $$ [Hword]
+  ihave HwordLater : ▷ pointsTo_u32 0 (16 + 0) 0x12345678 $$ [Hword]
   · inext
     rw [UInt32.add_zero]
     iexact Hword
@@ -4519,7 +4800,7 @@ theorem wp_wordRoundtrip (oldWord : UInt32) :
 filled word is updated while ownership of the disjoint word at address 32 is
 framed unchanged. -/
 theorem wp_fillFourBytes (oldWord : UInt32) :
-    pointsTo_u32 16 oldWord ∗ pointsTo_u32 32 0x12345678 ⊢
+    pointsTo_u32 0 16 oldWord ∗ pointsTo_u32 0 32 0x12345678 ⊢
     WP (.running
       ⟨⟨[], [], []⟩,
         [ .const 16, .const 0xAB, .const 4, .memoryFill,
@@ -4528,8 +4809,8 @@ theorem wp_fillFourBytes (oldWord : UInt32) :
         2, [], [], []⟩ : Expr α) @ s; E
       {{ result,
         ⌜result = [.i32 0x12345678, .i32 0xABABABAB]⌝ ∗
-        pointsTo_u32 16 0xABABABAB ∗
-        pointsTo_u32 32 0x12345678 }} := by
+        pointsTo_u32 0 16 0xABABABAB ∗
+        pointsTo_u32 0 32 0x12345678 }} := by
   iintro ⟨H16, H32⟩
   iapply wp_const
   inext
@@ -4537,7 +4818,7 @@ theorem wp_fillFourBytes (oldWord : UInt32) :
   inext
   iapply wp_const
   inext
-  ihave H16Later : ▷ pointsTo_u32 16 oldWord $$ [H16]
+  ihave H16Later : ▷ pointsTo_u32 0 16 oldWord $$ [H16]
   · inext
     iexact H16
   iapply wp_fill16_four_AB oldWord $$ H16Later
@@ -4545,7 +4826,7 @@ theorem wp_fillFourBytes (oldWord : UInt32) :
   iintro H16
   iapply wp_const
   inext
-  ihave H16Later : ▷ pointsTo_u32 (16 + 0) 0xABABABAB $$ [H16]
+  ihave H16Later : ▷ pointsTo_u32 0 (16 + 0) 0xABABABAB $$ [H16]
   · inext
     rw [UInt32.add_zero]
     iexact H16
@@ -4554,7 +4835,7 @@ theorem wp_fillFourBytes (oldWord : UInt32) :
   iintro H16
   iapply wp_const
   inext
-  ihave H32Later : ▷ pointsTo_u32 (32 + 0) 0x12345678 $$ [H32]
+  ihave H32Later : ▷ pointsTo_u32 0 (32 + 0) 0x12345678 $$ [H32]
   · inext
     rw [UInt32.add_zero]
     iexact H32
@@ -4576,8 +4857,8 @@ theorem wp_fillFourBytes (oldWord : UInt32) :
 /-- End-to-end Iris contract for an aligned four-byte copy. The source word
 is preserved and the destination word receives the source value. -/
 theorem wp_copyWord (oldDestination : UInt32) :
-    pointsTo_u32 0 0x04030201 ∗
-      pointsTo_u32 8 oldDestination ⊢
+    pointsTo_u32 0 0 0x04030201 ∗
+      pointsTo_u32 0 8 oldDestination ⊢
     WP (.running
       ⟨⟨[], [], []⟩,
         [ .const 8, .const 0, .const 4, .memoryCopy,
@@ -4585,8 +4866,8 @@ theorem wp_copyWord (oldDestination : UInt32) :
         1, [], [], []⟩ : Expr α) @ s; E
       {{ result,
         ⌜result = [.i32 0x04030201]⌝ ∗
-        pointsTo_u32 0 0x04030201 ∗
-        pointsTo_u32 8 0x04030201 }} := by
+        pointsTo_u32 0 0 0x04030201 ∗
+        pointsTo_u32 0 8 0x04030201 }} := by
   iintro ⟨Hsource, Hdestination⟩
   iapply wp_const
   inext
@@ -4595,8 +4876,8 @@ theorem wp_copyWord (oldDestination : UInt32) :
   iapply wp_const
   inext
   ihave HwordsLater :
-      ▷ (pointsTo_u32 0 0x04030201 ∗
-        pointsTo_u32 8 oldDestination) $$ [Hsource Hdestination]
+      ▷ (pointsTo_u32 0 0 0x04030201 ∗
+        pointsTo_u32 0 8 oldDestination) $$ [Hsource Hdestination]
   · inext
     iframe
   iapply wp_copy8_zero_four oldDestination $$ HwordsLater
@@ -4605,7 +4886,7 @@ theorem wp_copyWord (oldDestination : UInt32) :
   iapply wp_const
   inext
   ihave HdestinationLater :
-      ▷ pointsTo_u32 (8 + 0) 0x04030201 $$ [Hdestination]
+      ▷ pointsTo_u32 0 (8 + 0) 0x04030201 $$ [Hdestination]
   · inext
     rw [UInt32.add_zero]
     iexact Hdestination
@@ -4627,8 +4908,8 @@ theorem wp_copyWord (oldDestination : UInt32) :
 `data.drop`. The result exposes both the initialized physical word ownership
 and authoritative knowledge that the segment has been consumed. -/
 theorem wp_memoryInitDrop (oldWord : UInt32) :
-    pointsTo_u32 16 oldWord ∗
-      dataSegmentPointsTo 0 (some [1, 2, 3, 4]) ⊢
+    pointsTo_u32 0 16 oldWord ∗
+      dataSegmentPointsTo ⟨0, 0⟩ (some [1, 2, 3, 4]) ⊢
     WP (.running
       ⟨⟨[], [], []⟩,
         [ .const 16, .const 0, .const 4, .memoryInit 0,
@@ -4636,8 +4917,8 @@ theorem wp_memoryInitDrop (oldWord : UInt32) :
         1, [], [], []⟩ : Expr α) @ s; E
       {{ result,
         ⌜result = [.i32 0x04030201]⌝ ∗
-        pointsTo_u32 16 0x04030201 ∗
-        dataSegmentPointsTo 0 none }} := by
+        pointsTo_u32 0 16 0x04030201 ∗
+        dataSegmentPointsTo ⟨0, 0⟩ none }} := by
   iintro ⟨Hword, Hsegment⟩
   iapply wp_const
   inext
@@ -4646,8 +4927,8 @@ theorem wp_memoryInitDrop (oldWord : UInt32) :
   iapply wp_const
   inext
   ihave HresourcesLater :
-      ▷ (pointsTo_u32 16 oldWord ∗
-        dataSegmentPointsTo 0 (some [1, 2, 3, 4])) $$
+      ▷ (pointsTo_u32 0 16 oldWord ∗
+        dataSegmentPointsTo ⟨0, 0⟩ (some [1, 2, 3, 4])) $$
       [Hword Hsegment]
   · inext
     iframe
@@ -4655,14 +4936,14 @@ theorem wp_memoryInitDrop (oldWord : UInt32) :
   inext
   iintro ⟨Hword, Hsegment⟩
   ihave HsegmentLater :
-      ▷ dataSegmentPointsTo 0 (some [1, 2, 3, 4]) $$ Hsegment
+      ▷ dataSegmentPointsTo ⟨0, 0⟩ (some [1, 2, 3, 4]) $$ Hsegment
   iapply wp_dataDrop0 [1, 2, 3, 4] $$ HsegmentLater
   inext
   iintro Hsegment
   iapply wp_const
   inext
   ihave HwordLater :
-      ▷ pointsTo_u32 (16 + 0) 0x04030201 $$ [Hword]
+      ▷ pointsTo_u32 0 (16 + 0) 0x04030201 $$ [Hword]
   · inext
     rw [UInt32.add_zero]
     iexact Hword
@@ -4682,7 +4963,7 @@ theorem wp_memoryInitDrop (oldWord : UInt32) :
 is essential: source and destination alias, and the resulting word records
 that the source bytes were read before any destination byte was overwritten. -/
 theorem wp_copyOverlapWord :
-    pointsTo_u64 0 0x8877665544332211 ⊢
+    pointsTo_u64 0 0 0x8877665544332211 ⊢
     WP (.running
       ⟨⟨[], [], []⟩,
         [ .const 2, .const 0, .const 4, .memoryCopy,
@@ -4690,7 +4971,7 @@ theorem wp_copyOverlapWord :
         1, [], [], []⟩ : Expr α) @ s; E
       {{ result,
         ⌜result = [.i64 0x8877443322112211]⌝ ∗
-        pointsTo_u64 0 0x8877443322112211 }} := by
+        pointsTo_u64 0 0 0x8877443322112211 }} := by
   iintro Hword
   iapply wp_const
   inext
@@ -4699,7 +4980,7 @@ theorem wp_copyOverlapWord :
   iapply wp_const
   inext
   ihave HwordLater :
-      ▷ pointsTo_u64 0 0x8877665544332211 $$ [Hword]
+      ▷ pointsTo_u64 0 0 0x8877665544332211 $$ [Hword]
   · inext
     iexact Hword
   iapply wp_copy2_zero_four $$ HwordLater
@@ -4708,7 +4989,7 @@ theorem wp_copyOverlapWord :
   iapply wp_const
   inext
   ihave HwordLater :
-      ▷ pointsTo_u64 (0 + 0) 0x8877443322112211 $$ [Hword]
+      ▷ pointsTo_u64 0 (0 + 0) 0x8877443322112211 $$ [Hword]
   · inext
     rw [UInt32.add_zero]
     iexact Hword
@@ -4728,7 +5009,7 @@ theorem wp_copyOverlapWord :
 /-- Iris proof of an in-place swap of two 32-bit memory cells. This composes
 word ownership through locals and returns ownership of both updated cells. -/
 theorem wp_swapWords :
-    pointsTo_u32 0 11 ∗ pointsTo_u32 4 22 ⊢
+    pointsTo_u32 0 0 11 ∗ pointsTo_u32 0 4 22 ⊢
     WP (.running
       ⟨⟨[], [.i32 0, .i32 0], []⟩,
         [ .const 0, .load32 0, .localSet 0,
@@ -4739,11 +5020,11 @@ theorem wp_swapWords :
           .const 4, .load32 0 ],
         2, [], [], []⟩ : Expr α) @ s; E
       {{ result, ⌜result = [.i32 11, .i32 22]⌝ ∗
-        pointsTo_u32 0 22 ∗ pointsTo_u32 4 11 }} := by
+        pointsTo_u32 0 0 22 ∗ pointsTo_u32 0 4 11 }} := by
   iintro ⟨H0, H4⟩
   iapply wp_const
   inext
-  ihave H0Later : ▷ pointsTo_u32 (0 + 0) 11 $$ [H0]
+  ihave H0Later : ▷ pointsTo_u32 0 (0 + 0) 11 $$ [H0]
   · inext
     rw [UInt32.add_zero]
     iexact H0
@@ -4754,7 +5035,7 @@ theorem wp_swapWords :
   inext
   iapply wp_const
   inext
-  ihave H4Later : ▷ pointsTo_u32 (4 + 0) 22 $$ [H4]
+  ihave H4Later : ▷ pointsTo_u32 0 (4 + 0) 22 $$ [H4]
   · inext
     rw [UInt32.add_zero]
     iexact H4
@@ -4767,7 +5048,7 @@ theorem wp_swapWords :
   inext
   iapply wp_localGet rfl
   inext
-  ihave H0Later : ▷ pointsTo_u32 (0 + 0) 11 $$ [H0]
+  ihave H0Later : ▷ pointsTo_u32 0 (0 + 0) 11 $$ [H0]
   · inext
     rw [UInt32.add_zero]
     iexact H0
@@ -4778,7 +5059,7 @@ theorem wp_swapWords :
   inext
   iapply wp_localGet rfl
   inext
-  ihave H4Later : ▷ pointsTo_u32 (4 + 0) 22 $$ [H4]
+  ihave H4Later : ▷ pointsTo_u32 0 (4 + 0) 22 $$ [H4]
   · inext
     rw [UInt32.add_zero]
     iexact H4
@@ -4787,7 +5068,7 @@ theorem wp_swapWords :
   iintro H4
   iapply wp_const
   inext
-  ihave H0Later : ▷ pointsTo_u32 (0 + 0) 22 $$ [H0]
+  ihave H0Later : ▷ pointsTo_u32 0 (0 + 0) 22 $$ [H0]
   · inext
     rw [UInt32.add_zero]
     iexact H0
@@ -4796,7 +5077,7 @@ theorem wp_swapWords :
   iintro H0
   iapply wp_const
   inext
-  ihave H4Later : ▷ pointsTo_u32 (4 + 0) 11 $$ [H4]
+  ihave H4Later : ▷ pointsTo_u32 0 (4 + 0) 11 $$ [H4]
   · inext
     rw [UInt32.add_zero]
     iexact H4
@@ -4819,7 +5100,7 @@ theorem wp_swapWords :
 the same primitive loads and stores as `wp_swapWords`; ownership of the middle
 word is framed throughout and returned unchanged. -/
 theorem wp_reverseThreeWords :
-    pointsTo_u32 0 11 ∗ pointsTo_u32 4 22 ∗ pointsTo_u32 8 33 ⊢
+    pointsTo_u32 0 0 11 ∗ pointsTo_u32 0 4 22 ∗ pointsTo_u32 0 8 33 ⊢
     WP (.running
       ⟨⟨[], [.i32 0, .i32 0], []⟩,
         [ .const 0, .load32 0, .localSet 0,
@@ -4830,11 +5111,11 @@ theorem wp_reverseThreeWords :
           .const 8, .load32 0 ],
         2, [], [], []⟩ : Expr α) @ s; E
       {{ result, ⌜result = [.i32 11, .i32 33]⌝ ∗
-        pointsTo_u32 0 33 ∗ pointsTo_u32 4 22 ∗ pointsTo_u32 8 11 }} := by
+        pointsTo_u32 0 0 33 ∗ pointsTo_u32 0 4 22 ∗ pointsTo_u32 0 8 11 }} := by
   iintro ⟨H0, H4, H8⟩
   iapply wp_const
   inext
-  ihave H0Later : ▷ pointsTo_u32 (0 + 0) 11 $$ [H0]
+  ihave H0Later : ▷ pointsTo_u32 0 (0 + 0) 11 $$ [H0]
   · inext
     rw [UInt32.add_zero]
     iexact H0
@@ -4845,7 +5126,7 @@ theorem wp_reverseThreeWords :
   inext
   iapply wp_const
   inext
-  ihave H8Later : ▷ pointsTo_u32 (8 + 0) 33 $$ [H8]
+  ihave H8Later : ▷ pointsTo_u32 0 (8 + 0) 33 $$ [H8]
   · inext
     rw [UInt32.add_zero]
     iexact H8
@@ -4858,7 +5139,7 @@ theorem wp_reverseThreeWords :
   inext
   iapply wp_localGet rfl
   inext
-  ihave H0Later : ▷ pointsTo_u32 (0 + 0) 11 $$ [H0]
+  ihave H0Later : ▷ pointsTo_u32 0 (0 + 0) 11 $$ [H0]
   · inext
     rw [UInt32.add_zero]
     iexact H0
@@ -4869,7 +5150,7 @@ theorem wp_reverseThreeWords :
   inext
   iapply wp_localGet rfl
   inext
-  ihave H8Later : ▷ pointsTo_u32 (8 + 0) 33 $$ [H8]
+  ihave H8Later : ▷ pointsTo_u32 0 (8 + 0) 33 $$ [H8]
   · inext
     rw [UInt32.add_zero]
     iexact H8
@@ -4878,7 +5159,7 @@ theorem wp_reverseThreeWords :
   iintro H8
   iapply wp_const
   inext
-  ihave H0Later : ▷ pointsTo_u32 (0 + 0) 33 $$ [H0]
+  ihave H0Later : ▷ pointsTo_u32 0 (0 + 0) 33 $$ [H0]
   · inext
     rw [UInt32.add_zero]
     iexact H0
@@ -4887,7 +5168,7 @@ theorem wp_reverseThreeWords :
   iintro H0
   iapply wp_const
   inext
-  ihave H8Later : ▷ pointsTo_u32 (8 + 0) 11 $$ [H8]
+  ihave H8Later : ▷ pointsTo_u32 0 (8 + 0) 11 $$ [H8]
   · inext
     rw [UInt32.add_zero]
     iexact H8
@@ -4912,7 +5193,7 @@ theorem wp_reverseThreeWords :
 the pivot; all three input words remain exclusively owned, with the pivot
 placed between the lower and upper partitions. -/
 theorem wp_partitionThreeWords :
-    pointsTo_u32 0 33 ∗ pointsTo_u32 4 11 ∗ pointsTo_u32 8 22 ⊢
+    pointsTo_u32 0 0 33 ∗ pointsTo_u32 0 4 11 ∗ pointsTo_u32 0 8 22 ⊢
     WP (.running
       ⟨⟨[], [.i32 0, .i32 0, .i32 0], []⟩,
         [ .const 0, .load32 0, .localSet 0,
@@ -4923,12 +5204,12 @@ theorem wp_partitionThreeWords :
           .const 8, .localGet 0, .store32 0 ],
         0, [], [], []⟩ : Expr α) @ s; E
       {{ result, ⌜result = []⌝ ∗
-        pointsTo_u32 0 11 ∗ pointsTo_u32 4 22 ∗
-          pointsTo_u32 8 33 }} := by
+        pointsTo_u32 0 0 11 ∗ pointsTo_u32 0 4 22 ∗
+          pointsTo_u32 0 8 33 }} := by
   iintro ⟨H0, H4, H8⟩
   iapply wp_const
   inext
-  ihave H0Later : ▷ pointsTo_u32 (0 + 0) 33 $$ [H0]
+  ihave H0Later : ▷ pointsTo_u32 0 (0 + 0) 33 $$ [H0]
   · inext
     rw [UInt32.add_zero]
     iexact H0
@@ -4939,7 +5220,7 @@ theorem wp_partitionThreeWords :
   inext
   iapply wp_const
   inext
-  ihave H4Later : ▷ pointsTo_u32 (4 + 0) 11 $$ [H4]
+  ihave H4Later : ▷ pointsTo_u32 0 (4 + 0) 11 $$ [H4]
   · inext
     rw [UInt32.add_zero]
     iexact H4
@@ -4950,7 +5231,7 @@ theorem wp_partitionThreeWords :
   inext
   iapply wp_const
   inext
-  ihave H8Later : ▷ pointsTo_u32 (8 + 0) 22 $$ [H8]
+  ihave H8Later : ▷ pointsTo_u32 0 (8 + 0) 22 $$ [H8]
   · inext
     rw [UInt32.add_zero]
     iexact H8
@@ -4963,7 +5244,7 @@ theorem wp_partitionThreeWords :
   inext
   iapply wp_localGet rfl
   inext
-  ihave H0Later : ▷ pointsTo_u32 (0 + 0) 33 $$ [H0]
+  ihave H0Later : ▷ pointsTo_u32 0 (0 + 0) 33 $$ [H0]
   · inext
     rw [UInt32.add_zero]
     iexact H0
@@ -4974,7 +5255,7 @@ theorem wp_partitionThreeWords :
   inext
   iapply wp_localGet rfl
   inext
-  ihave H4Later : ▷ pointsTo_u32 (4 + 0) 11 $$ [H4]
+  ihave H4Later : ▷ pointsTo_u32 0 (4 + 0) 11 $$ [H4]
   · inext
     rw [UInt32.add_zero]
     iexact H4
@@ -4985,7 +5266,7 @@ theorem wp_partitionThreeWords :
   inext
   iapply wp_localGet rfl
   inext
-  ihave H8Later : ▷ pointsTo_u32 (8 + 0) 22 $$ [H8]
+  ihave H8Later : ▷ pointsTo_u32 0 (8 + 0) 22 $$ [H8]
   · inext
     rw [UInt32.add_zero]
     iexact H8
@@ -5011,7 +5292,7 @@ theorem wp_partitionThreeWords :
 selects the swapping branch for the concrete input `[9, 4]`; both exclusive
 word owners are returned in ascending order. -/
 theorem wp_mergeTwoWords :
-    pointsTo_u32 0 9 ∗ pointsTo_u32 4 4 ⊢
+    pointsTo_u32 0 0 9 ∗ pointsTo_u32 0 4 4 ⊢
     WP (.running
       ⟨⟨[], [.i32 0, .i32 0], []⟩,
         [ .const 0, .load32 0, .localSet 0,
@@ -5024,11 +5305,11 @@ theorem wp_mergeTwoWords :
               .const 4, .localGet 0, .store32 0 ] ],
         0, [], [], []⟩ : Expr α) @ s; E
       {{ result, ⌜result = []⌝ ∗
-        pointsTo_u32 0 4 ∗ pointsTo_u32 4 9 }} := by
+        pointsTo_u32 0 0 4 ∗ pointsTo_u32 0 4 9 }} := by
   iintro ⟨H0, H4⟩
   iapply wp_const
   inext
-  ihave H0Later : ▷ pointsTo_u32 (0 + 0) 9 $$ [H0]
+  ihave H0Later : ▷ pointsTo_u32 0 (0 + 0) 9 $$ [H0]
   · inext
     rw [UInt32.add_zero]
     iexact H0
@@ -5039,7 +5320,7 @@ theorem wp_mergeTwoWords :
   inext
   iapply wp_const
   inext
-  ihave H4Later : ▷ pointsTo_u32 (4 + 0) 4 $$ [H4]
+  ihave H4Later : ▷ pointsTo_u32 0 (4 + 0) 4 $$ [H4]
   · inext
     rw [UInt32.add_zero]
     iexact H4
@@ -5064,7 +5345,7 @@ theorem wp_mergeTwoWords :
   inext
   iapply wp_localGet rfl
   inext
-  ihave H0Later : ▷ pointsTo_u32 (0 + 0) 9 $$ [H0]
+  ihave H0Later : ▷ pointsTo_u32 0 (0 + 0) 9 $$ [H0]
   · inext
     rw [UInt32.add_zero]
     iexact H0
@@ -5075,7 +5356,7 @@ theorem wp_mergeTwoWords :
   inext
   iapply wp_localGet rfl
   inext
-  ihave H4Later : ▷ pointsTo_u32 (4 + 0) 4 $$ [H4]
+  ihave H4Later : ▷ pointsTo_u32 0 (4 + 0) 4 $$ [H4]
   · inext
     rw [UInt32.add_zero]
     iexact H4
@@ -5095,5 +5376,332 @@ theorem wp_mergeTwoWords :
       iexact H0
     · rw [UInt32.add_zero]
       iexact H4
+
+/-- Call an imported function that crosses module-instance boundaries.
+`callerId` and `calleeId` index into `instances`; `hhost` asserts the callee
+has the same host as the caller so the `hostEnvOwn` resource stays valid.
+`runtimeInstancesOwn instances` links the ghost instances array to `store.runtime.instances`
+and lets us discharge the concrete step conditions.
+The continuation wand receives `currentInstanceOwn calleeId` so downstream
+proofs (e.g. `wp_returnFromCallCrossInstance`) can use it. -/
+theorem wp_callCrossInstance
+    (callerId : ModuleInstanceId)
+    (callerInst : ModuleInstance α)
+    (calleeId : ModuleInstanceId)
+    (calleeInst : ModuleInstance α)
+    (instances : Array (ModuleInstance α))
+    (functionIndex : Nat) (imp : ImportDecl)
+    (localIdx : Nat) (fn : Function)
+    (hcallerLookup : instances[callerId.id]? = some callerInst)
+    (hcalleeLookup : instances[calleeId.id]? = some calleeInst)
+    (himports : functionIndex < callerInst.module.imports.length)
+    (himport : callerInst.module.imports[functionIndex]'himports = imp)
+    (hnoHost : callerInst.host.funcs.length ≤ functionIndex)
+    (hresolved : callerInst.resolvedImports[functionIndex]? = some (.wasm calleeId localIdx))
+    (hfn : calleeInst.module.funcs[localIdx]? = some fn)
+    {params localValues values : List Value}
+    {code : Program} {arity : Nat} {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame} :
+    let current : ThreadState α :=
+      ⟨⟨params, localValues, values⟩, .call functionIndex :: code,
+        arity, remainder, controls, calls⟩
+    let next : ThreadState α :=
+      ⟨fn.toLocals (values.take imp.params.length).reverse,
+        fn.body, fn.results.length, [], [],
+        { locals := ⟨params, localValues, values.drop imp.params.length⟩
+          continuation := code
+          resultArity := arity
+          callerRemainder := remainder
+          control := controls
+          returningInstance := callerId } :: calls⟩
+    ▷ runtimeModuleOwn callerId callerInst.module -∗
+    ▷ runtimeInstancesOwn instances -∗
+    ▷ (currentInstanceOwn calleeId ∗ runtimeInstancesOwn instances -∗ WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
+      WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
+  dsimp only
+  iintro >Hruntime >HruntimeInstances Hwp
+  iapply wp_lift_step rfl
+  iintro %store %ns %obs %obs' %nt Hσ
+  simp only [runtimeModuleOwn]
+  icases Hruntime with ⟨HruntimeElem, HinstanceOwn⟩
+  ihave %Hentry : ⌜store.runtime.entry = callerId⌝ $$ [Hσ HinstanceOwn]
+  · imod stateInterp_currentInstance_agree store ns (obs ++ obs') nt callerId $$
+        [$Hσ $HinstanceOwn] with %Hentry
+    ipureintro
+    exact Hentry
+  iclear HruntimeElem
+  ihave %Hinst : ⌜store.runtime.instances = instances⌝ $$ [Hσ HruntimeInstances]
+  · imod stateInterp_instances_agree store ns (obs ++ obs') nt instances $$
+        [$Hσ $HruntimeInstances] with %Hinst
+    ipureintro
+    exact Hinst
+  have hcurrentInst : store.runtime.currentInstance = callerInst := by
+    simp only [RuntimeEnv.currentInstance, Hinst, Hentry]
+    simp [getElem!_def, hcallerLookup]
+  have hmod : store.runtime.currentModule = callerInst.module :=
+    congrArg (·.module) hcurrentInst
+  have hcurrentHost : store.runtime.currentHost = callerInst.host :=
+    congrArg (·.host) hcurrentInst
+  have himports' : functionIndex < store.runtime.currentModule.imports.length :=
+    hmod ▸ himports
+  have himport' : store.runtime.currentModule.imports[functionIndex]'himports' = imp := by
+    have hmodimps : store.runtime.currentModule.imports = callerInst.module.imports :=
+      congrArg (·.imports) hmod
+    exact (show store.runtime.currentModule.imports[functionIndex]'himports' =
+        callerInst.module.imports[functionIndex]'himports by congr 1).trans himport
+  have hnoHost' : store.runtime.currentHost.funcs.length ≤ functionIndex :=
+    hcurrentHost ▸ hnoHost
+  have hresolved' : store.runtime.currentInstance.resolvedImports[functionIndex]? =
+      some (.wasm calleeId localIdx) :=
+    hcurrentInst ▸ hresolved
+  have hcallee' : store.runtime.instances[calleeId.id]? = some calleeInst :=
+    Hinst ▸ hcalleeLookup
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducible]
+    exact ⟨[],
+      .running ⟨fn.toLocals (values.take imp.params.length).reverse,
+        fn.body, fn.results.length, [], [],
+        { locals := ⟨params, localValues, values.drop imp.params.length⟩
+          continuation := code
+          resultArity := arity
+          callerRemainder := remainder
+          control := controls
+          returningInstance := store.runtime.entry } :: calls⟩,
+      { store with runtime := { store.runtime with entry := calleeId } }, [],
+      ⟨rfl, _, rfl, Step.callCrossInstance himports' himport' hnoHost' hresolved' hcallee' hfn⟩⟩
+  iintro !> %e₂ %store₂ %forks %Hstep Hcredit
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst obs
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic (Step.callCrossInstance himports' himport' hnoHost' hresolved' hcallee' hfn) wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil, Hentry]
+  imod stateInterp_currentInstance_update_of_any store ns obs' nt callerId calleeId $$
+      [$Hσ $HinstanceOwn] with ⟨Hσ', HinstanceOwn', %_⟩
+  imod Hclose
+  imodintro
+  isplitl [Hσ']
+  · iexact Hσ'
+  isplitl [HinstanceOwn' HruntimeInstances Hwp]
+  · iapply Hwp
+    isplitl [HinstanceOwn']
+    · iexact HinstanceOwn'
+    · iexact HruntimeInstances
+  · itrivial
+
+/-- Resume a suspended caller after an explicit return that crosses module-instance
+boundaries. `runtimeInstancesOwn instances` links the ghost instances array to
+`store.runtime.instances`; `hci` asserts that the callee and returning instances
+are equal so `runtimeModuleOwn`/`hostEnvOwn` stay valid. -/
+theorem wp_returnFromCallCrossInstance
+    {calleeLocals callerLocals : Locals}
+    {calleeCode callerCode : Program}
+    {calleeArity callerArity : Nat}
+    {calleeRemainder callerRemainder : List Value}
+    {calleeControls callerControls : List ControlFrame}
+    {returningInstance : ModuleInstanceId}
+    {calls : List CallFrame}
+    (calleeId : ModuleInstanceId)
+    (calleeInst : ModuleInstance α)
+    (returningInst : ModuleInstance α)
+    (instances : Array (ModuleInstance α))
+    (hneq : returningInstance ≠ calleeId)
+    (_hcalleeLookup : instances[calleeId.id]? = some calleeInst)
+    (_hreturningLookup : instances[returningInstance.id]? = some returningInst) :
+    let caller : CallFrame :=
+      { locals := callerLocals
+        continuation := callerCode
+        resultArity := callerArity
+        callerRemainder := callerRemainder
+        control := callerControls
+        returningInstance := returningInstance }
+    let current : ThreadState α :=
+      ⟨calleeLocals, .ret :: calleeCode, calleeArity, calleeRemainder,
+        calleeControls, caller :: calls⟩
+    let next : ThreadState α :=
+      ⟨{ callerLocals with
+          values :=
+            calleeLocals.values.take calleeArity ++ callerLocals.values },
+        callerCode, callerArity, callerRemainder, callerControls, calls⟩
+    ▷ currentInstanceOwn calleeId -∗
+    ▷ runtimeInstancesOwn instances -∗
+    ▷ (currentInstanceOwn returningInstance -∗ WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
+      WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
+  dsimp only
+  iintro >HinstanceOwn >HruntimeInstances Hwp
+  iapply wp_lift_step rfl
+  iintro %store %ns %obs %obs' %nt Hσ
+  ihave %Hentry : ⌜store.runtime.entry = calleeId⌝ $$ [Hσ HinstanceOwn]
+  · imod stateInterp_currentInstance_agree store ns (obs ++ obs') nt calleeId $$
+        [$Hσ $HinstanceOwn] with %Hentry
+    ipureintro
+    exact Hentry
+  ihave %Hinst : ⌜store.runtime.instances = instances⌝ $$ [Hσ HruntimeInstances]
+  · imod stateInterp_instances_agree store ns (obs ++ obs') nt instances $$
+        [$Hσ $HruntimeInstances] with %Hinst
+    ipureintro
+    exact Hinst
+  have hdiff : returningInstance ≠ store.runtime.entry := by rw [Hentry]; exact hneq
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducible]
+    exact ⟨[], _,
+      { store with runtime := { store.runtime with entry := returningInstance } }, [],
+      ⟨rfl, _, rfl, Step.returnFromCallCrossInstanceExplicit hdiff⟩⟩
+  iintro !> %e₂ %store₂ %forks %Hstep Hcredit
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst obs
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic (Step.returnFromCallCrossInstanceExplicit (α := α) hdiff) wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil, resumeCaller]
+  imod stateInterp_currentInstance_update_of_any store ns obs' nt calleeId returningInstance $$
+      [$Hσ $HinstanceOwn] with ⟨Hσ', HinstanceOwn', %_⟩
+  imod Hclose
+  imodintro
+  isplitl [Hσ']
+  · iexact Hσ'
+  isplitl [Hwp HinstanceOwn']
+  · iapply Hwp; iexact HinstanceOwn'
+  · itrivial
+
+/-- Call an indirect function through a table entry. `runtimeModule` owns the
+current module (provides `himports`, `hfn`, `hsignature`, `hexpected`, `htype`).
+`table` owns the indexed table (provides `helement` via `htable`).
+Both resources are returned to the continuation so the callee can use them. -/
+theorem wp_callIndirect
+    (runtimeModule : Module) (callerId : ModuleInstanceId)
+    (typeIndex tableIndex : Nat)
+    (table : TableInst) (elementIndex functionIndex : Nat) (fn : Function)
+    (signature expected : FuncType)
+    (himports : ¬functionIndex < runtimeModule.imports.length)
+    (hnotforeign : Wasm.SmallStep.isForeignFunctionIndex
+      runtimeModule.imports.length functionIndex = false)
+    (hfn : runtimeModule.funcs[
+      functionIndex - runtimeModule.imports.length]? = some fn)
+    (hsignature : runtimeModule.funcSig? functionIndex = some signature)
+    (hexpected : runtimeModule.types[typeIndex]? = some expected)
+    (htype : runtimeModule.indirectCallTypeOk
+      functionIndex typeIndex signature expected = true)
+    {params localValues values : List Value}
+    {selector : Value}
+    {code : Program} {arity : Nat} {remainder : List Value}
+    {controls : List ControlFrame} {calls : List CallFrame}
+    (hselector : selector.addrNat? = some elementIndex)
+    (helement : table[elementIndex]? = some (.funcref (some functionIndex))) :
+    let current : ThreadState α :=
+      ⟨⟨params, localValues, selector :: values⟩,
+        .callIndirect typeIndex tableIndex :: code,
+        arity, remainder, controls, calls⟩
+    ▷ runtimeModuleOwn callerId runtimeModule -∗
+    ▷ tablePointsToAt 0 tableIndex table -∗
+    ▷ (∀ ri : ModuleInstanceId,
+        runtimeModuleOwn callerId runtimeModule ∗ tablePointsToAt 0 tableIndex table -∗
+        WP (Expr.running
+          ⟨fn.toLocals (values.take fn.numParams).reverse,
+            fn.body, fn.results.length, [], [],
+            { locals := ⟨params, localValues, values.drop fn.numParams⟩
+              continuation := code
+              resultArity := arity
+              callerRemainder := remainder
+              control := controls
+              returningInstance := ri } :: calls⟩ : Expr α) @ s; E {{ Φ }}) -∗
+    WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
+  dsimp only
+  simp only [tablePointsToAt]
+  iintro >Hruntime >Htable Hwp
+  iapply wp_lift_step rfl
+  iintro %store %ns %obs %obs' %nt Hσ
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$
+      [Hσ Hruntime]
+  · imod stateInterp_runtimeModule_agree store ns (obs ++ obs') nt
+      callerId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+    ipureintro
+    exact Hmodule
+  ihave %Htablephys : ⌜store.wasm.tables[tableIndex]? = some table⌝ $$
+      [Hσ Htable]
+  · imod stateInterp_table_facts store ns (obs ++ obs') nt tableIndex table $$
+        [$Hσ $Htable] with %Htablephys
+    ipureintro
+    exact Htablephys
+  have himports' :
+      ¬functionIndex < store.runtime.currentModule.imports.length := by
+    simpa only [Hmodule] using himports
+  have hnotforeign' : Wasm.SmallStep.isForeignFunctionIndex
+      store.runtime.currentModule.imports.length functionIndex = false := by
+    simpa only [Hmodule] using hnotforeign
+  have hfn' : store.runtime.currentModule.funcs[
+      functionIndex - store.runtime.currentModule.imports.length]? = some fn := by
+    simpa only [Hmodule] using hfn
+  have hsignature' : store.runtime.currentModule.funcSig? functionIndex = some signature := by
+    simpa only [Hmodule] using hsignature
+  have hexpected' : store.runtime.currentModule.types[typeIndex]? = some expected := by
+    simpa only [Hmodule] using hexpected
+  have htype' : store.runtime.currentModule.indirectCallTypeOk
+      functionIndex typeIndex signature expected = true := by
+    simpa only [Hmodule] using htype
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducible]
+    exact ⟨[],
+      .running
+        ⟨fn.toLocals (values.take fn.numParams).reverse,
+          fn.body, fn.results.length, [], [],
+          { locals := ⟨params, localValues, values.drop fn.numParams⟩
+            continuation := code
+            resultArity := arity
+            callerRemainder := remainder
+            control := controls
+            returningInstance := store.runtime.entry } :: calls⟩,
+      store, [], ⟨rfl, _, rfl, Step.callIndirect hselector Htablephys helement
+        himports' hnotforeign' hfn' hsignature' hexpected' htype'⟩⟩
+  iintro !> %e₂ %store₂ %forks %Hstep Hcredit
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst obs
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic (Step.callIndirect (α := α) hselector Htablephys helement
+      himports' hnotforeign' hfn' hsignature' hexpected' htype') wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  simp only [List.length_nil, Nat.add_zero, Iris.Algebra.BigOpL.bigOpL_nil]
+  imod Hclose
+  imodintro
+  isplitl [Hσ]
+  · iexact Hσ
+  isplitl [Hwp Hruntime Htable]
+  · ispecialize Hwp $$ %store.runtime.entry
+    iapply Hwp
+    isplitl [Hruntime]
+    · iexact Hruntime
+    · iexact Htable
+  · itrivial
+
 
 end Wasm.SmallStep

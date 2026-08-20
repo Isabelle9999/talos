@@ -58,22 +58,26 @@ def SwapOptEquiv : Prop :=
     ((i <<< (3 % 32)) + ptr).toNat + 8 ≤ wasm.mem.pages * 65536 →
     ((j <<< (3 % 32)) + ptr).toNat + 8 ≤ wasm.mem.pages * 65536 →
     wasm.mem.pages ≤ 65536 →
-    heapAgreesWithMem σ wasm.mem →
-    heapAddressesInBounds σ wasm.mem →
+    heapAgreesWithMem σ
+      (Wasm.SmallStep.storeResolve
+        (SmallStepEquivalence.opt3ConfigFromStore wasm ptr len i j).store) →
+    heapAddressesInBounds σ
+      (Wasm.SmallStep.storeResolve
+        (SmallStepEquivalence.opt3ConfigFromStore wasm ptr len i j).store) →
     globalHeapAgrees globalσ wasm.globals →
     (∀ [WasmHeapGS Unit],
       ([∗map] address ↦ value ∈ σ,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
-      pointsTo_u64 1048552 oldScratch ∗
-      pointsTo_u32 1048568 oldSpillPtr ∗
-      pointsTo_u32 1048572 oldSpillLen ∗
-      pointsTo_u64 ((i <<< (3 % 32)) + ptr) oldA ∗
-      pointsTo_u64 ((j <<< (3 % 32)) + ptr) oldB) →
+      pointsTo_u64 0 1048552 oldScratch ∗
+      pointsTo_u32 0 1048568 oldSpillPtr ∗
+      pointsTo_u32 0 1048572 oldSpillLen ∗
+      pointsTo_u64 0 ((i <<< (3 % 32)) + ptr) oldA ∗
+      pointsTo_u64 0 ((j <<< (3 % 32)) + ptr) oldB) →
     (∀ [WasmGlobalGS Unit],
       ([∗map] index ↦ value ∈ globalσ,
         globalPointsTo index value) ⊢
-      globalPointsTo 0 (.i32 1048576)) →
+      globalPointsToAt 0 0 (.i32 1048576)) →
     SmallStep.ObservationallyEquivOn
       (Project.SwapElements.SwapSepLogic.func4ConfigFromStore wasm ptr len i j)
       (SmallStepEquivalence.opt3ConfigFromStore wasm ptr len i j)
@@ -91,10 +95,10 @@ theorem swap_opt_equiv : SwapOptEquiv := by
     have := Nat.mul_le_mul_right 65536 hpages; omega
   have hresources' : ∀ [WasmHeapGS Unit],
       ([∗map] address ↦ value ∈ σ,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
-      pointsTo_u64 ((i <<< (3 % 32)) + ptr) oldA ∗
-      pointsTo_u64 ((j <<< (3 % 32)) + ptr) oldB :=
+      pointsTo_u64 0 ((i <<< (3 % 32)) + ptr) oldA ∗
+      pointsTo_u64 0 ((j <<< (3 % 32)) + ptr) oldB :=
     fun [WasmHeapGS Unit] => hresources.trans (by iintro ⟨_, _, _, HA, HB⟩; iframe)
   apply SmallStep.ObservationallyEquivOn.of_common_outcome (o := (oldB, oldA))
   · refine (Project.SwapElements.SmallStepSpec.swap_elements_distinct_terminates_correct

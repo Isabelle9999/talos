@@ -113,7 +113,7 @@ def func1Config (x : UInt32) : Config Unit :=
   { expr := .running
       ⟨⟨[.f32 x], [], []⟩, func1, 1, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := {} }
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm := «module».initialStore } }
 
 /-- Contextual body rule for callers of the saturating-conversion leaf.  It
@@ -121,7 +121,7 @@ stops immediately before the generated `ret`, so the same rule works both at
 top level and beneath an arbitrary saved call stack. -/
 theorem func1_body_smallStep_wp
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp Wasm.SepLogic.WasmHeapGF}
+    {Φ : List Value → IProp (Wasm.SepLogic.WasmHeapGF Unit)}
     (x : UInt32) (calls : List CallFrame) :
     ▷ WP (.running
       ⟨⟨[.f32 x], [], [.i32 (i32TruncSatF32S x)]⟩,
@@ -157,52 +157,50 @@ def func0Config (x : UInt32) : Config Unit :=
   { expr := .running
       ⟨⟨[.f32 x], [.i32 0], []⟩, func0, 1, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := {} }
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm := «module».initialStore } }
 
 /-- The one physical word used by `naive_trunc`'s shadow-stack slot. -/
 def func0Heap : WasmHeapMap (Option UInt8) :=
-  store32Heap ∅ 1048572 0
+  store32Heap ∅ 0 1048572 0
 
 /-- Authoritative stack-pointer global used to derive the scratch address. -/
 def func0Globals : WasmGlobalMap Value :=
-  insert ∅ 0 (.i32 1048576)
-
-private theorem emptyHeap_agrees (memory : Mem) :
-    heapAgreesWithMem (∅ : WasmHeapMap (Option UInt8)) memory := by
-  intro address value hget
-  rw [get?_empty] at hget
-  contradiction
-
-private theorem emptyHeap_inBounds (memory : Mem) :
-    heapAddressesInBounds (∅ : WasmHeapMap (Option UInt8)) memory := by
-  intro address value hget
-  rw [get?_empty] at hget
-  contradiction
+  insert ∅ ⟨0, 0⟩ (.i32 1048576)
 
 theorem func0Heap_agrees :
-    heapAgreesWithMem func0Heap (func0Config 0).store.wasm.mem := by
-  unfold func0Heap func0Config
-  have hagree := store32_sound
-    (σ := (∅ : WasmHeapMap (Option UInt8)))
-    (mem := («module».initialStore : Store Unit).mem)
-    (addr := 1048572) (value := 0)
-    (by decide) (by decide) (by decide)
-    (emptyHeap_agrees _)
-  rw [Mem.write32_eq_self (by decide) (by decide) (by decide) (by decide)]
-    at hagree
-  exact hagree
+    heapAgreesWithMem func0Heap (storeResolve (func0Config 0).store) := by
+  unfold func0Heap
+  have h := store32_sound0 (∅ : WasmHeapMap (Option UInt8))
+      («module».initialStore : Store Unit).mem 1048572 0
+      (by decide) (by decide) (by decide)
+      (heapAgreesWithMem_empty _)
+  rw [Mem.write32_eq_self (by decide) (by decide) (by decide) (by decide)] at h
+  have hresolveEq : (fun id : Nat => if id = 0 then some («module».initialStore : Store Unit).mem else none) =
+      storeResolve (func0Config 0).store := by
+    funext id; by_cases h0 : id = 0
+    · simp [h0, storeResolve, func0Config]
+    · simp [h0, storeResolve, func0Config,
+        show («module».initialStore : Store Unit).extraMems = [] from by native_decide]
+  rw [← hresolveEq]
+  exact h
 
 theorem func0Heap_inBounds :
-    heapAddressesInBounds func0Heap (func0Config 0).store.wasm.mem := by
-  unfold func0Heap func0Config
-  apply store32_inBounds
-    (σ := (∅ : WasmHeapMap (Option UInt8)))
-    (mem := («module».initialStore : Store Unit).mem)
-    (addr := 1048572) (value := 0)
-    (by decide) (by decide) (by decide)
-    (emptyHeap_inBounds _)
-  decide
+    heapAddressesInBounds func0Heap (storeResolve (func0Config 0).store) := by
+  unfold func0Heap
+  have h := store32_inBounds0 (∅ : WasmHeapMap (Option UInt8))
+      («module».initialStore : Store Unit).mem 1048572 0
+      (by decide) (by decide) (by decide) (by decide)
+      (heapAddressesInBounds_empty _)
+  rw [Mem.write32_eq_self (by decide) (by decide) (by decide) (by decide)] at h
+  have hresolveEq : (fun id : Nat => if id = 0 then some («module».initialStore : Store Unit).mem else none) =
+      storeResolve (func0Config 0).store := by
+    funext id; by_cases h0 : id = 0
+    · simp [h0, storeResolve, func0Config]
+    · simp [h0, storeResolve, func0Config,
+        show («module».initialStore : Store Unit).extraMems = [] from by native_decide]
+  rw [← hresolveEq]
+  exact h
 
 theorem func0Globals_agree :
     globalHeapAgrees func0Globals (func0Config 0).store.wasm.globals := by
@@ -213,38 +211,42 @@ theorem func0Globals_agree :
     simp only [get?_insert_eq rfl] at hget
     obtain rfl := Option.some.inj hget
     rfl
-  · rw [get?_insert_ne (Ne.symm hindex), get?_empty] at hget
+  · rw [get?_insert_ne (show (⟨0, 0⟩ : GlobalKey) ≠ ⟨0, index⟩ from
+          fun h => hindex (congrArg GlobalKey.index h).symm),
+        get?_empty] at hget
     contradiction
 
 theorem func0Heap_pointsTo [WasmHeapGS Unit] :
     ([∗map] address ↦ value ∈ func0Heap,
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
-      pointsTo_u32 1048572 0 := by
+      pointsTo_u32 0 1048572 0 := by
   unfold func0Heap
   simpa only [BI.BigSepM.bigSepM_empty.to_eq, BI.sep_emp.to_eq] using
     (store32Heap_pointsTo (∅ : WasmHeapMap (Option UInt8))
-      1048572 0
+      0 1048572 0
       (get?_empty _) (get?_empty _) (get?_empty _) (get?_empty _)
       (by decide) (by decide) (by decide))
 
 theorem func0Globals_pointsTo [WasmGlobalGS Unit] :
     ([∗map] index ↦ value ∈ func0Globals,
       globalPointsTo index value) ⊢
-      globalPointsTo 0 (.i32 1048576) := by
+      globalPointsToAt 0 0 (.i32 1048576) := by
   unfold func0Globals
-  rw [(BI.BigSepM.bigSepM_insert (get?_empty 0)).to_eq,
+  rw [(BI.BigSepM.bigSepM_insert (get?_empty (⟨0, 0⟩ : GlobalKey))).to_eq,
     BI.BigSepM.bigSepM_empty.to_eq, BI.sep_emp.to_eq]
+  simp only [globalPointsToAt_eq]
+  rfl
 
 /-- Call-stack-polymorphic form of the common scratch load tail.  `R` frames
 all unrelated ownership, and the continuation decides whether the generated
 `ret` returns from a nested call or from the top-level invocation. -/
 theorem func0_tail_to_ret_smallStep_wp
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF) (x word : UInt32) (calls : List CallFrame) :
-    R ∗ pointsTo_u32 1048572 word ∗
-      ▷ (R ∗ pointsTo_u32 1048572 word -∗
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit)) (x word : UInt32) (calls : List CallFrame) :
+    R ∗ pointsTo_u32 0 1048572 word ∗
+      ▷ (R ∗ pointsTo_u32 0 1048572 word -∗
         WP (.running
           ⟨⟨[.f32 x], [.i32 1048560], [.i32 word]⟩,
             [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) ⊢
@@ -257,7 +259,7 @@ theorem func0_tail_to_ret_smallStep_wp
   inext
   have heffective : (1048560 : UInt32) + 12 = 1048572 := by decide
   ihave HwordLater :
-      ▷ pointsTo_u32 ((1048560 : UInt32) + 12) word $$ [Hword]
+      ▷ pointsTo_u32 0 ((1048560 : UInt32) + 12) word $$ [Hword]
   · inext
     rw [heffective]
     iexact Hword
@@ -276,7 +278,7 @@ has written the authoritative scratch word. -/
 theorem func0_tail_smallStep_wp
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     (x word : UInt32) :
-    pointsTo_u32 1048572 word ⊢
+    pointsTo_u32 0 1048572 word ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 1048560], []⟩,
           [.localGet 1, .load32 12, .ret], 1, [], [], []⟩ :
@@ -301,13 +303,13 @@ theorem func0_tail_smallStep_wp
 `1048560 + 12 = 1048572` scratch address. -/
 theorem func0_store32_smallStep_wp
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     {params localValues values : List Value}
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     (oldWord newWord : UInt32) :
-    pointsTo_u32 1048572 oldWord ∗
-      ▷ (pointsTo_u32 1048572 newWord -∗
+    pointsTo_u32 0 1048572 oldWord ∗
+      ▷ (pointsTo_u32 0 1048572 newWord -∗
         WP (.running
           ⟨⟨params, localValues, values⟩,
             code, arity, remainder, controls, calls⟩ : Expr Unit) @ s; E
@@ -320,7 +322,7 @@ theorem func0_store32_smallStep_wp
   iintro ⟨Hword, Hnext⟩
   have heffective : (1048560 : UInt32) + 12 = 1048572 := by decide
   ihave HwordLater :
-      ▷ pointsTo_u32 ((1048560 : UInt32) + 12) oldWord $$ [Hword]
+      ▷ pointsTo_u32 0 ((1048560 : UInt32) + 12) oldWord $$ [Hword]
   · inext
     rw [heffective]
     iexact Hword
@@ -337,21 +339,21 @@ control-flow paths write the same value as Rust's saturating cast and join
 immediately before the generated `ret`. -/
 theorem func0_body_to_ret_smallStep_wp
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF) (x : UInt32) (calls : List CallFrame)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit)) (x : UInt32) (calls : List CallFrame)
     (hreturn : ∀ word : UInt32,
       word = i32TruncSatF32S x →
-      R ∗ globalPointsTo 0 (.i32 1048576) ∗ pointsTo_u32 1048572 word ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048576) ∗ pointsTo_u32 0 1048572 word ⊢
         WP (.running
           ⟨⟨[.f32 x], [.i32 1048560], [.i32 word]⟩,
             [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048576) ∗ pointsTo_u32 1048572 0 ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048576) ∗ pointsTo_u32 0 1048572 0 ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 0], []⟩, func0, 1, [], [], calls⟩ :
           Expr Unit) @ s; E {{ Φ }} := by
     iintro ⟨HR, Hglobal, Hword⟩
-    let Rglobal : IProp WasmHeapGF :=
-      iprop(R ∗ globalPointsTo 0 (.i32 1048576))
+    let Rglobal : IProp (WasmHeapGF Unit) :=
+      iprop(R ∗ globalPointsToAt 0 0 (.i32 1048576))
     simp only [func0]
     iapply wp_globalGet $$ Hglobal
     inext
@@ -572,11 +574,12 @@ theorem func0_smallStep (x : UInt32) :
   · simpa [func0Config] using func0Heap_agrees
   · simpa [func0Config] using func0Heap_inBounds
   · simpa [func0Config] using func0Globals_agree
+  · simp only [func0Config]; decide
   · intro gs
     have hreturn : ∀ word : UInt32,
         word = i32TruncSatF32S x →
-        iprop(True) ∗ globalPointsTo 0 (.i32 1048576) ∗
-            pointsTo_u32 1048572 word ⊢
+        iprop(True) ∗ globalPointsToAt 0 0 (.i32 1048576) ∗
+            pointsTo_u32 0 1048572 word ⊢
           WP (.running
             ⟨⟨[.f32 x], [.i32 1048560], [.i32 word]⟩,
               [.ret], 1, [], [], []⟩ : Expr Unit)
@@ -600,7 +603,7 @@ theorem func0_smallStep (x : UInt32) :
 
 theorem twp_func1_body
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (x : UInt32) (calls : List CallFrame) :
     WP (.running
       ⟨⟨[.f32 x], [], [.i32 (i32TruncSatF32S x)]⟩,
@@ -616,10 +619,10 @@ theorem twp_func1_body
 
 theorem twp_func0_tail_to_ret
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF) (x word : UInt32) (calls : List CallFrame) :
-    R ∗ pointsTo_u32 1048572 word ∗
-      (R ∗ pointsTo_u32 1048572 word -∗
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit)) (x word : UInt32) (calls : List CallFrame) :
+    R ∗ pointsTo_u32 0 1048572 word ∗
+      (R ∗ pointsTo_u32 0 1048572 word -∗
         WP (.running
           ⟨⟨[.f32 x], [.i32 1048560], [.i32 word]⟩,
             [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E [{ Φ }]) ⊢
@@ -631,7 +634,7 @@ theorem twp_func0_tail_to_ret
   iapply twp_localGet rfl
   have heffective : (1048560 : UInt32) + 12 = 1048572 := by decide
   ihave Hword' :
-      pointsTo_u32 ((1048560 : UInt32) + 12) word $$ [Hword]
+      pointsTo_u32 0 ((1048560 : UInt32) + 12) word $$ [Hword]
   · rw [heffective]
     iexact Hword
   iapply twp_load32 word (by decide) (by decide) (by decide) (by decide) $$ Hword'
@@ -644,13 +647,13 @@ theorem twp_func0_tail_to_ret
 
 theorem twp_func0_store32
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     {params localValues values : List Value}
     {code : Program} {arity : Nat} {remainder : List Value}
     {controls : List ControlFrame} {calls : List CallFrame}
     (oldWord newWord : UInt32) :
-    pointsTo_u32 1048572 oldWord ∗
-      (pointsTo_u32 1048572 newWord -∗
+    pointsTo_u32 0 1048572 oldWord ∗
+      (pointsTo_u32 0 1048572 newWord -∗
         WP (.running
           ⟨⟨params, localValues, values⟩,
             code, arity, remainder, controls, calls⟩ : Expr Unit) @ s; E
@@ -663,7 +666,7 @@ theorem twp_func0_store32
   iintro ⟨Hword, Hcont⟩
   have heffective : (1048560 : UInt32) + 12 = 1048572 := by decide
   ihave Hword' :
-      pointsTo_u32 ((1048560 : UInt32) + 12) oldWord $$ [Hword]
+      pointsTo_u32 0 ((1048560 : UInt32) + 12) oldWord $$ [Hword]
   · rw [heffective]
     iexact Hword
   iapply twp_store32 oldWord (by decide) (by decide) (by decide) (by decide) $$ Hword'
@@ -674,21 +677,21 @@ theorem twp_func0_store32
 
 theorem twp_func0_body_to_ret
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF) (x : UInt32) (calls : List CallFrame)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit)) (x : UInt32) (calls : List CallFrame)
     (hreturn : ∀ word : UInt32,
       word = i32TruncSatF32S x →
-      R ∗ globalPointsTo 0 (.i32 1048576) ∗ pointsTo_u32 1048572 word ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048576) ∗ pointsTo_u32 0 1048572 word ⊢
         WP (.running
           ⟨⟨[.f32 x], [.i32 1048560], [.i32 word]⟩,
             [.ret], 1, [], [], calls⟩ : Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ globalPointsTo 0 (.i32 1048576) ∗ pointsTo_u32 1048572 0 ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048576) ∗ pointsTo_u32 0 1048572 0 ⊢
       WP (.running
         ⟨⟨[.f32 x], [.i32 0], []⟩, func0, 1, [], [], calls⟩ :
           Expr Unit) @ s; E [{ Φ }] := by
   iintro ⟨HR, Hglobal, Hword⟩
-  let Rglobal : IProp WasmHeapGF :=
-    iprop(R ∗ globalPointsTo 0 (.i32 1048576))
+  let Rglobal : IProp (WasmHeapGF Unit) :=
+    iprop(R ∗ globalPointsToAt 0 0 (.i32 1048576))
   simp only [func0]
   iapply twp_globalGet $$ Hglobal
   iintro Hglobal
@@ -837,17 +840,17 @@ def checkConfig (x : UInt32) : Config Unit :=
   { expr := .running
       ⟨⟨[.f32 x], [], []⟩, func2, 0, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := {} }
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm := «module».initialStore } }
 
 theorem twp_check
     [WasmSmallStepGS hlc Unit] {s : Stuckness} {E : CoPset}
     (x : UInt32) :
-    runtimeModuleOwn «module» ∗ globalPointsTo 0 (.i32 1048576) ∗
-      pointsTo_u32 1048572 0 ⊢
+    runtimeModuleOwn ⟨0⟩ «module» ∗ globalPointsToAt 0 0 (.i32 1048576) ∗
+      pointsTo_u32 0 1048572 0 ⊢
       WP (.running ⟨⟨[.f32 x], [], []⟩, func2, 0, [], [], []⟩ : Expr Unit) @ s; E
         [{ rs, ∀ (store : MachineStore Unit) (_obs : List StepKind),
-            stateInterp (GF := WasmHeapGF) store 0 [] 0 -∗
+            stateInterp (GF := WasmHeapGF Unit) store 0 [] 0 -∗
             ⌜rs = []⌝ }] := by
   iintro ⟨Hruntime, Hglobal, Hword⟩
   simp only [func2]
@@ -858,17 +861,19 @@ theorem twp_check
   iintro Hruntime
   simp [func0Def, Function.toLocals, Function.numParams, ValueType.zero]
   iapply twp_func0_body_to_ret
-    (runtimeModuleOwn «module») x _
+    (runtimeModuleOwn ⟨0⟩ «module») x _
     (fun word heq => by
       iintro ⟨Hruntime, Hglobal, Hword⟩
-      iapply twp_returnFromCallExplicit
+      iapply twp_returnFromCallExplicit $$ Hruntime
+      iintro Hruntime
       iapply twp_localGet rfl
       iapply twp_call «module» 1 func1Def
         (by simp [«module»]) (by simp [«module»]) $$ Hruntime
       iintro Hruntime
       simp [func1Def, Function.toLocals, Function.numParams]
       iapply twp_func1_body x _
-      iapply twp_returnFromCallExplicit
+      iapply twp_returnFromCallExplicit $$ Hruntime
+      iintro Hruntime
       simp only [List.take, List.singleton_append]
       rw [heq]
       iapply twp_ne (result := 0) (by simp)
@@ -894,11 +899,12 @@ theorem check_terminatesWith (x : UInt32) :
   · simpa [checkConfig, func0Config] using func0Heap_agrees
   · simpa [checkConfig, func0Config] using func0Heap_inBounds
   · simpa [checkConfig, func0Config] using func0Globals_agree
+  · simp only [checkConfig]; decide
   · intro _hlc _gs
+    simp only [checkConfig, RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hword := func0Heap_pointsTo $$ Hbytes
     ihave Hglobal := func0Globals_pointsTo $$ Hglobals
-    simp only [checkConfig]
     iapply twp_check x
     iframe
 
@@ -911,11 +917,13 @@ theorem check_smallStep (x : UInt32) :
   · simpa [checkConfig, func0Config] using func0Heap_agrees
   · simpa [checkConfig, func0Config] using func0Heap_inBounds
   · simpa [checkConfig, func0Config] using func0Globals_agree
+  · simp only [checkConfig]; decide
   · intro gs
+    simp only [checkConfig, RuntimeEnv.currentModule_mk1]
     iintro ⟨Hbytes, Hglobals, Hruntime⟩
     ihave Hword := func0Heap_pointsTo $$ Hbytes
     ihave Hglobal := func0Globals_pointsTo $$ Hglobals
-    simp only [checkConfig, func2]
+    simp only [func2]
     iapply wp_block
     inext
     iapply wp_localGet rfl
@@ -926,11 +934,12 @@ theorem check_smallStep (x : UInt32) :
     iintro Hruntime
     simp [func0Def, Function.toLocals, Function.numParams, ValueType.zero]
     iapply func0_body_to_ret_smallStep_wp
-      (runtimeModuleOwn «module») x _
+      (runtimeModuleOwn ⟨0⟩ «module») x _
       (fun word heq => by
         iintro ⟨Hruntime, Hglobal, Hword⟩
-        iapply wp_returnFromCallExplicit
+        iapply wp_returnFromCallExplicit' $$ Hruntime
         inext
+        iintro Hruntime
         iapply wp_localGet rfl
         inext
         iapply wp_call «module» 1 func1Def
@@ -940,8 +949,9 @@ theorem check_smallStep (x : UInt32) :
         simp [func1Def, Function.toLocals, Function.numParams]
         iapply func1_body_smallStep_wp x _
         inext
-        iapply wp_returnFromCallExplicit
+        iapply wp_returnFromCallExplicit' $$ Hruntime
         inext
+        iintro Hruntime
         simp only [List.take, List.singleton_append]
         rw [heq]
         iapply wp_ne (result := 0) (by simp)

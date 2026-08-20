@@ -477,39 +477,49 @@ theorem twp_call
       functionIndex - runtimeModule.imports.length]? = some fn)
     {params localValues values : List Value}
     {code : Program} {arity : Nat} {remainder : List Value}
-    {controls : List ControlFrame} {calls : List CallFrame} :
+    {controls : List ControlFrame} {calls : List CallFrame}
+    (callerId : ModuleInstanceId) :
     let caller : CallFrame :=
       { locals := ⟨params, localValues, values.drop fn.numParams⟩
         continuation := code
         resultArity := arity
         callerRemainder := remainder
-        control := controls }
+        control := controls
+        returningInstance := callerId }
     let current : ThreadState α :=
       ⟨⟨params, localValues, values⟩, .call functionIndex :: code,
         arity, remainder, controls, calls⟩
     let next : ThreadState α :=
       ⟨fn.toLocals (values.take fn.numParams).reverse,
         fn.body, fn.results.length, [], [], caller :: calls⟩
-    runtimeModuleOwn runtimeModule -∗
-    (runtimeModuleOwn runtimeModule -∗
+    runtimeModuleOwn callerId runtimeModule -∗
+    (runtimeModuleOwn callerId runtimeModule -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
   iintro Hruntime Htwp
   iapply twp_lift_step_no_fork rfl
   iintro %store %ns %obs %nt Hσ
-  ihave %Hmodule : ⌜store.runtime.module = runtimeModule⌝ $$
+  ihave %Hmodule : ⌜store.runtime.currentModule = runtimeModule⌝ $$
       [Hσ Hruntime]
   · imod stateInterp_runtimeModule_agree store ns obs nt
-      runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
+      callerId runtimeModule $$ [$Hσ $Hruntime] with %Hmodule
     ipureintro
     exact Hmodule
   have himports' :
-      ¬functionIndex < store.runtime.module.imports.length := by
+      ¬functionIndex < store.runtime.currentModule.imports.length := by
     simpa only [Hmodule] using himports
-  have hfn' : store.runtime.module.funcs[
-      functionIndex - store.runtime.module.imports.length]? = some fn := by
+  have hfn' : store.runtime.currentModule.funcs[
+      functionIndex - store.runtime.currentModule.imports.length]? = some fn := by
     simpa only [Hmodule] using hfn
+  simp only [runtimeModuleOwn]
+  icases Hruntime with ⟨HruntimeElem, HinstanceOwn⟩
+  ihave %Hentry : ⌜store.runtime.entry = callerId⌝ $$ [Hσ HinstanceOwn]
+  · imod stateInterp_currentInstance_agree store ns obs nt callerId $$
+        [$Hσ $HinstanceOwn] with %Hentry
+    ipureintro
+    exact Hentry
+  have hsame : callerId = store.runtime.entry := Hentry.symm
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
   isplitr
@@ -522,7 +532,8 @@ theorem twp_call
             continuation := code
             resultArity := arity
             callerRemainder := remainder
-            control := controls } :: calls⟩,
+            control := controls
+            returningInstance := store.runtime.entry } :: calls⟩,
       store, [], ⟨rfl, .instruction (.call functionIndex), rfl,
         Step.call himports' hfn'⟩⟩
   iintro %κ %e₂ %store₂ %forks %Hstep
@@ -548,8 +559,11 @@ theorem twp_call
     rfl
   isplitl [Hσ]
   · iexact Hσ
-  · iapply Htwp
-    iexact Hruntime
+  · rw [← hsame]
+    iapply Htwp
+    isplitl [HruntimeElem]
+    · iexact HruntimeElem
+    · iexact HinstanceOwn
 
 theorem twp_returnFromCallExplicit
     {calleeLocals callerLocals : Locals}
@@ -557,13 +571,16 @@ theorem twp_returnFromCallExplicit
     {calleeArity callerArity : Nat}
     {calleeRemainder callerRemainder : List Value}
     {calleeControls callerControls : List ControlFrame}
+    {returningInstance : ModuleInstanceId}
+    {module : Module}
     {calls : List CallFrame} :
     let caller : CallFrame :=
       { locals := callerLocals
         continuation := callerCode
         resultArity := callerArity
         callerRemainder := callerRemainder
-        control := callerControls }
+        control := callerControls
+        returningInstance := returningInstance }
     let current : ThreadState α :=
       ⟨calleeLocals, .ret :: calleeCode, calleeArity, calleeRemainder,
         calleeControls, caller :: calls⟩
@@ -572,10 +589,57 @@ theorem twp_returnFromCallExplicit
           values :=
             calleeLocals.values.take calleeArity ++ callerLocals.values },
         callerCode, callerArity, callerRemainder, callerControls, calls⟩
-    WP (Expr.running next : Expr α) @ s; E [{ Φ }] ⊢
+    runtimeModuleOwn returningInstance module -∗
+    (runtimeModuleOwn returningInstance module -∗
+      WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
-  exact twp_pureStep _ _ _ (fun _ => Step.returnFromCallExplicit)
+  iintro Hruntime Hwp
+  iapply twp_lift_step_no_fork rfl
+  iintro %store %ns %obs %nt Hσ
+  simp only [runtimeModuleOwn]
+  icases Hruntime with ⟨HruntimeElem, HinstanceOwn⟩
+  ihave %Hentry : ⌜store.runtime.entry = returningInstance⌝ $$ [Hσ HinstanceOwn]
+  · imod stateInterp_currentInstance_agree store ns obs nt returningInstance $$
+        [$Hσ $HinstanceOwn] with %Hentry
+    ipureintro
+    exact Hentry
+  have hsame : returningInstance = store.runtime.entry := Hentry.symm
+  iapply fupd_mask_intro Std.LawfulSet.empty_subset
+  iintro Hclose
+  isplitr
+  · ipureintro
+    cases s <;> simp only [Stuckness.MaybeReducibleNoObs]
+    exact ⟨_, store, [],
+      ⟨rfl, _, rfl, Step.returnFromCallExplicit hsame⟩⟩
+  iintro %κ %e₂ %store₂ %forks %Hstep
+  rcases Hstep with ⟨hforks, kind, hobs, wasmStep⟩
+  change forks = [] at hforks
+  subst forks
+  subst κ
+  obtain ⟨rfl, hconfig⟩ :=
+    step_deterministic (Step.returnFromCallExplicit (α := α) hsame) wasmStep
+  have parts := Config.mk.inj hconfig
+  have hexpr := parts.1
+  have hstore := parts.2
+  simp only at hexpr hstore
+  subst e₂
+  subst store₂
+  imod Hclose
+  imodintro
+  isplit
+  · ipureintro
+    rfl
+  isplit
+  · ipureintro
+    rfl
+  isplitl [Hσ]
+  · iexact Hσ
+  · simp only [resumeCaller]
+    iapply Hwp
+    isplitl [HruntimeElem]
+    · iexact HruntimeElem
+    · iexact HinstanceOwn
 
 theorem twp_load32
     {params localValues values : List Value}
@@ -596,8 +660,8 @@ theorem twp_load32
     let next : ThreadState α :=
       ⟨⟨params, localValues, .i32 word :: values⟩,
         code, arity, remainder, controls, calls⟩
-    pointsTo_u32 (address + offset) word -∗
-    (pointsTo_u32 (address + offset) word -∗
+    pointsTo_u32 0 (address + offset) word -∗
+    (pointsTo_u32 0 (address + offset) word -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
@@ -681,8 +745,8 @@ theorem twp_store32
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    pointsTo_u32 (address + offset) oldWord -∗
-    (pointsTo_u32 (address + offset) value -∗
+    pointsTo_u32 0 (address + offset) oldWord -∗
+    (pointsTo_u32 0 (address + offset) value -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
@@ -797,8 +861,8 @@ theorem twp_globalGet
     let next : ThreadState α :=
       ⟨⟨params, localValues, value :: values⟩, code,
         arity, remainder, controls, calls⟩
-    globalPointsTo 0 value -∗
-    (globalPointsTo 0 value -∗
+    globalPointsToAt 0 0 value -∗
+    (globalPointsToAt 0 0 value -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
@@ -919,8 +983,8 @@ theorem twp_f32Load
     let next : ThreadState α :=
       ⟨⟨params, localValues, .f32 word :: values⟩,
         code, arity, remainder, controls, calls⟩
-    pointsTo_u32 (address + offset) word -∗
-    (pointsTo_u32 (address + offset) word -∗
+    pointsTo_u32 0 (address + offset) word -∗
+    (pointsTo_u32 0 (address + offset) word -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
@@ -1006,8 +1070,8 @@ theorem twp_f32Store
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    pointsTo_u32 (address + offset) oldWord -∗
-    (pointsTo_u32 (address + offset) value -∗
+    pointsTo_u32 0 (address + offset) oldWord -∗
+    (pointsTo_u32 0 (address + offset) value -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
@@ -1093,8 +1157,8 @@ theorem twp_globalSet
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    globalPointsTo 0 oldValue -∗
-    (globalPointsTo 0 newValue -∗
+    globalPointsToAt 0 0 oldValue -∗
+    (globalPointsToAt 0 0 newValue -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
@@ -1211,8 +1275,8 @@ theorem twp_f64Load
     let next : ThreadState α :=
       ⟨⟨params, localValues, .f64 word :: values⟩,
         code, arity, remainder, controls, calls⟩
-    pointsTo_u64 (address + offset) word -∗
-    (pointsTo_u64 (address + offset) word -∗
+    pointsTo_u64 0 (address + offset) word -∗
+    (pointsTo_u64 0 (address + offset) word -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
@@ -1307,8 +1371,8 @@ theorem twp_f64Store
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    pointsTo_u64 (address + offset) oldWord -∗
-    (pointsTo_u64 (address + offset) value -∗
+    pointsTo_u64 0 (address + offset) oldWord -∗
+    (pointsTo_u64 0 (address + offset) value -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
@@ -1410,8 +1474,8 @@ theorem twp_load64
     let next : ThreadState α :=
       ⟨⟨params, localValues, .i64 word :: values⟩,
         code, arity, remainder, controls, calls⟩
-    pointsTo_u64 (address + offset) word -∗
-    (pointsTo_u64 (address + offset) word -∗
+    pointsTo_u64 0 (address + offset) word -∗
+    (pointsTo_u64 0 (address + offset) word -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
@@ -1506,8 +1570,8 @@ theorem twp_store64
     let next : ThreadState α :=
       ⟨⟨params, localValues, values⟩,
         code, arity, remainder, controls, calls⟩
-    pointsTo_u64 (address + offset) oldWord -∗
-    (pointsTo_u64 (address + offset) value -∗
+    pointsTo_u64 0 (address + offset) oldWord -∗
+    (pointsTo_u64 0 (address + offset) value -∗
       WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only
@@ -1587,12 +1651,12 @@ theorem twp_swapElementsFunc2Prefix
     (hroomA : ptrA.toNat + 8 ≤ 4294967296)
     (hroomB : ptrB.toNat + 8 ≤ 4294967296)
     {calls : List CallFrame} :
-    (globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldScratch ∗
-      pointsTo_u64 ptrA oldA ∗ pointsTo_u64 ptrB oldB) ∗
-    ((globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldA ∗
-      pointsTo_u64 ptrA oldB ∗ pointsTo_u64 ptrB oldA) -∗
+    (globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldScratch ∗
+      pointsTo_u64 0 ptrA oldA ∗ pointsTo_u64 0 ptrB oldB) ∗
+    ((globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldA ∗
+      pointsTo_u64 0 ptrA oldB ∗ pointsTo_u64 0 ptrB oldA) -∗
       WP (.running
         ⟨⟨[.i32 ptrA, .i32 ptrB], [.i32 1048544], []⟩,
           [.ret], 0, [], [], calls⟩ : Expr α) @ s; E [{ Φ }]) ⊢
@@ -1641,7 +1705,7 @@ theorem twp_swapElementsFunc2Prefix
     Nat.reduceAdd, Nat.reduceSub, List.set]
   iapply twp_localGet rfl
   iapply twp_localGet rfl
-  ihave HA' : pointsTo_u64 (ptrA + 0) oldA $$ [HA]
+  ihave HA' : pointsTo_u64 0 (ptrA + 0) oldA $$ [HA]
   · rw [UInt32.add_zero]
     iexact HA
   iapply twp_load64 oldA (by simp)
@@ -1650,7 +1714,7 @@ theorem twp_swapElementsFunc2Prefix
     (by simpa using ha7) $$ HA'
   iintro HA
   ihave Hscratch' :
-      pointsTo_u64 ((1048544 : UInt32) + 8) oldScratch $$ [Hscratch]
+      pointsTo_u64 0 ((1048544 : UInt32) + 8) oldScratch $$ [Hscratch]
   · rw [show (1048544 : UInt32) + 8 = 1048552 from rfl]
     iexact Hscratch
   iapply twp_store64 oldScratch rfl rfl rfl rfl rfl rfl rfl rfl $$
@@ -1658,7 +1722,7 @@ theorem twp_swapElementsFunc2Prefix
   iintro Hscratch
   iapply twp_localGet rfl
   iapply twp_localGet rfl
-  ihave HB' : pointsTo_u64 (ptrB + 0) oldB $$ [HB]
+  ihave HB' : pointsTo_u64 0 (ptrB + 0) oldB $$ [HB]
   · rw [UInt32.add_zero]
     iexact HB
   iapply twp_load64 oldB (by simp)
@@ -1666,7 +1730,7 @@ theorem twp_swapElementsFunc2Prefix
     (by simpa using hb4) (by simpa using hb5) (by simpa using hb6)
     (by simpa using hb7) $$ HB'
   iintro HB
-  ihave HA' : pointsTo_u64 (ptrA + 0) oldA $$ [HA]
+  ihave HA' : pointsTo_u64 0 (ptrA + 0) oldA $$ [HA]
   · rw [UInt32.add_zero]
     iexact HA
   iapply twp_store64 oldA (by simp)
@@ -1677,13 +1741,13 @@ theorem twp_swapElementsFunc2Prefix
   iapply twp_localGet rfl
   iapply twp_localGet rfl
   ihave Hscratch' :
-      pointsTo_u64 ((1048544 : UInt32) + 8) oldA $$ [Hscratch]
+      pointsTo_u64 0 ((1048544 : UInt32) + 8) oldA $$ [Hscratch]
   · rw [show (1048544 : UInt32) + 8 = 1048552 from rfl]
     iexact Hscratch
   iapply twp_load64 oldA rfl rfl rfl rfl rfl rfl rfl rfl $$
     Hscratch'
   iintro Hscratch
-  ihave HB' : pointsTo_u64 (ptrB + 0) oldB $$ [HB]
+  ihave HB' : pointsTo_u64 0 (ptrB + 0) oldB $$ [HB]
   · rw [UInt32.add_zero]
     iexact HB
   iapply twp_store64 oldB (by simp)
@@ -1699,10 +1763,10 @@ theorem twp_swapElementsFunc2AliasPrefix
     (ptr : UInt32) (oldScratch oldValue : UInt64)
     (hroom : ptr.toNat + 8 ≤ 4294967296)
     {calls : List CallFrame} :
-    (globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldScratch ∗ pointsTo_u64 ptr oldValue) ∗
-    ((globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldValue ∗ pointsTo_u64 ptr oldValue) -∗
+    (globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldScratch ∗ pointsTo_u64 0 ptr oldValue) ∗
+    ((globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldValue ∗ pointsTo_u64 0 ptr oldValue) -∗
       WP (.running
         ⟨⟨[.i32 ptr, .i32 ptr], [.i32 1048544], []⟩,
           [.ret], 0, [], [], calls⟩ : Expr α) @ s; E [{ Φ }]) ⊢
@@ -1737,7 +1801,7 @@ theorem twp_swapElementsFunc2AliasPrefix
     Nat.reduceAdd, Nat.reduceSub, List.set]
   iapply twp_localGet rfl
   iapply twp_localGet rfl
-  ihave Hcell' : pointsTo_u64 (ptr + 0) oldValue $$ [Hcell]
+  ihave Hcell' : pointsTo_u64 0 (ptr + 0) oldValue $$ [Hcell]
   · rw [UInt32.add_zero]
     iexact Hcell
   iapply twp_load64 oldValue (by simp)
@@ -1746,7 +1810,7 @@ theorem twp_swapElementsFunc2AliasPrefix
     (by simpa using h7) $$ Hcell'
   iintro Hcell
   ihave Hscratch' :
-      pointsTo_u64 ((1048544 : UInt32) + 8) oldScratch $$ [Hscratch]
+      pointsTo_u64 0 ((1048544 : UInt32) + 8) oldScratch $$ [Hscratch]
   · rw [show (1048544 : UInt32) + 8 = 1048552 from rfl]
     iexact Hscratch
   iapply twp_store64 oldScratch rfl rfl rfl rfl rfl rfl rfl rfl $$
@@ -1754,7 +1818,7 @@ theorem twp_swapElementsFunc2AliasPrefix
   iintro Hscratch
   iapply twp_localGet rfl
   iapply twp_localGet rfl
-  ihave Hcell' : pointsTo_u64 (ptr + 0) oldValue $$ [Hcell]
+  ihave Hcell' : pointsTo_u64 0 (ptr + 0) oldValue $$ [Hcell]
   · rw [UInt32.add_zero]
     iexact Hcell
   iapply twp_load64 oldValue (by simp)
@@ -1762,7 +1826,7 @@ theorem twp_swapElementsFunc2AliasPrefix
     (by simpa using h4) (by simpa using h5) (by simpa using h6)
     (by simpa using h7) $$ Hcell'
   iintro Hcell
-  ihave Hcell' : pointsTo_u64 (ptr + 0) oldValue $$ [Hcell]
+  ihave Hcell' : pointsTo_u64 0 (ptr + 0) oldValue $$ [Hcell]
   · rw [UInt32.add_zero]
     iexact Hcell
   iapply twp_store64 oldValue (by simp)
@@ -1773,13 +1837,13 @@ theorem twp_swapElementsFunc2AliasPrefix
   iapply twp_localGet rfl
   iapply twp_localGet rfl
   ihave Hscratch' :
-      pointsTo_u64 ((1048544 : UInt32) + 8) oldValue $$ [Hscratch]
+      pointsTo_u64 0 ((1048544 : UInt32) + 8) oldValue $$ [Hscratch]
   · rw [show (1048544 : UInt32) + 8 = 1048552 from rfl]
     iexact Hscratch
   iapply twp_load64 oldValue rfl rfl rfl rfl rfl rfl rfl rfl $$
     Hscratch'
   iintro Hscratch
-  ihave Hcell' : pointsTo_u64 (ptr + 0) oldValue $$ [Hcell]
+  ihave Hcell' : pointsTo_u64 0 (ptr + 0) oldValue $$ [Hcell]
   · rw [UInt32.add_zero]
     iexact Hcell
   iapply twp_store64 oldValue (by simp)
@@ -1795,9 +1859,9 @@ theorem twp_swapElementsFunc2
     (ptrA ptrB : UInt32) (oldScratch oldA oldB : UInt64)
     (hroomA : ptrA.toNat + 8 ≤ 4294967296)
     (hroomB : ptrB.toNat + 8 ≤ 4294967296) :
-    globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldScratch ∗
-      pointsTo_u64 ptrA oldA ∗ pointsTo_u64 ptrB oldB ⊢
+    globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldScratch ∗
+      pointsTo_u64 0 ptrA oldA ∗ pointsTo_u64 0 ptrB oldB ⊢
     WP (.running
       ⟨⟨[.i32 ptrA, .i32 ptrB], [.i32 0], []⟩,
         [ .globalGet 0, .const 16, .sub, .localSet 2,
@@ -1806,9 +1870,9 @@ theorem twp_swapElementsFunc2
           .localGet 1, .localGet 2, .load64 8, .store64 0, .ret ],
         0, [], [], []⟩ : Expr α) @ s; E
       [{ result, ⌜result = []⌝ ∗
-        globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048552 oldA ∗
-        pointsTo_u64 ptrA oldB ∗ pointsTo_u64 ptrB oldA }] := by
+        globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048552 oldA ∗
+        pointsTo_u64 0 ptrA oldB ∗ pointsTo_u64 0 ptrB oldA }] := by
   iintro Hresources
   iapply twp_swapElementsFunc2Prefix ptrA ptrB oldScratch oldA oldB
     hroomA hroomB (calls := [])
@@ -1826,8 +1890,8 @@ theorem twp_swapElementsFunc2
 theorem twp_swapElementsFunc2Alias
     (ptr : UInt32) (oldScratch oldValue : UInt64)
     (hroom : ptr.toNat + 8 ≤ 4294967296) :
-    globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048552 oldScratch ∗ pointsTo_u64 ptr oldValue ⊢
+    globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048552 oldScratch ∗ pointsTo_u64 0 ptr oldValue ⊢
     WP (.running
       ⟨⟨[.i32 ptr, .i32 ptr], [.i32 0], []⟩,
         [ .globalGet 0, .const 16, .sub, .localSet 2,
@@ -1836,9 +1900,9 @@ theorem twp_swapElementsFunc2Alias
           .localGet 1, .localGet 2, .load64 8, .store64 0, .ret ],
         0, [], [], []⟩ : Expr α) @ s; E
       [{ result, ⌜result = []⌝ ∗
-        globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048552 oldValue ∗
-        pointsTo_u64 ptr oldValue }] := by
+        globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048552 oldValue ∗
+        pointsTo_u64 0 ptr oldValue }] := by
   iintro Hresources
   iapply twp_swapElementsFunc2AliasPrefix ptr oldScratch oldValue hroom
     (calls := [])
@@ -1855,19 +1919,19 @@ theorem twp_swapElementsFunc2Alias
 
 theorem twp_swapElementsFunc3
     (oldPtr oldLen ptr len : UInt32) :
-    pointsTo_u32 1048568 oldPtr ∗ pointsTo_u32 1048572 oldLen ⊢
+    pointsTo_u32 0 1048568 oldPtr ∗ pointsTo_u32 0 1048572 oldLen ⊢
     WP (.running
       ⟨⟨[.i32 1048568, .i32 ptr, .i32 len, .i32 1048652], [], []⟩,
         [ .localGet 0, .localGet 2, .store32 4,
           .localGet 0, .localGet 1, .store32 0, .ret ],
         0, [], [], []⟩ : Expr α) @ s; E
       [{ result, ⌜result = []⌝ ∗
-        pointsTo_u32 1048568 ptr ∗ pointsTo_u32 1048572 len }] := by
+        pointsTo_u32 0 1048568 ptr ∗ pointsTo_u32 0 1048572 len }] := by
   iintro ⟨Hptr, Hlen⟩
   iapply twp_localGet rfl
   iapply twp_localGet rfl
   ihave Hlen' :
-      pointsTo_u32 ((1048568 : UInt32) + 4) oldLen $$ [Hlen]
+      pointsTo_u32 0 ((1048568 : UInt32) + 4) oldLen $$ [Hlen]
   · rw [show (1048568 : UInt32) + 4 = 1048572 from rfl]
     iexact Hlen
   iapply twp_store32 oldLen rfl rfl rfl rfl $$ Hlen'
@@ -1875,7 +1939,7 @@ theorem twp_swapElementsFunc3
   iapply twp_localGet rfl
   iapply twp_localGet rfl
   ihave Hptr' :
-      pointsTo_u32 ((1048568 : UInt32) + 0) oldPtr $$ [Hptr]
+      pointsTo_u32 0 ((1048568 : UInt32) + 0) oldPtr $$ [Hptr]
   · rw [UInt32.add_zero]
     iexact Hptr
   iapply twp_store32 oldPtr rfl rfl rfl rfl $$ Hptr'

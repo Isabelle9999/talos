@@ -101,15 +101,19 @@ def SwapElementsOpt3Spec : Prop :=
     ((j <<< (3 % 32)) + ptr).toNat + 8 ≤ wasm.mem.pages * 65536 →
     ((i <<< (3 % 32)) + ptr).toNat + 8 ≤ 4294967296 →
     ((j <<< (3 % 32)) + ptr).toNat + 8 ≤ 4294967296 →
-    heapAgreesWithMem σ wasm.mem →
-    heapAddressesInBounds σ wasm.mem →
+    heapAgreesWithMem σ
+      (Wasm.SmallStep.storeResolve
+        (SmallStepEquivalence.opt3ConfigFromStore wasm ptr len i j).store) →
+    heapAddressesInBounds σ
+      (Wasm.SmallStep.storeResolve
+        (SmallStepEquivalence.opt3ConfigFromStore wasm ptr len i j).store) →
     globalHeapAgrees globalσ wasm.globals →
     (∀ [WasmHeapGS Unit],
       ([∗map] address ↦ value ∈ σ,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) value) ⊢
-      pointsTo_u64 ((i <<< (3 % 32)) + ptr) oldA ∗
-      pointsTo_u64 ((j <<< (3 % 32)) + ptr) oldB) →
+      pointsTo_u64 0 ((i <<< (3 % 32)) + ptr) oldA ∗
+      pointsTo_u64 0 ((j <<< (3 % 32)) + ptr) oldB) →
     Wasm.SmallStep.TerminatesWith
       (SmallStepEquivalence.opt3ConfigFromStore wasm ptr len i j)
       (fun values store =>

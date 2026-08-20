@@ -45,16 +45,16 @@ def gcdFrameHeap
               (store32Heap
                 (store64Heap
                   (store64Heap
-                    (store64Heap ∅ 1048512 result)
-                    1048520 x)
-                  1048528 y)
-                1048540 nextX)
-              1048544 nextY)
-            1048548 shiftY)
-          1048552 shiftX)
-        1048556 shiftXY)
-      1048560 outerA)
-    1048568 outerB
+                    (store64Heap ∅ 0 1048512 result)
+                    0 1048520 x)
+                  0 1048528 y)
+                0 1048540 nextX)
+              0 1048544 nextY)
+            0 1048548 shiftY)
+          0 1048552 shiftX)
+        0 1048556 shiftXY)
+      0 1048560 outerA)
+    0 1048568 outerB
 
 def gcdFrameMem
     (mem : Mem)
@@ -73,21 +73,21 @@ theorem gcdFrameHeap_agrees
     (outerA outerB : UInt64) :
     heapAgreesWithMem
       (gcdFrameHeap result x y shiftXY shiftX shiftY nextY nextX outerA outerB)
-      (gcdFrameMem mem result x y shiftXY shiftX shiftY nextY nextX outerA outerB) := by
+      (fun id => if id = 0 then some
+        (gcdFrameMem mem result x y shiftXY shiftX shiftY nextY nextX outerA outerB)
+        else none) := by
   unfold gcdFrameHeap gcdFrameMem
-  apply store64_sound <;> try rfl
-  apply store64_sound <;> try rfl
-  apply store32_sound <;> try rfl
-  apply store32_sound <;> try rfl
-  apply store32_sound <;> try rfl
-  apply store32_sound <;> try rfl
-  apply store32_sound <;> try rfl
-  apply store64_sound <;> try rfl
-  apply store64_sound <;> try rfl
-  apply store64_sound <;> try rfl
-  intro address byte hget
-  rw [get?_empty] at hget
-  contradiction
+  apply store64_sound0 _ _ 1048568 outerB (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  apply store64_sound0 _ _ 1048560 outerA (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  apply store32_sound0 _ _ 1048556 shiftXY (by decide) (by decide) (by decide)
+  apply store32_sound0 _ _ 1048552 shiftX (by decide) (by decide) (by decide)
+  apply store32_sound0 _ _ 1048548 shiftY (by decide) (by decide) (by decide)
+  apply store32_sound0 _ _ 1048544 nextY (by decide) (by decide) (by decide)
+  apply store32_sound0 _ _ 1048540 nextX (by decide) (by decide) (by decide)
+  apply store64_sound0 _ _ 1048528 y (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  apply store64_sound0 _ _ 1048520 x (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  apply store64_sound0 _ _ 1048512 result (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  exact heapAgreesWithMem_empty _
 
 theorem gcdFrameHeap_inBounds
     (mem : Mem) (hpages : 16 ≤ mem.pages)
@@ -96,28 +96,35 @@ theorem gcdFrameHeap_inBounds
     (outerA outerB : UInt64) :
     heapAddressesInBounds
       (gcdFrameHeap result x y shiftXY shiftX shiftY nextY nextX outerA outerB)
-      (gcdFrameMem mem result x y shiftXY shiftX shiftY nextY nextX outerA outerB) := by
+      (fun id => if id = 0 then some
+        (gcdFrameMem mem result x y shiftXY shiftX shiftY nextY nextX outerA outerB)
+        else none) := by
+  have hcapacity : 1048576 ≤ mem.pages * 65536 := by
+    calc
+      1048576 = 16 * 65536 := by norm_num
+      _ ≤ mem.pages * 65536 := Nat.mul_le_mul_right 65536 hpages
   unfold gcdFrameHeap gcdFrameMem
-  apply store64_inBounds <;> try rfl
-  apply store64_inBounds <;> try rfl
-  apply store32_inBounds <;> try rfl
-  apply store32_inBounds <;> try rfl
-  apply store32_inBounds <;> try rfl
-  apply store32_inBounds <;> try rfl
-  apply store32_inBounds <;> try rfl
-  apply store64_inBounds <;> try rfl
-  apply store64_inBounds <;> try rfl
-  apply store64_inBounds <;> try rfl
-  · intro address byte hget
-    rw [get?_empty] at hget
-    contradiction
-  all_goals
-    simp only [Mem.write64_pages, Mem.write32_pages, UInt32.reduceToNat]
-    have hcapacity : 1048576 ≤ mem.pages * 65536 := by
-      calc
-        1048576 = 16 * 65536 := by norm_num
-        _ ≤ mem.pages * 65536 := Nat.mul_le_mul_right 65536 hpages
-    omega
+  apply store64_inBounds0 _ _ 1048568 outerB (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  · simp only [Mem.write64_pages, Mem.write32_pages, UInt32.reduceToNat]; omega
+  apply store64_inBounds0 _ _ 1048560 outerA (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  · simp only [Mem.write64_pages, Mem.write32_pages, UInt32.reduceToNat]; omega
+  apply store32_inBounds0 _ _ 1048556 shiftXY (by decide) (by decide) (by decide)
+  · simp only [Mem.write64_pages, Mem.write32_pages, UInt32.reduceToNat]; omega
+  apply store32_inBounds0 _ _ 1048552 shiftX (by decide) (by decide) (by decide)
+  · simp only [Mem.write64_pages, Mem.write32_pages, UInt32.reduceToNat]; omega
+  apply store32_inBounds0 _ _ 1048548 shiftY (by decide) (by decide) (by decide)
+  · simp only [Mem.write64_pages, Mem.write32_pages, UInt32.reduceToNat]; omega
+  apply store32_inBounds0 _ _ 1048544 nextY (by decide) (by decide) (by decide)
+  · simp only [Mem.write64_pages, Mem.write32_pages, UInt32.reduceToNat]; omega
+  apply store32_inBounds0 _ _ 1048540 nextX (by decide) (by decide) (by decide)
+  · simp only [Mem.write64_pages, UInt32.reduceToNat]; omega
+  apply store64_inBounds0 _ _ 1048528 y (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  · simp only [Mem.write64_pages, UInt32.reduceToNat]; omega
+  apply store64_inBounds0 _ _ 1048520 x (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  · simp only [Mem.write64_pages, UInt32.reduceToNat]; omega
+  apply store64_inBounds0 _ _ 1048512 result (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  · simp only [UInt32.reduceToNat]; omega
+  exact heapAddressesInBounds_empty _
 
 set_option linter.unusedSimpArgs false in
 theorem gcdFrameHeap_pointsTo
@@ -127,71 +134,71 @@ theorem gcdFrameHeap_pointsTo
     (outerA outerB : UInt64) :
     ([∗map] address ↦ byte ∈
         gcdFrameHeap result x y shiftXY shiftX shiftY nextY nextX outerA outerB,
-      pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+      pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
         address (DFrac.own 1) byte) ⊢
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 x ∗
-      pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048556 shiftXY ∗
-      pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗
-      pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 outerA ∗
-      pointsTo_u64 1048568 outerB := by
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 x ∗
+      pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048556 shiftXY ∗
+      pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗
+      pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 outerA ∗
+      pointsTo_u64 0 1048568 outerB := by
   unfold gcdFrameHeap
   iintro Hframe
-  ihave HsplitB := store64Heap_pointsTo _ 1048568 outerB
+  ihave HsplitB := store64Heap_pointsTo _ 0 1048568 outerB
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) $$ Hframe
   icases HsplitB with ⟨HouterB, Hframe⟩
-  ihave HsplitA := store64Heap_pointsTo _ 1048560 outerA
+  ihave HsplitA := store64Heap_pointsTo _ 0 1048560 outerA
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) $$ Hframe
   icases HsplitA with ⟨HouterA, Hframe⟩
-  ihave HsplitShiftXY := store32Heap_pointsTo _ 1048556 shiftXY
+  ihave HsplitShiftXY := store32Heap_pointsTo _ 0 1048556 shiftXY
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by decide) (by decide) (by decide) $$ Hframe
   icases HsplitShiftXY with ⟨HshiftXY, Hframe⟩
-  ihave HsplitShiftX := store32Heap_pointsTo _ 1048552 shiftX
+  ihave HsplitShiftX := store32Heap_pointsTo _ 0 1048552 shiftX
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by decide) (by decide) (by decide) $$ Hframe
   icases HsplitShiftX with ⟨HshiftX, Hframe⟩
-  ihave HsplitShiftY := store32Heap_pointsTo _ 1048548 shiftY
+  ihave HsplitShiftY := store32Heap_pointsTo _ 0 1048548 shiftY
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by decide) (by decide) (by decide) $$ Hframe
   icases HsplitShiftY with ⟨HshiftY, Hframe⟩
-  ihave HsplitNextY := store32Heap_pointsTo _ 1048544 nextY
+  ihave HsplitNextY := store32Heap_pointsTo _ 0 1048544 nextY
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by decide) (by decide) (by decide) $$ Hframe
   icases HsplitNextY with ⟨HnextY, Hframe⟩
-  ihave HsplitNextX := store32Heap_pointsTo _ 1048540 nextX
+  ihave HsplitNextX := store32Heap_pointsTo _ 0 1048540 nextX
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by decide) (by decide) (by decide) $$ Hframe
   icases HsplitNextX with ⟨HnextX, Hframe⟩
-  ihave HsplitY := store64Heap_pointsTo _ 1048528 y
+  ihave HsplitY := store64Heap_pointsTo _ 0 1048528 y
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) $$ Hframe
   icases HsplitY with ⟨Hy, Hframe⟩
-  ihave HsplitX := store64Heap_pointsTo _ 1048520 x
+  ihave HsplitX := store64Heap_pointsTo _ 0 1048520 x
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) $$ Hframe
   icases HsplitX with ⟨Hx, Hframe⟩
   ihave HsplitResult := store64Heap_pointsTo
-    (∅ : WasmHeapMap (Option UInt8)) 1048512 result
+    (∅ : WasmHeapMap (Option UInt8)) 0 1048512 result
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
     (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty]) (by simp [store64Heap, store32Heap, get?_insert_ne, get?_empty])
@@ -212,21 +219,21 @@ loaded operands and all unrelated resources are framed by `R`. -/
 theorem func1_spillPrefix_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldX oldY : UInt64)
     (hcontinue :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-        pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+        pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
           func1.drop 12, 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], calls⟩ :
@@ -249,7 +256,7 @@ theorem func1_spillPrefix_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HouterALater : ▷ pointsTo_u64 (1048560 + 0) a $$ [HouterA]
+  ihave HouterALater : ▷ pointsTo_u64 0 (1048560 + 0) a $$ [HouterA]
   · inext
     rw [show (1048560 : UInt32) + 0 = 1048560 by decide]
     iexact HouterA
@@ -258,7 +265,7 @@ theorem func1_spillPrefix_smallStep_wp
       (by decide) (by decide) (by decide) $$ HouterALater
   inext
   iintro HouterA
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) oldX $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) oldX $$ [Hx]
   · inext
     rw [show (1048512 : UInt32) + 8 = 1048520 by decide]
     iexact Hx
@@ -271,7 +278,7 @@ theorem func1_spillPrefix_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HouterBLater : ▷ pointsTo_u64 (1048568 + 0) b $$ [HouterB]
+  ihave HouterBLater : ▷ pointsTo_u64 0 (1048568 + 0) b $$ [HouterB]
   · inext
     rw [show (1048568 : UInt32) + 0 = 1048568 by decide]
     iexact HouterB
@@ -280,7 +287,7 @@ theorem func1_spillPrefix_smallStep_wp
       (by decide) (by decide) (by decide) $$ HouterBLater
   inext
   iintro HouterB
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) oldY $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) oldY $$ [Hy]
   · inext
     rw [show (1048512 : UInt32) + 16 = 1048528 by decide]
     iexact Hy
@@ -291,27 +298,27 @@ theorem func1_spillPrefix_smallStep_wp
   iintro Hy
   simp only [func1SpilledLocals, func1, List.drop] at hcontinue
   have hOuterAProp :
-      pointsTo_u64 ((1048560 : UInt32) + 0) a = pointsTo_u64 1048560 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048560 : UInt32) + 0) a = pointsTo_u64 0 1048560 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hOuterBProp :
-      pointsTo_u64 ((1048568 : UInt32) + 0) b = pointsTo_u64 1048568 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
+      pointsTo_u64 0 ((1048568 : UInt32) + 0) b = pointsTo_u64 0 1048568 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) a = pointsTo_u64 1048520 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) a = pointsTo_u64 0 1048520 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16) b = pointsTo_u64 1048528 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
-  ihave HouterAExact : pointsTo_u64 1048560 a $$ [HouterA]
+      pointsTo_u64 0 ((1048512 : UInt32) + 16) b = pointsTo_u64 0 1048528 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
+  ihave HouterAExact : pointsTo_u64 0 1048560 a $$ [HouterA]
   · rw [← hOuterAProp]
     iexact HouterA
-  ihave HouterBExact : pointsTo_u64 1048568 b $$ [HouterB]
+  ihave HouterBExact : pointsTo_u64 0 1048568 b $$ [HouterB]
   · rw [← hOuterBProp]
     iexact HouterB
-  ihave HxExact : pointsTo_u64 1048520 a $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 a $$ [Hx]
   · rw [← hXProp]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 b $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 b $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   iapply hcontinue
@@ -323,27 +330,27 @@ instruction rules, without exposing individual byte ownership to clients. -/
 theorem func1_spillPrefix_frame_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (a b : UInt64)
     (hcontinue :
-      pointsTo_u64 1048512 result ∗
-        pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-        pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-        pointsTo_u32 1048540 nextX ∗
-        globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-        pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ⊢
+      pointsTo_u64 0 1048512 result ∗
+        pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+        pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+        pointsTo_u32 0 1048540 nextX ∗
+        globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+        pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
           func1.drop 12, 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    globalPointsTo 0 (.i32 1048560) ∗
+    globalPointsToAt 0 0 (.i32 1048560) ∗
       ([∗map] address ↦ byte ∈
         gcdFrameHeap result oldX oldY shiftXY shiftX shiftY nextY nextX a b,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) byte) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
@@ -356,10 +363,10 @@ theorem func1_spillPrefix_frame_smallStep_wp
     ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
       HouterA, HouterB⟩
   iapply func1_spillPrefix_smallStep_wp
-    (R := iprop(pointsTo_u64 1048512 result ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX))
+    (R := iprop(pointsTo_u64 0 1048512 result ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX))
     (calls := calls) (a := a) (b := b) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -375,23 +382,23 @@ written through the callee frame, read back, and returned as an Iris value. -/
 theorem func1_leftZero_core_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (result b : UInt64)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-        pointsTo_u64 1048512 b ∗
-        pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+        pointsTo_u64 0 1048512 b ∗
+        pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, [.i64 b]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         func1.drop 12, 1, [], [], calls⟩ :
@@ -407,12 +414,12 @@ theorem func1_leftZero_core_smallStep_wp_to_return
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) 0 $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) 0 $$ [Hx]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) 0 =
-          pointsTo_u64 1048520 0 :=
-      congrArg (fun address => pointsTo_u64 address 0) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) 0 =
+          pointsTo_u64 0 1048520 0 :=
+      congrArg (fun address => pointsTo_u64 0 address 0) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 0
@@ -436,7 +443,7 @@ theorem func1_leftZero_core_smallStep_wp_to_return
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) 0 $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) 0 $$ [Hx]
   · inext
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 0
@@ -446,12 +453,12 @@ theorem func1_leftZero_core_smallStep_wp_to_return
   iintro Hx
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) b =
-          pointsTo_u64 1048528 b :=
-      congrArg (fun address => pointsTo_u64 address b) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) b =
+          pointsTo_u64 0 1048528 b :=
+      congrArg (fun address => pointsTo_u64 0 address b) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 b
@@ -465,12 +472,12 @@ theorem func1_leftZero_core_smallStep_wp_to_return
     apply UInt64.toNat.inj
     rw [UInt64.toNat_or]
     simp]
-  ihave HresultLater : ▷ pointsTo_u64 (1048512 + 0) result $$ [Hresult]
+  ihave HresultLater : ▷ pointsTo_u64 0 (1048512 + 0) result $$ [Hresult]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 0) result =
-          pointsTo_u64 1048512 result :=
-      congrArg (fun address => pointsTo_u64 address result) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 0) result =
+          pointsTo_u64 0 1048512 result :=
+      congrArg (fun address => pointsTo_u64 0 address result) (by decide)
     rw [h]
     iexact Hresult
   iapply Wasm.SmallStep.wp_store64 result
@@ -483,7 +490,7 @@ theorem func1_leftZero_core_smallStep_wp_to_return
   simp only [List.take_nil, List.nil_append]
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HresultLater : ▷ pointsTo_u64 (1048512 + 0) b $$ [Hresult]
+  ihave HresultLater : ▷ pointsTo_u64 0 (1048512 + 0) b $$ [Hresult]
   · inext
     iexact Hresult
   iapply Wasm.SmallStep.wp_load64 b
@@ -492,21 +499,21 @@ theorem func1_leftZero_core_smallStep_wp_to_return
   inext
   iintro Hresult
   have hResultProp :
-      pointsTo_u64 ((1048512 : UInt32) + 0) b = pointsTo_u64 1048512 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 0) b = pointsTo_u64 0 1048512 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) 0 = pointsTo_u64 1048520 0 :=
-    congrArg (fun address => pointsTo_u64 address 0) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) 0 = pointsTo_u64 0 1048520 0 :=
+    congrArg (fun address => pointsTo_u64 0 address 0) (by decide)
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16) b = pointsTo_u64 1048528 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
-  ihave HresultExact : pointsTo_u64 1048512 b $$ [Hresult]
+      pointsTo_u64 0 ((1048512 : UInt32) + 16) b = pointsTo_u64 0 1048528 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
+  ihave HresultExact : pointsTo_u64 0 1048512 b $$ [Hresult]
   · rw [← hResultProp]
     iexact Hresult
-  ihave HxExact : pointsTo_u64 1048520 0 $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 0 $$ [Hx]
   · rw [← hXProp]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 b $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 b $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   simp only [func1SpilledLocals] at hreturn
@@ -517,21 +524,21 @@ theorem func1_leftZero_core_smallStep_wp_to_return
 theorem func1_leftZero_core_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result b : UInt64) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         func1.drop 12, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
       {{ rs,
-        ⌜rs = [.i64 b]⌝ ∗ R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-          pointsTo_u64 1048512 b ∗
-          pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b }} := by
+        ⌜rs = [.i64 b]⌝ ∗ R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+          pointsTo_u64 0 1048512 b ∗
+          pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b }} := by
   iintro Hresources
   iapply func1_leftZero_core_smallStep_wp_to_return R [] result b
   · iintro Hresources
@@ -550,30 +557,30 @@ until the explicit return transition. -/
 theorem func1_leftZero_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY b : UInt64)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-        pointsTo_u64 1048512 b ∗
-        pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+        pointsTo_u64 0 1048512 b ∗
+        pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, [.i64 b]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], calls⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }} := by
   iintro ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy⟩
   iapply func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result))
     (calls := calls) (a := 0) (b := b) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -590,24 +597,24 @@ top-level return transition. -/
 theorem func1_leftZero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result oldX oldY b : UInt64) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
       {{ rs,
-        ⌜rs = [.i64 b]⌝ ∗ R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-          pointsTo_u64 1048512 b ∗
-          pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b }} := by
+        ⌜rs = [.i64 b]⌝ ∗ R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+          pointsTo_u64 0 1048512 b ∗
+          pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b }} := by
   iintro ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy⟩
   iapply func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result))
     (calls := []) (a := 0) (b := b) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -622,23 +629,23 @@ left operand is preserved as the result. -/
 theorem func1_rightZero_core_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (result a : UInt64) (ha : a ≠ 0)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-        pointsTo_u64 1048512 a ∗
-        pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+        pointsTo_u64 0 1048512 a ∗
+        pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, [.i64 a]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         func1.drop 12, 1, [], [], calls⟩ :
@@ -654,12 +661,12 @@ theorem func1_rightZero_core_smallStep_wp_to_return
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) a =
-          pointsTo_u64 1048520 a :=
-      congrArg (fun address => pointsTo_u64 address a) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) a =
+          pointsTo_u64 0 1048520 a :=
+      congrArg (fun address => pointsTo_u64 0 address a) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 a
@@ -680,12 +687,12 @@ theorem func1_rightZero_core_smallStep_wp_to_return
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) 0 $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) 0 $$ [Hy]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) 0 =
-          pointsTo_u64 1048528 0 :=
-      congrArg (fun address => pointsTo_u64 address 0) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) 0 =
+          pointsTo_u64 0 1048528 0 :=
+      congrArg (fun address => pointsTo_u64 0 address 0) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 0
@@ -713,7 +720,7 @@ theorem func1_rightZero_core_smallStep_wp_to_return
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · inext
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 a
@@ -723,7 +730,7 @@ theorem func1_rightZero_core_smallStep_wp_to_return
   iintro Hx
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) 0 $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) 0 $$ [Hy]
   · inext
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 0
@@ -737,12 +744,12 @@ theorem func1_rightZero_core_smallStep_wp_to_return
     apply UInt64.toNat.inj
     rw [UInt64.toNat_or]
     simp]
-  ihave HresultLater : ▷ pointsTo_u64 (1048512 + 0) result $$ [Hresult]
+  ihave HresultLater : ▷ pointsTo_u64 0 (1048512 + 0) result $$ [Hresult]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 0) result =
-          pointsTo_u64 1048512 result :=
-      congrArg (fun address => pointsTo_u64 address result) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 0) result =
+          pointsTo_u64 0 1048512 result :=
+      congrArg (fun address => pointsTo_u64 0 address result) (by decide)
     rw [h]
     iexact Hresult
   iapply Wasm.SmallStep.wp_store64 result
@@ -755,7 +762,7 @@ theorem func1_rightZero_core_smallStep_wp_to_return
   simp only [List.take_nil, List.nil_append]
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HresultLater : ▷ pointsTo_u64 (1048512 + 0) a $$ [Hresult]
+  ihave HresultLater : ▷ pointsTo_u64 0 (1048512 + 0) a $$ [Hresult]
   · inext
     iexact Hresult
   iapply Wasm.SmallStep.wp_load64 a
@@ -764,21 +771,21 @@ theorem func1_rightZero_core_smallStep_wp_to_return
   inext
   iintro Hresult
   have hResultProp :
-      pointsTo_u64 ((1048512 : UInt32) + 0) a = pointsTo_u64 1048512 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 0) a = pointsTo_u64 0 1048512 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) a = pointsTo_u64 1048520 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) a = pointsTo_u64 0 1048520 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16) 0 = pointsTo_u64 1048528 0 :=
-    congrArg (fun address => pointsTo_u64 address 0) (by decide)
-  ihave HresultExact : pointsTo_u64 1048512 a $$ [Hresult]
+      pointsTo_u64 0 ((1048512 : UInt32) + 16) 0 = pointsTo_u64 0 1048528 0 :=
+    congrArg (fun address => pointsTo_u64 0 address 0) (by decide)
+  ihave HresultExact : pointsTo_u64 0 1048512 a $$ [Hresult]
   · rw [← hResultProp]
     iexact Hresult
-  ihave HxExact : pointsTo_u64 1048520 a $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 a $$ [Hx]
   · rw [← hXProp]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 0 $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 0 $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   simp only [func1SpilledLocals] at hreturn
@@ -789,21 +796,21 @@ theorem func1_rightZero_core_smallStep_wp_to_return
 theorem func1_rightZero_core_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result a : UInt64) (ha : a ≠ 0) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         func1.drop 12, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
       {{ rs,
-        ⌜rs = [.i64 a]⌝ ∗ R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-          pointsTo_u64 1048512 a ∗
-          pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 }} := by
+        ⌜rs = [.i64 a]⌝ ∗ R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+          pointsTo_u64 0 1048512 a ∗
+          pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 }} := by
   iintro Hresources
   iapply func1_rightZero_core_smallStep_wp_to_return R [] result a ha
   · iintro Hresources
@@ -822,30 +829,30 @@ until the explicit return transition. -/
 theorem func1_rightZero_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY a : UInt64) (ha : a ≠ 0)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-        pointsTo_u64 1048512 a ∗
-        pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+        pointsTo_u64 0 1048512 a ∗
+        pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, [.i64 a]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], calls⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }} := by
   iintro ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy⟩
   iapply func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result))
     (calls := calls) (a := a) (b := 0) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -861,24 +868,24 @@ operand, including the memory spill prologue. -/
 theorem func1_rightZero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result oldX oldY a : UInt64) (ha : a ≠ 0) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
       {{ rs,
-        ⌜rs = [.i64 a]⌝ ∗ R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-          pointsTo_u64 1048512 a ∗
-          pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 }} := by
+        ⌜rs = [.i64 a]⌝ ∗ R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+          pointsTo_u64 0 1048512 a ∗
+          pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 }} := by
   iintro ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy⟩
   iapply func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result))
     (calls := []) (a := a) (b := 0) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -893,22 +900,22 @@ result rather than the compiler's two control-flow branches. -/
 theorem func1_zero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result oldX oldY a b : UInt64) (hz : a = 0 ∨ b = 0) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
       {{ rs,
         ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-          R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-          pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-          pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b }} := by
+          R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+          pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+          pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b }} := by
   rcases hz with ha | hb
   · subst a
     simpa using func1_leftZero_smallStep_wp R result oldX oldY b
@@ -926,10 +933,10 @@ theorem func1_zero_frame_smallStep_wp
     (result oldX oldY : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (a b : UInt64) (hz : a = 0 ∨ b = 0) :
-    globalPointsTo 0 (.i32 1048560) ∗
+    globalPointsToAt 0 0 (.i32 1048560) ∗
       ([∗map] address ↦ byte ∈
         gcdFrameHeap result oldX oldY shiftXY shiftX shiftY nextY nextX a b,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) byte) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
@@ -937,13 +944,13 @@ theorem func1_zero_frame_smallStep_wp
         Wasm.SmallStep.Expr Unit) @ s; E
       {{ rs,
         ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-          (pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-            pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-            pointsTo_u32 1048540 nextX) ∗
-          globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-          pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-          pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b }} := by
+          (pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+            pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+            pointsTo_u32 0 1048540 nextX) ∗
+          globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+          pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+          pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b }} := by
   iintro ⟨Hglobal, Hframe⟩
   ihave Hslots := gcdFrameHeap_pointsTo
     result oldX oldY shiftXY shiftX shiftY nextY nextX a b $$ Hframe
@@ -951,14 +958,14 @@ theorem func1_zero_frame_smallStep_wp
     ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
       HouterA, HouterB⟩
   iapply func1_zero_smallStep_wp
-    (R := iprop(pointsTo_u32 1048556 shiftXY ∗
-      pointsTo_u32 1048552 shiftX ∗ pointsTo_u32 1048548 shiftY ∗
-      pointsTo_u32 1048544 nextY ∗ pointsTo_u32 1048540 nextX))
+    (R := iprop(pointsTo_u32 0 1048556 shiftXY ∗
+      pointsTo_u32 0 1048552 shiftX ∗ pointsTo_u32 0 1048548 shiftY ∗
+      pointsTo_u32 0 1048544 nextY ∗ pointsTo_u32 0 1048540 nextX))
     result oldX oldY a b hz
   iframe
 
 def func1GlobalHeap : WasmGlobalMap Value :=
-  insert ∅ 0 (.i32 1048560)
+  insert ∅ ⟨0, 0⟩ (.i32 1048560)
 
 theorem func1GlobalHeap_agrees :
     globalHeapAgrees func1GlobalHeap
@@ -971,16 +978,18 @@ theorem func1GlobalHeap_agrees :
     simp only [get?_insert_eq rfl] at hget
     obtain rfl := Option.some.inj hget
     rfl
-  · rw [get?_insert_ne (Ne.symm hindex), get?_empty] at hget
+  · rw [get?_insert_ne (show (⟨0, 0⟩ : GlobalKey) ≠ ⟨0, index⟩ from fun h => hindex (congrArg GlobalKey.index h).symm), get?_empty] at hget
     contradiction
 
 theorem func1GlobalHeap_pointsTo [WasmGlobalGS Unit] :
     ([∗map] index ↦ value ∈ func1GlobalHeap,
       globalPointsTo index value) ⊢
-      globalPointsTo 0 (.i32 1048560) := by
+      globalPointsToAt 0 0 (.i32 1048560) := by
   unfold func1GlobalHeap
-  rw [(BI.BigSepM.bigSepM_insert (get?_empty 0)).to_eq,
+  rw [(BI.BigSepM.bigSepM_insert (get?_empty (⟨0, 0⟩ : GlobalKey))).to_eq,
     BI.BigSepM.bigSepM_empty.to_eq, BI.sep_emp.to_eq]
+  simp only [globalPointsToAt_eq]
+  rfl
 
 def func1ZeroConfig
     (result oldX oldY : UInt64)
@@ -991,7 +1000,7 @@ def func1ZeroConfig
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := {} }
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm :=
           { initial with
             mem := gcdFrameMem initial.mem result oldX oldY
@@ -1020,20 +1029,21 @@ theorem func1_zero_smallStep_partiallyMeets
   · apply gcdFrameHeap_inBounds
     rfl
   · exact func1GlobalHeap_agrees
+  · simp only [func1ZeroConfig]; decide
   · intro gs
     iintro ⟨Hframe, Hglobals, Hruntime⟩
     ihave Hglobal := func1GlobalHeap_pointsTo $$ Hglobals
     have hpost : ∀ rs : List Value,
         (iprop(
           ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-            (pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-              pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-              pointsTo_u32 1048540 nextX) ∗
-            globalPointsTo 0 (.i32 1048560) ∗
-            pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-            pointsTo_u64 1048512
+            (pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+              pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+              pointsTo_u32 0 1048540 nextX) ∗
+            globalPointsToAt 0 0 (.i32 1048560) ∗
+            pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+            pointsTo_u64 0 1048512
               (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-            pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b)) ⊢
+            pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b)) ⊢
           (iprop(⌜rs =
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
       intro rs
@@ -1154,20 +1164,20 @@ store/reload it through scratch offset 44, and install it in local 3. -/
 theorem func1_sharedShift_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (oldShift : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-        pointsTo_u32 1048556 (sharedShiftWord a b) ⊢
+      R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+        pointsTo_u32 0 1048556 (sharedShiftWord a b) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SharedShiftLocals a b, []⟩,
           meatLoopProg.drop 12, 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-      pointsTo_u32 1048556 oldShift ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+      pointsTo_u32 0 1048556 oldShift ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         meatLoopProg, 1, [], controls, calls⟩ :
@@ -1178,12 +1188,12 @@ theorem func1_sharedShift_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) a =
-          pointsTo_u64 1048520 a :=
-      congrArg (fun address => pointsTo_u64 address a) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) a =
+          pointsTo_u64 0 1048520 a :=
+      congrArg (fun address => pointsTo_u64 0 address a) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 a
@@ -1193,12 +1203,12 @@ theorem func1_sharedShift_smallStep_wp
   iintro Hx
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) b =
-          pointsTo_u64 1048528 b :=
-      congrArg (fun address => pointsTo_u64 address b) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) b =
+          pointsTo_u64 0 1048528 b :=
+      congrArg (fun address => pointsTo_u64 0 address b) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 b
@@ -1213,12 +1223,12 @@ theorem func1_sharedShift_smallStep_wp
   iapply Wasm.SmallStep.wp_wrapI64
   inext
   ihave HshiftLater :
-      ▷ pointsTo_u32 (1048512 + 44) oldShift $$ [Hshift]
+      ▷ pointsTo_u32 0 (1048512 + 44) oldShift $$ [Hshift]
   · inext
     have h :
-        pointsTo_u32 ((1048512 : UInt32) + 44) oldShift =
-          pointsTo_u32 1048556 oldShift :=
-      congrArg (fun address => pointsTo_u32 address oldShift) (by decide)
+        pointsTo_u32 0 ((1048512 : UInt32) + 44) oldShift =
+          pointsTo_u32 0 1048556 oldShift :=
+      congrArg (fun address => pointsTo_u32 0 address oldShift) (by decide)
     rw [h]
     iexact Hshift
   iapply Wasm.SmallStep.wp_store32 oldShift
@@ -1228,7 +1238,7 @@ theorem func1_sharedShift_smallStep_wp
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
   ihave HshiftLater :
-      ▷ pointsTo_u32 (1048512 + 44) (sharedShiftWord a b) $$ [Hshift]
+      ▷ pointsTo_u32 0 (1048512 + 44) (sharedShiftWord a b) $$ [Hshift]
   · inext
     rw [sharedShiftWord]
     iexact Hshift
@@ -1243,23 +1253,23 @@ theorem func1_sharedShift_smallStep_wp
   simp only [func1SharedShiftLocals, meatLoopProg, List.drop]
     at hcontinue
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) a = pointsTo_u64 1048520 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) a = pointsTo_u64 0 1048520 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16) b = pointsTo_u64 1048528 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 16) b = pointsTo_u64 0 1048528 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
   have hShiftProp :
-      pointsTo_u32 ((1048512 : UInt32) + 44) (sharedShiftWord a b) =
-        pointsTo_u32 1048556 (sharedShiftWord a b) :=
-    congrArg (fun address => pointsTo_u32 address (sharedShiftWord a b)) (by decide)
-  ihave HxExact : pointsTo_u64 1048520 a $$ [Hx]
+      pointsTo_u32 0 ((1048512 : UInt32) + 44) (sharedShiftWord a b) =
+        pointsTo_u32 0 1048556 (sharedShiftWord a b) :=
+    congrArg (fun address => pointsTo_u32 0 address (sharedShiftWord a b)) (by decide)
+  ihave HxExact : pointsTo_u64 0 1048520 a $$ [Hx]
   · rw [← hXProp]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 b $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 b $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   ihave HshiftExact :
-      pointsTo_u32 1048556 (sharedShiftWord a b) $$ [Hshift]
+      pointsTo_u32 0 1048556 (sharedShiftWord a b) $$ [Hshift]
   · rw [← hShiftProp]
     iexact Hshift
   iapply hcontinue
@@ -1280,19 +1290,19 @@ def func1XShiftLocals (a b : UInt64) : List Value :=
 theorem func1_normalizeX_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (ha : a ≠ 0) (oldShiftX : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 (oddPart64 a) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ⊢
+      R ∗ pointsTo_u64 0 1048520 (oddPart64 a) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1XShiftLocals a b, []⟩,
           meatLoopProg.drop 30, 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u32 1048552 oldShiftX ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u32 0 1048552 oldShiftX ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SharedShiftLocals a b, []⟩,
         meatLoopProg.drop 12, 1, [], controls, calls⟩ :
@@ -1303,12 +1313,12 @@ theorem func1_normalizeX_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) a =
-          pointsTo_u64 1048520 a :=
-      congrArg (fun address => pointsTo_u64 address a) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) a =
+          pointsTo_u64 0 1048520 a :=
+      congrArg (fun address => pointsTo_u64 0 address a) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 a
@@ -1321,12 +1331,12 @@ theorem func1_normalizeX_smallStep_wp
   iapply Wasm.SmallStep.wp_wrapI64
   inext
   ihave HshiftXLater :
-      ▷ pointsTo_u32 (1048512 + 40) oldShiftX $$ [HshiftX]
+      ▷ pointsTo_u32 0 (1048512 + 40) oldShiftX $$ [HshiftX]
   · inext
     have h :
-        pointsTo_u32 ((1048512 : UInt32) + 40) oldShiftX =
-          pointsTo_u32 1048552 oldShiftX :=
-      congrArg (fun address => pointsTo_u32 address oldShiftX) (by decide)
+        pointsTo_u32 0 ((1048512 : UInt32) + 40) oldShiftX =
+          pointsTo_u32 0 1048552 oldShiftX :=
+      congrArg (fun address => pointsTo_u32 0 address oldShiftX) (by decide)
     rw [h]
     iexact HshiftX
   iapply Wasm.SmallStep.wp_store32 oldShiftX
@@ -1336,7 +1346,7 @@ theorem func1_normalizeX_smallStep_wp
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
   ihave HshiftXLater :
-      ▷ pointsTo_u32 (1048512 + 40) (operandShiftWord a) $$ [HshiftX]
+      ▷ pointsTo_u32 0 (1048512 + 40) (operandShiftWord a) $$ [HshiftX]
   · inext
     rw [operandShiftWord]
     iexact HshiftX
@@ -1352,7 +1362,7 @@ theorem func1_normalizeX_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · inext
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 a
@@ -1373,7 +1383,7 @@ theorem func1_normalizeX_smallStep_wp
   rw [UInt32.and_comm (operandShiftWord a) 63]
   unfold operandShiftWord
   rw [shift_pipeline a ha]
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · inext
     iexact Hx
   iapply Wasm.SmallStep.wp_store64 a
@@ -1384,30 +1394,30 @@ theorem func1_normalizeX_smallStep_wp
   simp only [func1XShiftLocals, operandShiftWord, oddPart64,
     meatLoopProg, List.drop] at hcontinue
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8)
           (a >>> (UInt64.ofNat (ctz64 64 a) % 64)) =
-        pointsTo_u64 1048520
+        pointsTo_u64 0 1048520
           (a >>> (UInt64.ofNat (ctz64 64 a) % 64)) :=
     congrArg
       (fun address =>
-        pointsTo_u64 address (a >>> (UInt64.ofNat (ctz64 64 a) % 64)))
+        pointsTo_u64 0 address (a >>> (UInt64.ofNat (ctz64 64 a) % 64)))
       (by decide)
   have hShiftProp :
-      pointsTo_u32 ((1048512 : UInt32) + 40)
+      pointsTo_u32 0 ((1048512 : UInt32) + 40)
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 a)).toNat % 2 ^ 32)) =
-        pointsTo_u32 1048552
+        pointsTo_u32 0 1048552
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 a)).toNat % 2 ^ 32)) :=
     congrArg
-      (fun address => pointsTo_u32 address
+      (fun address => pointsTo_u32 0 address
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 a)).toNat % 2 ^ 32)))
       (by decide)
   ihave HxExact :
-      pointsTo_u64 1048520
+      pointsTo_u64 0 1048520
         (a >>> (UInt64.ofNat (ctz64 64 a) % 64)) $$ [Hx]
   · rw [← hXProp]
     iexact Hx
   ihave HshiftExact :
-      pointsTo_u32 1048552
+      pointsTo_u32 0 1048552
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 a)).toNat % 2 ^ 32)) $$ [HshiftX]
   · rw [← hShiftProp]
     iexact HshiftX
@@ -1427,19 +1437,19 @@ off with both frame operands reduced to their odd parts. -/
 theorem func1_normalizeY_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (hb : b ≠ 0) (oldShiftY : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048528 (oddPart64 b) ∗
-        pointsTo_u32 1048548 (operandShiftWord b) ⊢
+      R ∗ pointsTo_u64 0 1048528 (oddPart64 b) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1NormalizedLocals a b, []⟩,
           meatLoopProg.drop 48, 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048528 b ∗ pointsTo_u32 1048548 oldShiftY ⊢
+    R ∗ pointsTo_u64 0 1048528 b ∗ pointsTo_u32 0 1048548 oldShiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1XShiftLocals a b, []⟩,
         meatLoopProg.drop 30, 1, [], controls, calls⟩ :
@@ -1450,12 +1460,12 @@ theorem func1_normalizeY_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) b =
-          pointsTo_u64 1048528 b :=
-      congrArg (fun address => pointsTo_u64 address b) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) b =
+          pointsTo_u64 0 1048528 b :=
+      congrArg (fun address => pointsTo_u64 0 address b) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 b
@@ -1468,12 +1478,12 @@ theorem func1_normalizeY_smallStep_wp
   iapply Wasm.SmallStep.wp_wrapI64
   inext
   ihave HshiftYLater :
-      ▷ pointsTo_u32 (1048512 + 36) oldShiftY $$ [HshiftY]
+      ▷ pointsTo_u32 0 (1048512 + 36) oldShiftY $$ [HshiftY]
   · inext
     have h :
-        pointsTo_u32 ((1048512 : UInt32) + 36) oldShiftY =
-          pointsTo_u32 1048548 oldShiftY :=
-      congrArg (fun address => pointsTo_u32 address oldShiftY) (by decide)
+        pointsTo_u32 0 ((1048512 : UInt32) + 36) oldShiftY =
+          pointsTo_u32 0 1048548 oldShiftY :=
+      congrArg (fun address => pointsTo_u32 0 address oldShiftY) (by decide)
     rw [h]
     iexact HshiftY
   iapply Wasm.SmallStep.wp_store32 oldShiftY
@@ -1483,7 +1493,7 @@ theorem func1_normalizeY_smallStep_wp
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
   ihave HshiftYLater :
-      ▷ pointsTo_u32 (1048512 + 36) (operandShiftWord b) $$ [HshiftY]
+      ▷ pointsTo_u32 0 (1048512 + 36) (operandShiftWord b) $$ [HshiftY]
   · inext
     rw [operandShiftWord]
     iexact HshiftY
@@ -1499,7 +1509,7 @@ theorem func1_normalizeY_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · inext
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 b
@@ -1520,7 +1530,7 @@ theorem func1_normalizeY_smallStep_wp
   rw [UInt32.and_comm (operandShiftWord b) 63]
   unfold operandShiftWord
   rw [shift_pipeline b hb]
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · inext
     iexact Hy
   iapply Wasm.SmallStep.wp_store64 b
@@ -1532,30 +1542,30 @@ theorem func1_normalizeY_smallStep_wp
     operandShiftWord, oddPart64,
     meatLoopProg, List.drop] at hcontinue
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16)
+      pointsTo_u64 0 ((1048512 : UInt32) + 16)
           (b >>> (UInt64.ofNat (ctz64 64 b) % 64)) =
-        pointsTo_u64 1048528
+        pointsTo_u64 0 1048528
           (b >>> (UInt64.ofNat (ctz64 64 b) % 64)) :=
     congrArg
       (fun address =>
-        pointsTo_u64 address (b >>> (UInt64.ofNat (ctz64 64 b) % 64)))
+        pointsTo_u64 0 address (b >>> (UInt64.ofNat (ctz64 64 b) % 64)))
       (by decide)
   have hShiftProp :
-      pointsTo_u32 ((1048512 : UInt32) + 36)
+      pointsTo_u32 0 ((1048512 : UInt32) + 36)
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 b)).toNat % 2 ^ 32)) =
-        pointsTo_u32 1048548
+        pointsTo_u32 0 1048548
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 b)).toNat % 2 ^ 32)) :=
     congrArg
-      (fun address => pointsTo_u32 address
+      (fun address => pointsTo_u32 0 address
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 b)).toNat % 2 ^ 32)))
       (by decide)
   ihave HyExact :
-      pointsTo_u64 1048528
+      pointsTo_u64 0 1048528
         (b >>> (UInt64.ofNat (ctz64 64 b) % 64)) $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   ihave HshiftExact :
-      pointsTo_u32 1048548
+      pointsTo_u32 0 1048548
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 b)).toNat % 2 ^ 32)) $$ [HshiftY]
   · rw [← hShiftProp]
     iexact HshiftY
@@ -1567,49 +1577,49 @@ scratch-memory slices. The next instruction is the generated Stein loop. -/
 theorem func1_normalization_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (oldShared oldShiftX oldShiftY : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 (oddPart64 a) ∗
-        pointsTo_u64 1048528 (oddPart64 b) ∗
-        pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b) ⊢
+      R ∗ pointsTo_u64 0 1048520 (oddPart64 a) ∗
+        pointsTo_u64 0 1048528 (oddPart64 b) ∗
+        pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1NormalizedLocals a b, []⟩,
           meatLoopProg.drop 48, 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-      pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldShiftX ∗ pointsTo_u32 1048548 oldShiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+      pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldShiftX ∗ pointsTo_u32 0 1048548 oldShiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         meatLoopProg, 1, [], controls, calls⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }} := by
   iintro ⟨HR, Hx, Hy, Hshared, HshiftX, HshiftY⟩
   iapply func1_sharedShift_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u32 1048552 oldShiftX ∗
-      pointsTo_u32 1048548 oldShiftY))
+    (R := iprop(R ∗ pointsTo_u32 0 1048552 oldShiftX ∗
+      pointsTo_u32 0 1048548 oldShiftY))
     controls calls a b oldShared
   · iintro Hresources
     icases Hresources with ⟨HRshifts, Hx', Hy', Hshared'⟩
     icases HRshifts with ⟨HR', HshiftX', HshiftY'⟩
     iapply func1_normalizeX_smallStep_wp
-      (R := iprop(R ∗ pointsTo_u64 1048528 b ∗
-        pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048548 oldShiftY))
+      (R := iprop(R ∗ pointsTo_u64 0 1048528 b ∗
+        pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048548 oldShiftY))
       controls calls a b ha oldShiftX
     · iintro Hresources
       icases Hresources with ⟨HRrest, HxOdd, HshiftXNew⟩
       icases HRrest with ⟨HR'', Hy'', Hshared'', HshiftY''⟩
       iapply func1_normalizeY_smallStep_wp
-        (R := iprop(R ∗ pointsTo_u64 1048520 (oddPart64 a) ∗
-          pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-          pointsTo_u32 1048552 (operandShiftWord a)))
+        (R := iprop(R ∗ pointsTo_u64 0 1048520 (oddPart64 a) ∗
+          pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+          pointsTo_u32 0 1048552 (operandShiftWord a)))
         controls calls a b hb oldShiftY
       · iintro Hresources
         icases Hresources with ⟨HRfinal, HyOdd, HshiftYNew⟩
@@ -1656,21 +1666,21 @@ control-frame theorem. -/
 theorem func1_equalRecombine_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b g oldResult : UInt64)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 g ∗
-        pointsTo_u64 1048512 (recombinedWord a b g) ⊢
+      R ∗ pointsTo_u64 0 1048520 g ∗
+        pointsTo_u64 0 1048512 (recombinedWord a b g) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
           [.br 2], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048512 oldResult ⊢
+    R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048512 oldResult ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -1682,12 +1692,12 @@ theorem func1_equalRecombine_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) g $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) g $$ [Hx]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) g =
-          pointsTo_u64 1048520 g :=
-      congrArg (fun address => pointsTo_u64 address g) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) g =
+          pointsTo_u64 0 1048520 g :=
+      congrArg (fun address => pointsTo_u64 0 address g) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 g
@@ -1706,12 +1716,12 @@ theorem func1_equalRecombine_smallStep_wp
   iapply Wasm.SmallStep.wp_shlI64
   inext
   ihave HresultLater :
-      ▷ pointsTo_u64 (1048512 + 0) oldResult $$ [Hresult]
+      ▷ pointsTo_u64 0 (1048512 + 0) oldResult $$ [Hresult]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 0) oldResult =
-          pointsTo_u64 1048512 oldResult :=
-      congrArg (fun address => pointsTo_u64 address oldResult) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 0) oldResult =
+          pointsTo_u64 0 1048512 oldResult :=
+      congrArg (fun address => pointsTo_u64 0 address oldResult) (by decide)
     rw [h]
     iexact Hresult
   iapply Wasm.SmallStep.wp_store64 oldResult
@@ -1721,22 +1731,22 @@ theorem func1_equalRecombine_smallStep_wp
   iintro Hresult
   simp only [func1LoopHeaderLocals, recombinedWord] at hcontinue
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) g = pointsTo_u64 1048520 g :=
-    congrArg (fun address => pointsTo_u64 address g) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) g = pointsTo_u64 0 1048520 g :=
+    congrArg (fun address => pointsTo_u64 0 address g) (by decide)
   have hResultProp :
-      pointsTo_u64 ((1048512 : UInt32) + 0)
+      pointsTo_u64 0 ((1048512 : UInt32) + 0)
           (g <<< (UInt64.ofNat ((sharedShiftWord a b &&& 63).toNat) % 64)) =
-        pointsTo_u64 1048512
+        pointsTo_u64 0 1048512
           (g <<< (UInt64.ofNat ((sharedShiftWord a b &&& 63).toNat) % 64)) :=
     congrArg
-      (fun address => pointsTo_u64 address
+      (fun address => pointsTo_u64 0 address
         (g <<< (UInt64.ofNat ((sharedShiftWord a b &&& 63).toNat) % 64)))
       (by decide)
-  ihave HxExact : pointsTo_u64 1048520 g $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 g $$ [Hx]
   · rw [← hXProp]
     iexact Hx
   ihave HresultExact :
-      pointsTo_u64 1048512
+      pointsTo_u64 0 1048512
         (g <<< (UInt64.ofNat ((sharedShiftWord a b &&& 63).toNat) % 64)) $$
         [Hresult]
   · rw [← hResultProp]
@@ -1750,22 +1760,22 @@ The final `br 2` remains visible to the enclosing loop/control proof. -/
 theorem func1_equalBlock_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b g oldResult : UInt64)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (recombinedWord a b g) ⊢
+      R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (recombinedWord a b g) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
           [.br 2], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-      pointsTo_u64 1048512 oldResult ⊢
+    R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+      pointsTo_u64 0 1048512 oldResult ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -1779,12 +1789,12 @@ theorem func1_equalBlock_smallStep_wp
   simp only [func1LoopHeaderLocals]
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) g $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) g $$ [Hx]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) g =
-          pointsTo_u64 1048520 g :=
-      congrArg (fun address => pointsTo_u64 address g) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) g =
+          pointsTo_u64 0 1048520 g :=
+      congrArg (fun address => pointsTo_u64 0 address g) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 g
@@ -1794,12 +1804,12 @@ theorem func1_equalBlock_smallStep_wp
   iintro Hx
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) g $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) g $$ [Hy]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) g =
-          pointsTo_u64 1048528 g :=
-      congrArg (fun address => pointsTo_u64 address g) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) g =
+          pointsTo_u64 0 1048528 g :=
+      congrArg (fun address => pointsTo_u64 0 address g) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 g
@@ -1823,22 +1833,22 @@ theorem func1_equalBlock_smallStep_wp
     [.i32 1048512, .i32 (sharedShiftWord a b), .i32 (operandShiftWord a),
       .i32 (operandShiftWord b), .i64 c6, .i32 c7, .i64 c8, .i32 c9] =
       func1LoopHeaderLocals a b c6 c8 c7 c9 from rfl]
-  ihave HxExact : pointsTo_u64 1048520 g $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 g $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) g =
-          pointsTo_u64 1048520 g :=
-      congrArg (fun address => pointsTo_u64 address g) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) g =
+          pointsTo_u64 0 1048520 g :=
+      congrArg (fun address => pointsTo_u64 0 address g) (by decide)
     rw [← h]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 g $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 g $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) g =
-          pointsTo_u64 1048528 g :=
-      congrArg (fun address => pointsTo_u64 address g) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) g =
+          pointsTo_u64 0 1048528 g :=
+      congrArg (fun address => pointsTo_u64 0 address g) (by decide)
     rw [← h]
     iexact Hy
   iapply func1_equalRecombine_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048528 g))
+    (R := iprop(R ∗ pointsTo_u64 0 1048528 g))
     controls calls a b g oldResult c6 c8 c7 c9
   · iintro Hresources
     icases Hresources with ⟨⟨HR', Hy'⟩, Hx', Hresult'⟩
@@ -1869,21 +1879,21 @@ scratch shift-count slot and exposes the arm's `br 1` to its block proof. -/
 theorem func1_loopNormalizeY_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x d : UInt64) (hd : d ≠ 0) (oldShift : UInt32)
     (c8 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048528 (oddPart64 d) ∗
-        pointsTo_u32 1048544 (operandShiftWord d) ⊢
+      R ∗ pointsTo_u64 0 1048528 (oddPart64 d) ∗
+        pointsTo_u32 0 1048544 (operandShiftWord d) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopYNormalizedLocals a b x d c8 c9, []⟩,
           [.br 1], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048528 d ∗ pointsTo_u32 1048544 oldShift ⊢
+    R ∗ pointsTo_u64 0 1048528 d ∗ pointsTo_u32 0 1048544 oldShift ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopYLocals a b x c8 c7 c9, []⟩,
@@ -1895,12 +1905,12 @@ theorem func1_loopNormalizeY_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) d $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) d $$ [Hy]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) d =
-          pointsTo_u64 1048528 d :=
-      congrArg (fun address => pointsTo_u64 address d) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) d =
+          pointsTo_u64 0 1048528 d :=
+      congrArg (fun address => pointsTo_u64 0 address d) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 d
@@ -1913,12 +1923,12 @@ theorem func1_loopNormalizeY_smallStep_wp
   iapply Wasm.SmallStep.wp_wrapI64
   inext
   ihave HshiftLater :
-      ▷ pointsTo_u32 (1048512 + 32) oldShift $$ [Hshift]
+      ▷ pointsTo_u32 0 (1048512 + 32) oldShift $$ [Hshift]
   · inext
     have h :
-        pointsTo_u32 ((1048512 : UInt32) + 32) oldShift =
-          pointsTo_u32 1048544 oldShift :=
-      congrArg (fun address => pointsTo_u32 address oldShift) (by decide)
+        pointsTo_u32 0 ((1048512 : UInt32) + 32) oldShift =
+          pointsTo_u32 0 1048544 oldShift :=
+      congrArg (fun address => pointsTo_u32 0 address oldShift) (by decide)
     rw [h]
     iexact Hshift
   iapply Wasm.SmallStep.wp_store32 oldShift
@@ -1928,7 +1938,7 @@ theorem func1_loopNormalizeY_smallStep_wp
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
   ihave HshiftLater :
-      ▷ pointsTo_u32 (1048512 + 32) (operandShiftWord d) $$ [Hshift]
+      ▷ pointsTo_u32 0 (1048512 + 32) (operandShiftWord d) $$ [Hshift]
   · inext
     rw [operandShiftWord]
     iexact Hshift
@@ -1944,7 +1954,7 @@ theorem func1_loopNormalizeY_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) d $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) d $$ [Hy]
   · inext
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 d
@@ -1965,7 +1975,7 @@ theorem func1_loopNormalizeY_smallStep_wp
   rw [UInt32.and_comm (operandShiftWord d) 63]
   unfold operandShiftWord
   rw [shift_pipeline d hd]
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) d $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) d $$ [Hy]
   · inext
     iexact Hy
   iapply Wasm.SmallStep.wp_store64 d
@@ -1975,30 +1985,30 @@ theorem func1_loopNormalizeY_smallStep_wp
   iintro Hy
   simp only [func1LoopYNormalizedLocals, operandShiftWord, oddPart64] at hcontinue
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16)
+      pointsTo_u64 0 ((1048512 : UInt32) + 16)
           (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) =
-        pointsTo_u64 1048528
+        pointsTo_u64 0 1048528
           (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) :=
     congrArg
       (fun address =>
-        pointsTo_u64 address (d >>> (UInt64.ofNat (ctz64 64 d) % 64)))
+        pointsTo_u64 0 address (d >>> (UInt64.ofNat (ctz64 64 d) % 64)))
       (by decide)
   have hShiftProp :
-      pointsTo_u32 ((1048512 : UInt32) + 32)
+      pointsTo_u32 0 ((1048512 : UInt32) + 32)
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) =
-        pointsTo_u32 1048544
+        pointsTo_u32 0 1048544
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) :=
     congrArg
-      (fun address => pointsTo_u32 address
+      (fun address => pointsTo_u32 0 address
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)))
       (by decide)
   ihave HyExact :
-      pointsTo_u64 1048528
+      pointsTo_u64 0 1048528
         (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   ihave HshiftExact :
-      pointsTo_u32 1048544
+      pointsTo_u32 0 1048544
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) $$
         [Hshift]
   · rw [← hShiftProp]
@@ -2017,24 +2027,24 @@ odd-part normalization to `func1_loopNormalizeY_smallStep_wp`. -/
 theorem func1_loopDecreaseY_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y : UInt64) (hsub : y - x ≠ 0)
     (oldShift : UInt32)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 x ∗
-        pointsTo_u64 1048528 (oddPart64 (y - x)) ∗
-        pointsTo_u32 1048544 (operandShiftWord (y - x)) ⊢
+      R ∗ pointsTo_u64 0 1048520 x ∗
+        pointsTo_u64 0 1048528 (oddPart64 (y - x)) ∗
+        pointsTo_u32 0 1048544 (operandShiftWord (y - x)) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopYNormalizedLocals a b x (y - x) c8 c9, []⟩,
           [.br 1], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048544 oldShift ⊢
+    R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048544 oldShift ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -2051,12 +2061,12 @@ theorem func1_loopDecreaseY_smallStep_wp
   simp only [func1LoopHeaderLocals]
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) x $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) x $$ [Hx]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) x =
-          pointsTo_u64 1048520 x :=
-      congrArg (fun address => pointsTo_u64 address x) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+          pointsTo_u64 0 1048520 x :=
+      congrArg (fun address => pointsTo_u64 0 address x) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 x
@@ -2072,12 +2082,12 @@ theorem func1_loopDecreaseY_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) y $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) y $$ [Hy]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) y =
-          pointsTo_u64 1048528 y :=
-      congrArg (fun address => pointsTo_u64 address y) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+          pointsTo_u64 0 1048528 y :=
+      congrArg (fun address => pointsTo_u64 0 address y) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 y
@@ -2089,7 +2099,7 @@ theorem func1_loopDecreaseY_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_subI64
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) y $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) y $$ [Hy]
   · inext
     iexact Hy
   iapply Wasm.SmallStep.wp_store64 y
@@ -2107,22 +2117,22 @@ theorem func1_loopDecreaseY_smallStep_wp
     [.i32 1048512, .i32 (sharedShiftWord a b), .i32 (operandShiftWord a),
       .i32 (operandShiftWord b), .i64 x, .i32 c7, .i64 c8, .i32 c9] =
       func1LoopYLocals a b x c8 c7 c9 from rfl]
-  ihave HxExact : pointsTo_u64 1048520 x $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 x $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) x =
-          pointsTo_u64 1048520 x :=
-      congrArg (fun address => pointsTo_u64 address x) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+          pointsTo_u64 0 1048520 x :=
+      congrArg (fun address => pointsTo_u64 0 address x) (by decide)
     rw [← h]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 (y - x) $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 (y - x) $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) (y - x) =
-          pointsTo_u64 1048528 (y - x) :=
-      congrArg (fun address => pointsTo_u64 address (y - x)) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) (y - x) =
+          pointsTo_u64 0 1048528 (y - x) :=
+      congrArg (fun address => pointsTo_u64 0 address (y - x)) (by decide)
     rw [← h]
     iexact Hy
   iapply func1_loopNormalizeY_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048520 x))
+    (R := iprop(R ∗ pointsTo_u64 0 1048520 x))
     controls calls a b x (y - x) hsub oldShift c8 c7 c9
   · iintro Hresources
     icases Hresources with ⟨⟨HR', Hx'⟩, Hy', Hshift'⟩
@@ -2153,21 +2163,21 @@ from the right-arm scratch word at `fp+32`. -/
 theorem func1_loopNormalizeX_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b y d : UInt64) (hd : d ≠ 0) (oldShift : UInt32)
     (c6 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 (oddPart64 d) ∗
-        pointsTo_u32 1048540 (operandShiftWord d) ⊢
+      R ∗ pointsTo_u64 0 1048520 (oddPart64 d) ∗
+        pointsTo_u32 0 1048540 (operandShiftWord d) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopXNormalizedLocals a b y d c6 c7, []⟩,
           [.br 0], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 d ∗ pointsTo_u32 1048540 oldShift ⊢
+    R ∗ pointsTo_u64 0 1048520 d ∗ pointsTo_u32 0 1048540 oldShift ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopXLocals a b y c6 c7 c9, []⟩,
@@ -2179,12 +2189,12 @@ theorem func1_loopNormalizeX_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) d $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) d $$ [Hx]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) d =
-          pointsTo_u64 1048520 d :=
-      congrArg (fun address => pointsTo_u64 address d) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) d =
+          pointsTo_u64 0 1048520 d :=
+      congrArg (fun address => pointsTo_u64 0 address d) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 d
@@ -2197,12 +2207,12 @@ theorem func1_loopNormalizeX_smallStep_wp
   iapply Wasm.SmallStep.wp_wrapI64
   inext
   ihave HshiftLater :
-      ▷ pointsTo_u32 (1048512 + 28) oldShift $$ [Hshift]
+      ▷ pointsTo_u32 0 (1048512 + 28) oldShift $$ [Hshift]
   · inext
     have h :
-        pointsTo_u32 ((1048512 : UInt32) + 28) oldShift =
-          pointsTo_u32 1048540 oldShift :=
-      congrArg (fun address => pointsTo_u32 address oldShift) (by decide)
+        pointsTo_u32 0 ((1048512 : UInt32) + 28) oldShift =
+          pointsTo_u32 0 1048540 oldShift :=
+      congrArg (fun address => pointsTo_u32 0 address oldShift) (by decide)
     rw [h]
     iexact Hshift
   iapply Wasm.SmallStep.wp_store32 oldShift
@@ -2212,7 +2222,7 @@ theorem func1_loopNormalizeX_smallStep_wp
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
   ihave HshiftLater :
-      ▷ pointsTo_u32 (1048512 + 28) (operandShiftWord d) $$ [Hshift]
+      ▷ pointsTo_u32 0 (1048512 + 28) (operandShiftWord d) $$ [Hshift]
   · inext
     rw [operandShiftWord]
     iexact Hshift
@@ -2228,7 +2238,7 @@ theorem func1_loopNormalizeX_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) d $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) d $$ [Hx]
   · inext
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 d
@@ -2249,7 +2259,7 @@ theorem func1_loopNormalizeX_smallStep_wp
   rw [UInt32.and_comm (operandShiftWord d) 63]
   unfold operandShiftWord
   rw [shift_pipeline d hd]
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) d $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) d $$ [Hx]
   · inext
     iexact Hx
   iapply Wasm.SmallStep.wp_store64 d
@@ -2259,30 +2269,30 @@ theorem func1_loopNormalizeX_smallStep_wp
   iintro Hx
   simp only [func1LoopXNormalizedLocals, operandShiftWord, oddPart64] at hcontinue
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8)
           (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) =
-        pointsTo_u64 1048520
+        pointsTo_u64 0 1048520
           (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) :=
     congrArg
       (fun address =>
-        pointsTo_u64 address (d >>> (UInt64.ofNat (ctz64 64 d) % 64)))
+        pointsTo_u64 0 address (d >>> (UInt64.ofNat (ctz64 64 d) % 64)))
       (by decide)
   have hShiftProp :
-      pointsTo_u32 ((1048512 : UInt32) + 28)
+      pointsTo_u32 0 ((1048512 : UInt32) + 28)
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) =
-        pointsTo_u32 1048540
+        pointsTo_u32 0 1048540
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) :=
     congrArg
-      (fun address => pointsTo_u32 address
+      (fun address => pointsTo_u32 0 address
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)))
       (by decide)
   ihave HxExact :
-      pointsTo_u64 1048520
+      pointsTo_u64 0 1048520
         (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) $$ [Hx]
   · rw [← hXProp]
     iexact Hx
   ihave HshiftExact :
-      pointsTo_u32 1048540
+      pointsTo_u32 0 1048540
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) $$
         [Hshift]
   · rw [← hShiftProp]
@@ -2301,24 +2311,24 @@ that result through the dedicated `fp+28` scratch word. -/
 theorem func1_loopDecreaseX_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y : UInt64) (hsub : x - y ≠ 0)
     (oldShift : UInt32)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 (oddPart64 (x - y)) ∗
-        pointsTo_u64 1048528 y ∗
-        pointsTo_u32 1048540 (operandShiftWord (x - y)) ⊢
+      R ∗ pointsTo_u64 0 1048520 (oddPart64 (x - y)) ∗
+        pointsTo_u64 0 1048528 y ∗
+        pointsTo_u32 0 1048540 (operandShiftWord (x - y)) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopXNormalizedLocals a b y (x - y) c6 c7, []⟩,
           [.br 0], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048540 oldShift ⊢
+    R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048540 oldShift ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -2335,12 +2345,12 @@ theorem func1_loopDecreaseX_smallStep_wp
   simp only [func1LoopHeaderLocals]
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) y $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) y $$ [Hy]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) y =
-          pointsTo_u64 1048528 y :=
-      congrArg (fun address => pointsTo_u64 address y) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+          pointsTo_u64 0 1048528 y :=
+      congrArg (fun address => pointsTo_u64 0 address y) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 y
@@ -2356,12 +2366,12 @@ theorem func1_loopDecreaseX_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) x $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) x $$ [Hx]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) x =
-          pointsTo_u64 1048520 x :=
-      congrArg (fun address => pointsTo_u64 address x) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+          pointsTo_u64 0 1048520 x :=
+      congrArg (fun address => pointsTo_u64 0 address x) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 x
@@ -2373,7 +2383,7 @@ theorem func1_loopDecreaseX_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_subI64
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) x $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) x $$ [Hx]
   · inext
     iexact Hx
   iapply Wasm.SmallStep.wp_store64 x
@@ -2391,22 +2401,22 @@ theorem func1_loopDecreaseX_smallStep_wp
     [.i32 1048512, .i32 (sharedShiftWord a b), .i32 (operandShiftWord a),
       .i32 (operandShiftWord b), .i64 c6, .i32 c7, .i64 y, .i32 c9] =
       func1LoopXLocals a b y c6 c7 c9 from rfl]
-  ihave HxExact : pointsTo_u64 1048520 (x - y) $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 (x - y) $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) (x - y) =
-          pointsTo_u64 1048520 (x - y) :=
-      congrArg (fun address => pointsTo_u64 address (x - y)) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) (x - y) =
+          pointsTo_u64 0 1048520 (x - y) :=
+      congrArg (fun address => pointsTo_u64 0 address (x - y)) (by decide)
     rw [← h]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 y $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 y $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) y =
-          pointsTo_u64 1048528 y :=
-      congrArg (fun address => pointsTo_u64 address y) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+          pointsTo_u64 0 1048528 y :=
+      congrArg (fun address => pointsTo_u64 0 address y) (by decide)
     rw [← h]
     iexact Hy
   iapply func1_loopNormalizeX_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048528 y))
+    (R := iprop(R ∗ pointsTo_u64 0 1048528 y))
     controls calls a b y (x - y) hsub oldShift c6 c7 c9
   · iintro Hresources
     icases Hresources with ⟨⟨HR', Hy'⟩, Hx', Hshift'⟩
@@ -2455,15 +2465,15 @@ block's concrete continuation. -/
 theorem func1_loopEqualityDispatch_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y oldResult : UInt64)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hfinish : ∀ (_ : x = y),
-      R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 x ∗
-        pointsTo_u64 1048512 (recombinedWord a b x) ⊢
+      R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 x ∗
+        pointsTo_u64 0 1048512 (recombinedWord a b x) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -2471,16 +2481,16 @@ theorem func1_loopEqualityDispatch_smallStep_wp
           func1EqualityFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }})
     (hnext : ∀ (_ : x ≠ y),
-      R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-        pointsTo_u64 1048512 oldResult ⊢
+      R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+        pointsTo_u64 0 1048512 oldResult ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
           func1AfterEqualityProg, 1, [],
           func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u64 1048512 oldResult ⊢
+    R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u64 0 1048512 oldResult ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -2500,12 +2510,12 @@ theorem func1_loopEqualityDispatch_smallStep_wp
     simp only [func1LoopHeaderLocals]
     iapply Wasm.SmallStep.wp_localGet rfl
     inext
-    ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) x $$ [Hx]
+    ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) x $$ [Hx]
     · inext
       have h :
-          pointsTo_u64 ((1048512 : UInt32) + 8) x =
-            pointsTo_u64 1048520 x :=
-        congrArg (fun address => pointsTo_u64 address x) (by decide)
+          pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+            pointsTo_u64 0 1048520 x :=
+        congrArg (fun address => pointsTo_u64 0 address x) (by decide)
       rw [h]
       iexact Hx
     iapply Wasm.SmallStep.wp_load64 x
@@ -2515,12 +2525,12 @@ theorem func1_loopEqualityDispatch_smallStep_wp
     iintro Hx
     iapply Wasm.SmallStep.wp_localGet rfl
     inext
-    ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) y $$ [Hy]
+    ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) y $$ [Hy]
     · inext
       have h :
-          pointsTo_u64 ((1048512 : UInt32) + 16) y =
-            pointsTo_u64 1048528 y :=
-        congrArg (fun address => pointsTo_u64 address y) (by decide)
+          pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+            pointsTo_u64 0 1048528 y :=
+        congrArg (fun address => pointsTo_u64 0 address y) (by decide)
       rw [h]
       iexact Hy
     iapply Wasm.SmallStep.wp_load64 y
@@ -2542,18 +2552,18 @@ theorem func1_loopEqualityDispatch_smallStep_wp
       [.i32 1048512, .i32 (sharedShiftWord a b), .i32 (operandShiftWord a),
         .i32 (operandShiftWord b), .i64 c6, .i32 c7, .i64 c8, .i32 c9] =
         func1LoopHeaderLocals a b c6 c8 c7 c9 from rfl]
-    ihave HxExact : pointsTo_u64 1048520 x $$ [Hx]
+    ihave HxExact : pointsTo_u64 0 1048520 x $$ [Hx]
     · have h :
-          pointsTo_u64 ((1048512 : UInt32) + 8) x =
-            pointsTo_u64 1048520 x :=
-        congrArg (fun address => pointsTo_u64 address x) (by decide)
+          pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+            pointsTo_u64 0 1048520 x :=
+        congrArg (fun address => pointsTo_u64 0 address x) (by decide)
       rw [← h]
       iexact Hx
-    ihave HyExact : pointsTo_u64 1048528 y $$ [Hy]
+    ihave HyExact : pointsTo_u64 0 1048528 y $$ [Hy]
     · have h :
-          pointsTo_u64 ((1048512 : UInt32) + 16) y =
-            pointsTo_u64 1048528 y :=
-        congrArg (fun address => pointsTo_u64 address y) (by decide)
+          pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+            pointsTo_u64 0 1048528 y :=
+        congrArg (fun address => pointsTo_u64 0 address y) (by decide)
       rw [← h]
       iexact Hy
     iapply hnext hxy
@@ -2566,8 +2576,8 @@ frame so their final branch is an actual back-edge. -/
 theorem func1_loopDecreaseDispatch_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y : UInt64)
@@ -2575,10 +2585,10 @@ theorem func1_loopDecreaseDispatch_smallStep_wp
     (oldShiftX oldShiftY : UInt32)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hcontinueX : ∀ (_ : y < x),
-      R ∗ pointsTo_u64 1048520 (oddPart64 (x - y)) ∗
-        pointsTo_u64 1048528 y ∗
-        pointsTo_u32 1048540 (operandShiftWord (x - y)) ∗
-        pointsTo_u32 1048544 oldShiftY ⊢
+      R ∗ pointsTo_u64 0 1048520 (oddPart64 (x - y)) ∗
+        pointsTo_u64 0 1048528 y ∗
+        pointsTo_u32 0 1048540 (operandShiftWord (x - y)) ∗
+        pointsTo_u32 0 1048544 oldShiftY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopXNormalizedLocals a b y (x - y) c6 c7, []⟩,
@@ -2586,18 +2596,18 @@ theorem func1_loopDecreaseDispatch_smallStep_wp
           func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }})
     (hcontinueY : ∀ (_ : ¬ y < x),
-      R ∗ pointsTo_u64 1048520 x ∗
-        pointsTo_u64 1048528 (oddPart64 (y - x)) ∗
-        pointsTo_u32 1048540 oldShiftX ∗
-        pointsTo_u32 1048544 (operandShiftWord (y - x)) ⊢
+      R ∗ pointsTo_u64 0 1048520 x ∗
+        pointsTo_u64 0 1048528 (oddPart64 (y - x)) ∗
+        pointsTo_u32 0 1048540 oldShiftX ∗
+        pointsTo_u32 0 1048544 (operandShiftWord (y - x)) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopYNormalizedLocals a b x (y - x) c8 c9, []⟩,
           [.br 1], 1, [],
           func1DecreaseYFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048540 oldShiftX ∗ pointsTo_u32 1048544 oldShiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048540 oldShiftX ∗ pointsTo_u32 0 1048544 oldShiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -2617,12 +2627,12 @@ theorem func1_loopDecreaseDispatch_smallStep_wp
   simp only [func1LoopHeaderLocals]
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) x $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) x $$ [Hx]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) x =
-          pointsTo_u64 1048520 x :=
-      congrArg (fun address => pointsTo_u64 address x) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+          pointsTo_u64 0 1048520 x :=
+      congrArg (fun address => pointsTo_u64 0 address x) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.wp_load64 x
@@ -2632,12 +2642,12 @@ theorem func1_loopDecreaseDispatch_smallStep_wp
   iintro Hx
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) y $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) y $$ [Hy]
   · inext
     have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) y =
-          pointsTo_u64 1048528 y :=
-      congrArg (fun address => pointsTo_u64 address y) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+          pointsTo_u64 0 1048528 y :=
+      congrArg (fun address => pointsTo_u64 0 address y) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.wp_load64 y
@@ -2645,18 +2655,18 @@ theorem func1_loopDecreaseDispatch_smallStep_wp
       (by decide) (by decide) (by decide) $$ HyLater
   inext
   iintro Hy
-  ihave HxExact : pointsTo_u64 1048520 x $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 x $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) x =
-          pointsTo_u64 1048520 x :=
-      congrArg (fun address => pointsTo_u64 address x) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+          pointsTo_u64 0 1048520 x :=
+      congrArg (fun address => pointsTo_u64 0 address x) (by decide)
     rw [← h]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 y $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 y $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) y =
-          pointsTo_u64 1048528 y :=
-      congrArg (fun address => pointsTo_u64 address y) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+          pointsTo_u64 0 1048528 y :=
+      congrArg (fun address => pointsTo_u64 0 address y) (by decide)
     rw [← h]
     iexact Hy
   by_cases hlt : y < x
@@ -2685,7 +2695,7 @@ theorem func1_loopDecreaseDispatch_smallStep_wp
         .i32 (operandShiftWord b), .i64 c6, .i32 c7, .i64 c8, .i32 c9] =
         func1LoopHeaderLocals a b c6 c8 c7 c9 from rfl]
     iapply func1_loopDecreaseX_smallStep_wp
-      (R := iprop(R ∗ pointsTo_u32 1048544 oldShiftY))
+      (R := iprop(R ∗ pointsTo_u32 0 1048544 oldShiftY))
       (func1LoopFrame :: outerControls) calls a b x y hsubX oldShiftX
       c6 c8 c7 c9
     · iintro Hresources
@@ -2733,7 +2743,7 @@ theorem func1_loopDecreaseDispatch_smallStep_wp
         .i32 (operandShiftWord b), .i64 c6, .i32 c7, .i64 c8, .i32 c9] =
         func1LoopHeaderLocals a b c6 c8 c7 c9 from rfl]
     iapply func1_loopDecreaseY_smallStep_wp
-      (R := iprop(R ∗ pointsTo_u32 1048540 oldShiftX))
+      (R := iprop(R ∗ pointsTo_u32 0 1048540 oldShiftX))
       (func1DecreaseYFrame :: func1LoopFrame :: outerControls)
       calls a b x y hsubY oldShiftY c6 c8 c7 c9
     · iintro Hresources
@@ -2749,18 +2759,18 @@ left-arm loop back-edge, and the right-arm loop back-edge. -/
 theorem func1_loopBodyDispatch_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
-    (K : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
+    (K : IProp (WasmHeapGF Unit))
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y oldResult : UInt64)
     (oldShiftX oldShiftY : UInt32)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hfinish : ∀ (_ : x = y),
-      □ K ∗ R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 x ∗
-        pointsTo_u64 1048512 (recombinedWord a b x) ∗
-        pointsTo_u32 1048540 oldShiftX ∗ pointsTo_u32 1048544 oldShiftY ⊢
+      □ K ∗ R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 x ∗
+        pointsTo_u64 0 1048512 (recombinedWord a b x) ∗
+        pointsTo_u32 0 1048540 oldShiftX ∗ pointsTo_u32 0 1048544 oldShiftY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -2768,29 +2778,29 @@ theorem func1_loopBodyDispatch_smallStep_wp
           func1EqualityFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }})
     (hbackX : ∀ (_ : x ≠ y) (_ : y < x),
-      □ K ∗ R ∗ pointsTo_u64 1048520 (oddPart64 (x - y)) ∗
-        pointsTo_u64 1048528 y ∗ pointsTo_u64 1048512 oldResult ∗
-        pointsTo_u32 1048540 (operandShiftWord (x - y)) ∗
-        pointsTo_u32 1048544 oldShiftY ⊢
+      □ K ∗ R ∗ pointsTo_u64 0 1048520 (oddPart64 (x - y)) ∗
+        pointsTo_u64 0 1048528 y ∗ pointsTo_u64 0 1048512 oldResult ∗
+        pointsTo_u32 0 1048540 (operandShiftWord (x - y)) ∗
+        pointsTo_u32 0 1048544 oldShiftY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopXNormalizedLocals a b y (x - y) c6 c7, []⟩,
           [.br 0], 1, [], func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }})
     (hbackY : ∀ (_ : x ≠ y) (_ : ¬ y < x),
-      □ K ∗ R ∗ pointsTo_u64 1048520 x ∗
-        pointsTo_u64 1048528 (oddPart64 (y - x)) ∗
-        pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048540 oldShiftX ∗
-        pointsTo_u32 1048544 (operandShiftWord (y - x)) ⊢
+      □ K ∗ R ∗ pointsTo_u64 0 1048520 x ∗
+        pointsTo_u64 0 1048528 (oddPart64 (y - x)) ∗
+        pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048540 oldShiftX ∗
+        pointsTo_u32 0 1048544 (operandShiftWord (y - x)) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopYNormalizedLocals a b x (y - x) c8 c9, []⟩,
           [.br 1], 1, [],
           func1DecreaseYFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    □ K ∗ R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048540 oldShiftX ∗
-      pointsTo_u32 1048544 oldShiftY ⊢
+    □ K ∗ R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048540 oldShiftX ∗
+      pointsTo_u32 0 1048544 oldShiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -2811,8 +2821,8 @@ theorem func1_loopBodyDispatch_smallStep_wp
        belowStack := [] } : Wasm.SmallStep.ControlFrame) =
       func1EqualityFrame from rfl]
   iapply func1_loopEqualityDispatch_smallStep_wp
-    (R := iprop(□ K ∗ R ∗ pointsTo_u32 1048540 oldShiftX ∗
-      pointsTo_u32 1048544 oldShiftY))
+    (R := iprop(□ K ∗ R ∗ pointsTo_u32 0 1048540 oldShiftX ∗
+      pointsTo_u32 0 1048544 oldShiftY))
     outerControls calls a b x y oldResult
     c6 c8 c7 c9
   · intro hxy
@@ -2839,7 +2849,7 @@ theorem func1_loopBodyDispatch_smallStep_wp
          belowStack := [] } : Wasm.SmallStep.ControlFrame) =
         func1DecreaseYFrame from rfl]
     iapply func1_loopDecreaseDispatch_smallStep_wp
-      (R := iprop(□ K ∗ R ∗ pointsTo_u64 1048512 oldResult))
+      (R := iprop(□ K ∗ R ∗ pointsTo_u64 0 1048512 oldResult))
       outerControls calls a b x y hxy oldShiftX oldShiftY
       c6 c8 c7 c9
     · intro hlt
@@ -2863,8 +2873,8 @@ oddness, and mathematical GCD at the two real loop back-edges. -/
 theorem func1_loop_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y expected oldResult : UInt64)
@@ -2881,18 +2891,18 @@ theorem func1_loop_smallStep_wp
     (hfinish : ∀ (g : UInt64) (shiftX shiftY : UInt32)
         (d6 d8 : UInt64) (d7 d9 : UInt32),
       g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat →
-      R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 expected ∗ pointsTo_u32 1048540 shiftX ∗
-        pointsTo_u32 1048544 shiftY ⊢
+      R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 expected ∗ pointsTo_u32 0 1048540 shiftX ∗
+        pointsTo_u32 0 1048544 shiftY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩,
           [.br 2], 1, [],
           func1EqualityFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048540 oldShiftX ∗
-      pointsTo_u32 1048544 oldShiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048540 oldShiftX ∗
+      pointsTo_u32 0 1048544 oldShiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -2901,7 +2911,7 @@ theorem func1_loop_smallStep_wp
   iloeb as IH generalizing
     %x %y %oldResult %oldShiftX %oldShiftY %c6 %c8 %c7 %c9
     %hxne %hyne %hxodd %hyodd %hgcd
-  let Kloop : IProp WasmHeapGF := iprop(
+  let Kloop : IProp (WasmHeapGF Unit) := iprop(
     ▷ ∀ (x y oldResult : UInt64)
         (oldShiftX oldShiftY : UInt32)
         (c6 c8 : UInt64) (c7 c9 : UInt32),
@@ -2909,9 +2919,9 @@ theorem func1_loop_smallStep_wp
       ⌜x.toNat % 2 = 1⌝ -∗ ⌜y.toNat % 2 = 1⌝ -∗
       ⌜Nat.gcd x.toNat y.toNat =
         Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat⌝ -∗
-      R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-        pointsTo_u64 1048512 oldResult ∗
-        pointsTo_u32 1048540 oldShiftX ∗ pointsTo_u32 1048544 oldShiftY -∗
+      R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+        pointsTo_u64 0 1048512 oldResult ∗
+        pointsTo_u32 0 1048540 oldShiftX ∗ pointsTo_u32 0 1048544 oldShiftY -∗
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -2932,7 +2942,7 @@ theorem func1_loop_smallStep_wp
       iintro Hresources
       icases Hresources with
         ⟨#IH', HR', Hx', Hy', Hresult', HshiftX', HshiftY'⟩
-      ihave HresultExpected : pointsTo_u64 1048512 expected $$ [Hresult']
+      ihave HresultExpected : pointsTo_u64 0 1048512 expected $$ [Hresult']
       · rw [← hresultEq]
         iexact Hresult'
       iapply hfinish x oldShiftX oldShiftY c6 c8 c7 c9 hxGcd
@@ -3014,8 +3024,8 @@ its `br 2` exit. -/
 theorem func1_loopEntry_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
@@ -3023,19 +3033,19 @@ theorem func1_loopEntry_smallStep_wp
     (hfinish : ∀ (g : UInt64) (shiftX shiftY : UInt32)
         (d6 d8 : UInt64) (d7 d9 : UInt32),
       g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat →
-      R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-        pointsTo_u32 1048540 shiftX ∗ pointsTo_u32 1048544 shiftY ⊢
+      R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+        pointsTo_u32 0 1048540 shiftX ∗ pointsTo_u32 0 1048544 shiftY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩,
           [.br 2], 1, [],
           func1EqualityFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 (oddPart64 a) ∗
-      pointsTo_u64 1048528 (oddPart64 b) ∗
-      pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048540 oldShiftX ∗
-      pointsTo_u32 1048544 oldShiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 (oddPart64 a) ∗
+      pointsTo_u64 0 1048528 (oddPart64 b) ∗
+      pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048540 oldShiftX ∗
+      pointsTo_u32 0 1048544 oldShiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1NormalizedLocals a b, []⟩,
         func1LoopEntryProg, 1, [], outerControls, calls⟩ :
@@ -3080,8 +3090,8 @@ physical scratch frame, enter the real loop, and expose only the final
 theorem func1_nonzeroCore_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
@@ -3089,22 +3099,22 @@ theorem func1_nonzeroCore_smallStep_wp
     (hfinish : ∀ (g : UInt64) (loopX loopY : UInt32)
         (d6 d8 : UInt64) (d7 d9 : UInt32),
       g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat →
-      R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b) ∗
-        pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-        pointsTo_u32 1048540 loopX ∗ pointsTo_u32 1048544 loopY ⊢
+      R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b) ∗
+        pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+        pointsTo_u32 0 1048540 loopX ∗ pointsTo_u32 0 1048544 loopY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩,
           [.br 2], 1, [],
           func1EqualityFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-      pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗ pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+      pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗ pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         meatLoopProg, 1, [], outerControls, calls⟩ :
@@ -3112,8 +3122,8 @@ theorem func1_nonzeroCore_smallStep_wp
   iintro
     ⟨HR, Hx, Hy, Hresult, Hshared, HnormX, HnormY, HloopX, HloopY⟩
   iapply func1_normalization_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 oldResult ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 oldResult ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY))
     outerControls calls a b ha hb oldShared oldNormX oldNormY
   · iintro Hresources
     icases Hresources with
@@ -3121,9 +3131,9 @@ theorem func1_nonzeroCore_smallStep_wp
         Hshared', HnormX', HnormY'⟩
     rw [show meatLoopProg.drop 48 = func1LoopEntryProg from rfl]
     iapply func1_loopEntry_smallStep_wp
-      (R := iprop(R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b)))
+      (R := iprop(R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b)))
       outerControls calls a b oldResult ha hb oldLoopX oldLoopY
     · intro g loopX loopY d6 d8 d7 d9 hg
       iintro Hresources
@@ -3172,17 +3182,17 @@ remaining outer frame. -/
 theorem func1_nonzeroGuards_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ⊢
+      R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
           meatLoopProg, 1, [], [func1OuterFrame func1OuterBody], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         func1.drop 12, 1, [], [], calls⟩ :
@@ -3200,7 +3210,7 @@ theorem func1_nonzeroGuards_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HxLater : ▷ pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : ▷ pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · inext
     rw [show (1048512 : UInt32) + 8 = 1048520 from rfl]
     iexact Hx
@@ -3222,7 +3232,7 @@ theorem func1_nonzeroGuards_smallStep_wp
   inext
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
-  ihave HyLater : ▷ pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : ▷ pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · inext
     rw [show (1048512 : UInt32) + 16 = 1048528 from rfl]
     iexact Hy
@@ -3246,17 +3256,17 @@ theorem func1_nonzeroGuards_smallStep_wp
   inext
   simp only [List.take_nil, List.nil_append]
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) a =
-        pointsTo_u64 1048520 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) a =
+        pointsTo_u64 0 1048520 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16) b =
-        pointsTo_u64 1048528 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
-  ihave HxExact : pointsTo_u64 1048520 a $$ [Hx]
+      pointsTo_u64 0 ((1048512 : UInt32) + 16) b =
+        pointsTo_u64 0 1048528 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
+  ihave HxExact : pointsTo_u64 0 1048520 a $$ [Hx]
   · rw [← hXProp]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 b $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 b $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   simp only [List.drop_nil]
@@ -3272,25 +3282,25 @@ from a top-level invocation of `func1`. -/
 theorem func1_nonzeroFinish_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerBody : Program)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b g d6 d8 : UInt64) (shiftX shiftY d7 d9 : UInt32)
     (_hgcd : g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat)
     (hreturn :
-      R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-        pointsTo_u32 1048540 shiftX ∗ pointsTo_u32 1048544 shiftY ⊢
+      R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+        pointsTo_u32 0 1048540 shiftX ∗ pointsTo_u32 0 1048544 shiftY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b d6 d8 d7 d9,
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-      pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-      pointsTo_u32 1048540 shiftX ∗ pointsTo_u32 1048544 shiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+      pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+      pointsTo_u32 0 1048540 shiftX ∗ pointsTo_u32 0 1048544 shiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩,
@@ -3305,7 +3315,7 @@ theorem func1_nonzeroFinish_smallStep_wp_to_return
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
   ihave HresultLater :
-      ▷ pointsTo_u64 ((1048512 : UInt32) + 0)
+      ▷ pointsTo_u64 0 ((1048512 : UInt32) + 0)
         (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) $$ [Hresult]
   · inext
     rw [show (1048512 : UInt32) + 0 = 1048512 from rfl]
@@ -3317,15 +3327,15 @@ theorem func1_nonzeroFinish_smallStep_wp_to_return
   inext
   iintro Hresult
   ihave HresultExact :
-      pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))
+      pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))
       $$ [Hresult]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 0)
+        pointsTo_u64 0 ((1048512 : UInt32) + 0)
             (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) =
-          pointsTo_u64 1048512
+          pointsTo_u64 0 1048512
             (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) :=
       congrArg
-        (fun address => pointsTo_u64 address
+        (fun address => pointsTo_u64 0 address
           (UInt64.ofNat (Nat.gcd a.toNat b.toNat))) (by decide)
     rw [← h]
     iexact Hresult
@@ -3336,13 +3346,13 @@ theorem func1_nonzeroFinish_smallStep_wp_to_return
 theorem func1_nonzeroFinish_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (outerBody : Program)
     (a b g d6 d8 : UInt64) (shiftX shiftY d7 d9 : UInt32)
     (hgcd : g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat) :
-    R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-      pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-      pointsTo_u32 1048540 shiftX ∗ pointsTo_u32 1048544 shiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+      pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+      pointsTo_u32 0 1048540 shiftX ∗ pointsTo_u32 0 1048544 shiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩,
@@ -3351,10 +3361,10 @@ theorem func1_nonzeroFinish_smallStep_wp
         []⟩ : Wasm.SmallStep.Expr Unit) @ s; E
       {{ rs,
         ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-          R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-          pointsTo_u64 1048512
+          R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+          pointsTo_u64 0 1048512
             (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-          pointsTo_u32 1048540 shiftX ∗ pointsTo_u32 1048544 shiftY }} := by
+          pointsTo_u32 0 1048540 shiftX ∗ pointsTo_u32 0 1048544 shiftY }} := by
   iintro Hresources
   iapply func1_nonzeroFinish_smallStep_wp_to_return
     R outerBody [] a b g d6 d8 shiftX shiftY d7 d9 hgcd
@@ -3374,8 +3384,8 @@ left to the caller, so the same proof can be used beneath a Wasm call frame. -/
 theorem func1_nonzeroOuterCore_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerBody : Program)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
@@ -3383,22 +3393,22 @@ theorem func1_nonzeroOuterCore_smallStep_wp_to_return
     (hreturn : ∀ (g : UInt64) (loopX loopY : UInt32)
         (d6 d8 : UInt64) (d7 d9 : UInt32),
       g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat →
-      (R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b)) ∗
-        pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-        pointsTo_u32 1048540 loopX ∗ pointsTo_u32 1048544 loopY ⊢
+      (R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b)) ∗
+        pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+        pointsTo_u32 0 1048540 loopX ∗ pointsTo_u32 0 1048544 loopY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b d6 d8 d7 d9,
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-      pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗ pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+      pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗ pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         meatLoopProg, 1, [], [func1OuterFrame outerBody], calls⟩ :
@@ -3412,9 +3422,9 @@ theorem func1_nonzeroOuterCore_smallStep_wp_to_return
     icases Hresources with
       ⟨HR, Hshared, HnormX, HnormY, Hx, Hy, Hresult, HloopX, HloopY⟩
     iapply func1_nonzeroFinish_smallStep_wp_to_return
-      (R := iprop(R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b)))
+      (R := iprop(R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b)))
       outerBody calls a b g d6 d8 loopX loopY d7 d9 hg
     · iintro Hresources
       iapply hreturn g loopX loopY d6 d8 d7 d9 hg
@@ -3427,14 +3437,14 @@ and discharge its equality exit through `func1`'s epilogue. -/
 theorem func1_nonzeroOuterCore_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (outerBody : Program)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (oldShared oldNormX oldNormY oldLoopX oldLoopY : UInt32) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-      pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗ pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+      pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗ pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         meatLoopProg, 1, [], [func1OuterFrame outerBody], []⟩ :
@@ -3444,14 +3454,14 @@ theorem func1_nonzeroOuterCore_smallStep_wp
           ∃ g : UInt64, ∃ loopX loopY : UInt32,
             ⌜g.toNat =
               Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat⌝ ∗
-            R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-            pointsTo_u64 1048512
+            R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+            pointsTo_u64 0 1048512
               (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-            pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-            pointsTo_u32 1048552 (operandShiftWord a) ∗
-            pointsTo_u32 1048548 (operandShiftWord b) ∗
-            pointsTo_u32 1048540 loopX ∗
-            pointsTo_u32 1048544 loopY }} := by
+            pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+            pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+            pointsTo_u32 0 1048548 (operandShiftWord b) ∗
+            pointsTo_u32 0 1048540 loopX ∗
+            pointsTo_u32 0 1048544 loopY }} := by
   iintro Hresources
   iapply func1_nonzeroCore_smallStep_wp R [func1OuterFrame outerBody] []
     a b oldResult ha hb oldShared oldNormX oldNormY oldLoopX oldLoopY
@@ -3462,26 +3472,26 @@ theorem func1_nonzeroOuterCore_smallStep_wp
     have hpost : ∀ rs : List Value,
         (iprop(
           ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-            (R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-              pointsTo_u32 1048552 (operandShiftWord a) ∗
-              pointsTo_u32 1048548 (operandShiftWord b)) ∗
-            pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-            pointsTo_u64 1048512
+            (R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+              pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+              pointsTo_u32 0 1048548 (operandShiftWord b)) ∗
+            pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+            pointsTo_u64 0 1048512
               (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-            pointsTo_u32 1048540 loopX ∗ pointsTo_u32 1048544 loopY)) ⊢
+            pointsTo_u32 0 1048540 loopX ∗ pointsTo_u32 0 1048544 loopY)) ⊢
         (iprop(
           ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
             ∃ g' : UInt64, ∃ loopX' loopY' : UInt32,
               ⌜g'.toNat =
                 Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat⌝ ∗
-              R ∗ pointsTo_u64 1048520 g' ∗ pointsTo_u64 1048528 g' ∗
-              pointsTo_u64 1048512
+              R ∗ pointsTo_u64 0 1048520 g' ∗ pointsTo_u64 0 1048528 g' ∗
+              pointsTo_u64 0 1048512
                 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-              pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-              pointsTo_u32 1048552 (operandShiftWord a) ∗
-              pointsTo_u32 1048548 (operandShiftWord b) ∗
-              pointsTo_u32 1048540 loopX' ∗
-              pointsTo_u32 1048544 loopY')) := by
+              pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+              pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+              pointsTo_u32 0 1048548 (operandShiftWord b) ∗
+              pointsTo_u32 0 1048540 loopX' ∗
+              pointsTo_u32 0 1048544 loopY')) := by
       intro rs
       iintro ⟨%hrs, HR, Hx, Hy, Hresult, HloopX, HloopY⟩
       icases HR with ⟨HR, Hshared, HnormX, HnormY⟩
@@ -3497,9 +3507,9 @@ theorem func1_nonzeroOuterCore_smallStep_wp
         · iframe
     iapply wp_mono hpost
     iapply func1_nonzeroFinish_smallStep_wp
-      (R := iprop(R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b)))
+      (R := iprop(R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b)))
       outerBody a b g d6 d8 loopX loopY d7 d9 hg
     iframe
   · iexact Hresources
@@ -3509,35 +3519,35 @@ the explicit return so a caller-provided call frame can resume. -/
 theorem func1_nonzero_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (oldShared oldNormX oldNormY oldLoopX oldLoopY : UInt32)
     (hreturn : ∀ (g : UInt64) (loopX loopY : UInt32)
         (d6 d8 : UInt64) (d7 d9 : UInt32),
       g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat →
-      ((R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b) ∗
-        pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b)) ∗
-        pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-        pointsTo_u32 1048540 loopX ∗ pointsTo_u32 1048544 loopY ⊢
+      ((R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b) ∗
+        pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b)) ∗
+        pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+        pointsTo_u32 0 1048540 loopX ∗ pointsTo_u32 0 1048544 loopY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b d6 d8 d7 d9,
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗ pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗ pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], calls⟩ :
@@ -3546,12 +3556,12 @@ theorem func1_nonzero_smallStep_wp_to_return
     ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy,
       Hshared, HnormX, HnormY, HloopX, HloopY⟩
   iapply func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result ∗
-      pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗
-      pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗
-      pointsTo_u32 1048544 oldLoopY))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result ∗
+      pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗
+      pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗
+      pointsTo_u32 0 1048544 oldLoopY))
     (calls := calls) (a := a) (b := b) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -3560,14 +3570,14 @@ theorem func1_nonzero_smallStep_wp_to_return
       ⟨HR', Hresult', Hshared', HnormX', HnormY', HloopX', HloopY'⟩
     iapply func1_nonzeroGuards_smallStep_wp
       (R := iprop(
-        (R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b) ∗
-        pointsTo_u64 1048512 result ∗
-        pointsTo_u32 1048556 oldShared ∗
-        pointsTo_u32 1048552 oldNormX ∗
-        pointsTo_u32 1048548 oldNormY ∗
-        pointsTo_u32 1048540 oldLoopX ∗
-        pointsTo_u32 1048544 oldLoopY))
+        (R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b) ∗
+        pointsTo_u64 0 1048512 result ∗
+        pointsTo_u32 0 1048556 oldShared ∗
+        pointsTo_u32 0 1048552 oldNormX ∗
+        pointsTo_u32 0 1048548 oldNormY ∗
+        pointsTo_u32 0 1048540 oldLoopX ∗
+        pointsTo_u32 0 1048544 oldLoopY))
       calls a b ha hb
     · iintro Hresources
       icases Hresources with ⟨HRouterScratch, Hx'', Hy''⟩
@@ -3575,8 +3585,8 @@ theorem func1_nonzero_smallStep_wp_to_return
         ⟨HRouter, Hresult'', Hshared'', HnormX'', HnormY'',
           HloopX'', HloopY''⟩
       iapply func1_nonzeroOuterCore_smallStep_wp_to_return
-        (R := iprop(R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b))
+        (R := iprop(R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b))
         func1OuterBody calls a b result ha hb
         oldShared oldNormX oldNormY oldLoopX oldLoopY
       · intro g loopX loopY d6 d8 d7 d9 hg
@@ -3593,16 +3603,16 @@ return. -/
 theorem func1_nonzero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result oldX oldY a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (oldShared oldNormX oldNormY oldLoopX oldLoopY : UInt32) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗ pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗ pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], []⟩ :
@@ -3612,26 +3622,26 @@ theorem func1_nonzero_smallStep_wp
           ∃ g : UInt64, ∃ loopX loopY : UInt32,
             ⌜g.toNat =
               Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat⌝ ∗
-            (R ∗ globalPointsTo 0 (.i32 1048560) ∗
-              pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b) ∗
-            pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-            pointsTo_u64 1048512
+            (R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+              pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b) ∗
+            pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+            pointsTo_u64 0 1048512
               (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-            pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-            pointsTo_u32 1048552 (operandShiftWord a) ∗
-            pointsTo_u32 1048548 (operandShiftWord b) ∗
-            pointsTo_u32 1048540 loopX ∗
-            pointsTo_u32 1048544 loopY }} := by
+            pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+            pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+            pointsTo_u32 0 1048548 (operandShiftWord b) ∗
+            pointsTo_u32 0 1048540 loopX ∗
+            pointsTo_u32 0 1048544 loopY }} := by
   iintro
     ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy,
       Hshared, HnormX, HnormY, HloopX, HloopY⟩
   iapply func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result ∗
-      pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗
-      pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗
-      pointsTo_u32 1048544 oldLoopY))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result ∗
+      pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗
+      pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗
+      pointsTo_u32 0 1048544 oldLoopY))
     (calls := []) (a := a) (b := b) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -3640,14 +3650,14 @@ theorem func1_nonzero_smallStep_wp
       ⟨HR', Hresult', Hshared', HnormX', HnormY', HloopX', HloopY'⟩
     iapply func1_nonzeroGuards_smallStep_wp
       (R := iprop(
-        (R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b) ∗
-        pointsTo_u64 1048512 result ∗
-        pointsTo_u32 1048556 oldShared ∗
-        pointsTo_u32 1048552 oldNormX ∗
-        pointsTo_u32 1048548 oldNormY ∗
-        pointsTo_u32 1048540 oldLoopX ∗
-        pointsTo_u32 1048544 oldLoopY))
+        (R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b) ∗
+        pointsTo_u64 0 1048512 result ∗
+        pointsTo_u32 0 1048556 oldShared ∗
+        pointsTo_u32 0 1048552 oldNormX ∗
+        pointsTo_u32 0 1048548 oldNormY ∗
+        pointsTo_u32 0 1048540 oldLoopX ∗
+        pointsTo_u32 0 1048544 oldLoopY))
       [] a b ha hb
     · iintro Hresources
       icases Hresources with ⟨HRouterScratch, Hx'', Hy''⟩
@@ -3655,8 +3665,8 @@ theorem func1_nonzero_smallStep_wp
         ⟨HRouter, Hresult'', Hshared'', HnormX'', HnormY'',
           HloopX'', HloopY''⟩
       iapply func1_nonzeroOuterCore_smallStep_wp
-        (R := iprop(R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b))
+        (R := iprop(R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b))
         func1OuterBody a b result ha hb
         oldShared oldNormX oldNormY oldLoopX oldLoopY
       iframe
@@ -3670,10 +3680,10 @@ theorem func1_nonzero_frame_smallStep_wp
     (result oldX oldY : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0) :
-    globalPointsTo 0 (.i32 1048560) ∗
+    globalPointsToAt 0 0 (.i32 1048560) ∗
       ([∗map] address ↦ byte ∈
         gcdFrameHeap result oldX oldY shiftXY shiftX shiftY nextY nextX a b,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) byte) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
@@ -3684,16 +3694,16 @@ theorem func1_nonzero_frame_smallStep_wp
           ∃ g : UInt64, ∃ loopX loopY : UInt32,
             ⌜g.toNat =
               Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat⌝ ∗
-            (⌜True⌝ ∗ globalPointsTo 0 (.i32 1048560) ∗
-              pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b) ∗
-            pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-            pointsTo_u64 1048512
+            (⌜True⌝ ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+              pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b) ∗
+            pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+            pointsTo_u64 0 1048512
               (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-            pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-            pointsTo_u32 1048552 (operandShiftWord a) ∗
-            pointsTo_u32 1048548 (operandShiftWord b) ∗
-            pointsTo_u32 1048540 loopX ∗
-            pointsTo_u32 1048544 loopY }} := by
+            pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+            pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+            pointsTo_u32 0 1048548 (operandShiftWord b) ∗
+            pointsTo_u32 0 1048540 loopX ∗
+            pointsTo_u32 0 1048544 loopY }} := by
   iintro ⟨Hglobal, Hframe⟩
   ihave Hslots := gcdFrameHeap_pointsTo
     result oldX oldY shiftXY shiftX shiftY nextY nextX a b $$ Hframe
@@ -3729,6 +3739,7 @@ theorem func1_nonzero_smallStep_partiallyMeets
   · apply gcdFrameHeap_inBounds
     rfl
   · exact func1GlobalHeap_agrees
+  · simp only [func1ZeroConfig]; decide
   · intro gs
     iintro ⟨Hframe, Hglobals, Hruntime⟩
     ihave Hglobal := func1GlobalHeap_pointsTo $$ Hglobals
@@ -3738,16 +3749,16 @@ theorem func1_nonzero_smallStep_partiallyMeets
             ∃ g : UInt64, ∃ loopX loopY : UInt32,
               ⌜g.toNat =
                 Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat⌝ ∗
-              (⌜True⌝ ∗ globalPointsTo 0 (.i32 1048560) ∗
-                pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b) ∗
-              pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-              pointsTo_u64 1048512
+              (⌜True⌝ ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+                pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b) ∗
+              pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+              pointsTo_u64 0 1048512
                 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-              pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-              pointsTo_u32 1048552 (operandShiftWord a) ∗
-              pointsTo_u32 1048548 (operandShiftWord b) ∗
-              pointsTo_u32 1048540 loopX ∗
-              pointsTo_u32 1048544 loopY)) ⊢
+              pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+              pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+              pointsTo_u32 0 1048548 (operandShiftWord b) ∗
+              pointsTo_u32 0 1048540 loopX ∗
+              pointsTo_u32 0 1048544 loopY)) ⊢
           (iprop(⌜rs =
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
       intro rs
@@ -3793,12 +3804,13 @@ def func0AfterCallProg : Program :=
   [.localSet 3, .localGet 2, .const 16, .add, .globalSet 0,
     .localGet 3, .ret]
 
-def func0CallerFrame (a b : UInt64) : Wasm.SmallStep.CallFrame :=
+def func0CallerFrame (a b : UInt64) (ri : Wasm.SmallStep.ModuleInstanceId) : Wasm.SmallStep.CallFrame :=
   { locals := ⟨[.i64 a, .i64 b], func0CallLocals, []⟩
     continuation := func0AfterCallProg
     resultArity := 1
     callerRemainder := []
-    control := [] }
+    control := []
+    returningInstance := ri }
 
 /-- Execute the generated `func0` stack-frame prologue up to its direct call
 of `func1`. The stack-pointer global and both caller-frame words are updated
@@ -3806,21 +3818,21 @@ through authoritative physical ownership. -/
 theorem func0_callPrefix_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldOuterA oldOuterB : UInt64)
     (hcontinue :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i64 a, .i64 b], func0CallLocals,
             [.i32 1048568, .i32 1048560]⟩,
           .call 1 :: func0AfterCallProg, 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048576) ∗
-      pointsTo_u64 1048560 oldOuterA ∗
-      pointsTo_u64 1048568 oldOuterB ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048576) ∗
+      pointsTo_u64 0 1048560 oldOuterA ∗
+      pointsTo_u64 0 1048568 oldOuterB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], func0InitialLocals, []⟩,
         func0, 1, [], [], calls⟩ :
@@ -3849,7 +3861,7 @@ theorem func0_callPrefix_smallStep_wp
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
   ihave HouterALater :
-      ▷ pointsTo_u64 ((1048560 : UInt32) + 0) oldOuterA $$ [HouterA]
+      ▷ pointsTo_u64 0 ((1048560 : UInt32) + 0) oldOuterA $$ [HouterA]
   · inext
     rw [show (1048560 : UInt32) + 0 = 1048560 from rfl]
     iexact HouterA
@@ -3863,7 +3875,7 @@ theorem func0_callPrefix_smallStep_wp
   iapply Wasm.SmallStep.wp_localGet rfl
   inext
   ihave HouterBLater :
-      ▷ pointsTo_u64 ((1048560 : UInt32) + 8) oldOuterB $$ [HouterB]
+      ▷ pointsTo_u64 0 ((1048560 : UInt32) + 8) oldOuterB $$ [HouterB]
   · inext
     rw [show (1048560 : UInt32) + 8 = 1048568 from rfl]
     iexact HouterB
@@ -3883,17 +3895,17 @@ theorem func0_callPrefix_smallStep_wp
   rw [show (8 : UInt32) + 1048560 = 1048568 from rfl]
   simp only [func0CallLocals, func0AfterCallProg] at hcontinue
   have hOuterAProp :
-      pointsTo_u64 ((1048560 : UInt32) + 0) a =
-        pointsTo_u64 1048560 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048560 : UInt32) + 0) a =
+        pointsTo_u64 0 1048560 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hOuterBProp :
-      pointsTo_u64 ((1048560 : UInt32) + 8) b =
-        pointsTo_u64 1048568 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
-  ihave HouterAExact : pointsTo_u64 1048560 a $$ [HouterA]
+      pointsTo_u64 0 ((1048560 : UInt32) + 8) b =
+        pointsTo_u64 0 1048568 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
+  ihave HouterAExact : pointsTo_u64 0 1048560 a $$ [HouterA]
   · rw [← hOuterAProp]
     iexact HouterA
-  ihave HouterBExact : pointsTo_u64 1048568 b $$ [HouterB]
+  ihave HouterBExact : pointsTo_u64 0 1048568 b $$ [HouterB]
   · rw [← hOuterBProp]
     iexact HouterB
   iapply hcontinue
@@ -3904,12 +3916,12 @@ pointer global, and return the GCD from the top-level invocation. -/
 theorem func0_afterCall_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048576) ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048576) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i64 a, .i64 b],
             [.i32 1048560,
@@ -3917,7 +3929,7 @@ theorem func0_afterCall_smallStep_wp_to_return
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], func0CallLocals,
           [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
@@ -3948,9 +3960,9 @@ theorem func0_afterCall_smallStep_wp_to_return
 theorem func0_afterCall_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (a b : UInt64) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], func0CallLocals,
           [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
@@ -3958,7 +3970,7 @@ theorem func0_afterCall_smallStep_wp
         Wasm.SmallStep.Expr Unit) @ s; E
       {{ rs,
         ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-          R ∗ globalPointsTo 0 (.i32 1048576) }} := by
+          R ∗ globalPointsToAt 0 0 (.i32 1048576) }} := by
   iintro Hresources
   iapply func0_afterCall_smallStep_wp_to_return R [] a b
   · iintro Hresources
@@ -3974,34 +3986,34 @@ theorem func0_afterCall_smallStep_wp
 
 def func0FramePost
     [WasmHeapGS Unit] [WasmGlobalGS Unit]
-    (R : IProp WasmHeapGF) (a b : UInt64) (rs : List Value) :
-    IProp WasmHeapGF :=
+    (R : IProp (WasmHeapGF Unit)) (a b : UInt64) (rs : List Value) :
+    IProp (WasmHeapGF Unit) :=
   iprop(
     ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
     ∃ result x y outerA outerB : UInt64,
     ∃ shiftXY shiftX shiftY nextY nextX : UInt32,
-      R ∗ globalPointsTo 0 (.i32 1048576) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB)
+      R ∗ globalPointsToAt 0 0 (.i32 1048576) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB)
 
 /-- Package one exact physical frame into the branch-independent existential
 postcondition used by callers of `func0`. -/
 theorem func0_exactFrame_entails_post
     [WasmHeapGS Unit] [WasmGlobalGS Unit]
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (a b result x y outerA outerB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32) :
-    R ∗ globalPointsTo 0 (.i32 1048576) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048576) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB ⊢
     func0FramePost R a b
       [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))] := by
   iintro
@@ -4023,23 +4035,51 @@ theorem func0_exactFrame_entails_post
     iexists nextX
     iframe
 
+/-- Absorb an extra resource into the `R` slot of `func0FramePost`.  Used by
+the total-correctness wrappers, whose `twp_returnFromCallExplicit` hands the
+runtime-module ownership back and therefore reports it in the postcondition. -/
+theorem func0FramePost_absorb
+    [WasmHeapGS Unit] [WasmGlobalGS Unit]
+    (R Q : IProp (WasmHeapGF Unit)) (a b : UInt64) (rs : List Value) :
+    Q ∗ func0FramePost R a b rs ⊢ func0FramePost iprop(R ∗ Q) a b rs := by
+  unfold func0FramePost
+  iintro ⟨HQ, %hrs, %result, %x, %y, %outerA, %outerB,
+    %shiftXY, %shiftX, %shiftY, %nextY, %nextX, Hbody⟩
+  isplit
+  · ipureintro
+    exact hrs
+  · iexists result
+    iexists x
+    iexists y
+    iexists outerA
+    iexists outerB
+    iexists shiftXY
+    iexists shiftX
+    iexists shiftY
+    iexists nextY
+    iexists nextX
+    icases Hbody with
+      ⟨HR, Hglobal, Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY,
+        HnextY, HnextX, HouterA, HouterB⟩
+    iframe
+
 /-- Branch-independent `func0` epilogue: all exact frame contents are retained
 under existential ownership in the shared caller postcondition. -/
 theorem func0_afterCall_frame_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (a b returned result x y outerA outerB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (hreturned :
       returned = UInt64.ofNat (Nat.gcd a.toNat b.toNat)) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], [.i32 1048560, .i64 0],
           [.i64 returned]⟩,
@@ -4053,13 +4093,13 @@ theorem func0_afterCall_frame_smallStep_wp
   have hpost : ∀ rs : List Value,
       (iprop(
         ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-        (R ∗ pointsTo_u64 1048512 result ∗
-          pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-          pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-          pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-          pointsTo_u32 1048540 nextX ∗
-          pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB) ∗
-        globalPointsTo 0 (.i32 1048576))) ⊢
+        (R ∗ pointsTo_u64 0 1048512 result ∗
+          pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+          pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+          pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+          pointsTo_u32 0 1048540 nextX ∗
+          pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB) ∗
+        globalPointsToAt 0 0 (.i32 1048576))) ⊢
       func0FramePost R a b rs := by
     intro rs
     iintro ⟨%hrs, Hframe, Hglobal⟩
@@ -4084,12 +4124,12 @@ theorem func0_afterCall_frame_smallStep_wp
   iapply wp_mono hpost
   have hafter := func0_afterCall_smallStep_wp
     (s := s) (E := E)
-    (R := iprop(R ∗ pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB))
     a b
   simp only [func0CallLocals, func0AfterCallProg] at hafter
   iapply hafter
@@ -4104,8 +4144,9 @@ caller. -/
 theorem func0_resumeCaller_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
+    {ri : Wasm.SmallStep.ModuleInstanceId}
     (calls : List Wasm.SmallStep.CallFrame)
     (calleeLocals : Locals)
     (a b returned result x y outerA outerB : UInt64)
@@ -4113,7 +4154,7 @@ theorem func0_resumeCaller_smallStep_wp
     (hreturned :
       returned = UInt64.ofNat (Nat.gcd a.toNat b.toNat))
     (hreturn :
-      func0FramePost R a b
+      runtimeModuleOwn ri «module» ∗ func0FramePost R a b
           [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))] ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i64 a, .i64 b],
@@ -4122,47 +4163,54 @@ theorem func0_resumeCaller_smallStep_wp
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB ⊢
+    runtimeModuleOwn ri «module» ∗ R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨{ calleeLocals with
           values := [.i64 returned] },
         [.ret], 1, [], [],
-        func0CallerFrame a b :: calls⟩ :
+        func0CallerFrame a b ri :: calls⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }} := by
   subst returned
-  iintro Hresources
-  iapply Wasm.SmallStep.wp_returnFromCallExplicit
+  simp only [func0CallerFrame]
+  iintro ⟨Hruntime, Hresources⟩
+  iapply Wasm.SmallStep.wp_returnFromCallExplicit' $$ Hruntime
   inext
-  simp only [func0CallerFrame, func0CallLocals, func0AfterCallProg,
+  iintro Hruntime'
+  simp only [func0CallLocals, func0AfterCallProg,
     List.take, List.append_nil]
+  icombine Hresources Hruntime' as Hresources
   have hafter := func0_afterCall_smallStep_wp_to_return
     (s := s) (E := E) (Φ := Φ)
-    (R := iprop(R ∗ pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB))
+    (R := iprop(R ∗ runtimeModuleOwn ri «module» ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB))
     calls a b
   simp only [func0CallLocals, func0AfterCallProg] at hafter
   iapply hafter
   · iintro Hresources
-    iapply hreturn
-    iapply func0_exactFrame_entails_post
-      R a b result x y outerA outerB
-      shiftXY shiftX shiftY nextY nextX
     icases Hresources with ⟨Hframe, Hglobal⟩
     icases Hframe with
-      ⟨HR, Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY,
+      ⟨HR, Hruntime'', Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY,
         HnextY, HnextX, HouterA, HouterB⟩
-    iframe
-  · icases Hresources with
+    iapply hreturn
+    isplitl [Hruntime'']
+    · iexact Hruntime''
+    · iapply func0_exactFrame_entails_post
+        R a b result x y outerA outerB
+        shiftXY shiftX shiftY nextY nextX
+      iframe
+  · icases Hresources with ⟨HRstuff, Hruntime_b⟩
+    icases HRstuff with
       ⟨HR, Hglobal, Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY,
         HnextY, HnextX, HouterA, HouterB⟩
     iframe
@@ -4172,13 +4220,13 @@ final explicit return to an arbitrary outer call stack. -/
 theorem func0_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (hreturn :
-      func0FramePost (iprop(R ∗ runtimeModuleOwn «module»)) a b
+      runtimeModuleOwn ⟨0⟩ «module» ∗ func0FramePost R a b
           [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))] ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i64 a, .i64 b],
@@ -4187,15 +4235,15 @@ theorem func0_smallStep_wp_to_return
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E {{ Φ }}) :
-    R ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048576) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 oldOuterA ∗
-      pointsTo_u64 1048568 oldOuterB ⊢
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048576) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 oldOuterA ∗
+      pointsTo_u64 0 1048568 oldOuterB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], func0InitialLocals, []⟩,
         func0, 1, [], [], calls⟩ :
@@ -4204,12 +4252,12 @@ theorem func0_smallStep_wp_to_return
     ⟨HR, Hruntime, Hglobal, Hresult, Hx, Hy, HshiftXY, HshiftX,
       HshiftY, HnextY, HnextX, HouterA, HouterB⟩
   iapply func0_callPrefix_smallStep_wp
-    (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX))
+    (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX))
     calls a b oldOuterA oldOuterB
   · iintro Hresources
     icases Hresources with
@@ -4230,16 +4278,17 @@ theorem func0_smallStep_wp_to_return
          continuation := func0AfterCallProg
          resultArity := 1
          callerRemainder := []
-         control := [] } : Wasm.SmallStep.CallFrame) =
-        func0CallerFrame a b from rfl]
+         control := []
+         returningInstance := ⟨0⟩ } : Wasm.SmallStep.CallFrame) =
+        func0CallerFrame a b ⟨0⟩ from rfl]
     by_cases ha : a = 0
     · subst a
       iapply func1_leftZero_smallStep_wp_to_return
-        (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-          pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-          pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-          pointsTo_u32 1048540 nextX))
-        (func0CallerFrame 0 b :: calls) result oldX oldY b
+        (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+          pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+          pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+          pointsTo_u32 0 1048540 nextX))
+        (func0CallerFrame 0 b ⟨0⟩ :: calls) result oldX oldY b
       · iintro Hresources
         icases Hresources with
           ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
@@ -4247,21 +4296,21 @@ theorem func0_smallStep_wp_to_return
           ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
             HnextY'', HnextX''⟩
         iapply func0_resumeCaller_smallStep_wp
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
+          (R := R)
           calls
           ⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩
           0 b b b 0 b 0 b shiftXY shiftX shiftY nextY nextX
-          (by simp) hreturn
+          (by simp [Nat.gcd_zero_left]) hreturn
         iframe
       · iframe
     · by_cases hb : b = 0
       · subst b
         iapply func1_rightZero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-            pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-            pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-            pointsTo_u32 1048540 nextX))
-          (func0CallerFrame a 0 :: calls) result oldX oldY a ha
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+            pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+            pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+            pointsTo_u32 0 1048540 nextX))
+          (func0CallerFrame a 0 ⟨0⟩ :: calls) result oldX oldY a ha
         · iintro Hresources
           icases Hresources with
             ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
@@ -4269,16 +4318,16 @@ theorem func0_smallStep_wp_to_return
             ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
               HnextY'', HnextX''⟩
           iapply func0_resumeCaller_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := R)
             calls
             ⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩
             a 0 a a a 0 a 0 shiftXY shiftX shiftY nextY nextX
-            (by simp) hreturn
+            (by simp [Nat.gcd_zero_right]) hreturn
           iframe
         · iframe
       · iapply func1_nonzero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
-          (func0CallerFrame a b :: calls)
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»))
+          (func0CallerFrame a b ⟨0⟩ :: calls)
           result oldX oldY a b ha hb
           shiftXY shiftX shiftY nextX nextY
         · intro g loopX loopY d6 d8 d7 d9 hg
@@ -4291,7 +4340,7 @@ theorem func0_smallStep_wp_to_return
             ⟨HRruntime, Hglobal'', HouterA'', HouterB''⟩
           icases HRruntime with ⟨HR'', Hruntime''⟩
           iapply func0_resumeCaller_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := R)
             calls
             ⟨[.i32 1048560, .i32 1048568],
               func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩
@@ -4309,33 +4358,33 @@ top-level return. -/
 theorem func0_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32) :
-    R ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048576) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 oldOuterA ∗
-      pointsTo_u64 1048568 oldOuterB ⊢
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048576) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 oldOuterA ∗
+      pointsTo_u64 0 1048568 oldOuterB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], func0InitialLocals, []⟩,
         func0, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
-      {{ rs, func0FramePost (iprop(R ∗ runtimeModuleOwn «module»)) a b rs }} := by
+      {{ rs, func0FramePost R a b rs }} := by
   iintro
     ⟨HR, Hruntime, Hglobal, Hresult, Hx, Hy, HshiftXY, HshiftX,
       HshiftY, HnextY, HnextX, HouterA, HouterB⟩
   iapply func0_callPrefix_smallStep_wp
-    (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX))
+    (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX))
     [] a b oldOuterA oldOuterB
   · iintro Hresources
     icases Hresources with
@@ -4356,27 +4405,29 @@ theorem func0_smallStep_wp
          continuation := func0AfterCallProg
          resultArity := 1
          callerRemainder := []
-         control := [] } : Wasm.SmallStep.CallFrame) =
-        func0CallerFrame a b from rfl]
+         control := []
+         returningInstance := ⟨0⟩ } : Wasm.SmallStep.CallFrame) =
+        func0CallerFrame a b ⟨0⟩ from rfl]
     by_cases ha : a = 0
     · subst a
       iapply func1_leftZero_smallStep_wp_to_return
-        (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-          pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-          pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-          pointsTo_u32 1048540 nextX))
-        [func0CallerFrame 0 b] result oldX oldY b
+        (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+          pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+          pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+          pointsTo_u32 0 1048540 nextX))
+        [func0CallerFrame 0 b ⟨0⟩] result oldX oldY b
       · iintro Hresources
         icases Hresources with
           ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
         icases HRscratch with
           ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
             HnextY'', HnextX''⟩
-        iapply Wasm.SmallStep.wp_returnFromCallExplicit
+        simp only [func0CallerFrame]
+        iapply Wasm.SmallStep.wp_returnFromCallExplicit $$ Hruntime''
         inext
-        simp [func0CallerFrame, func0CallLocals, func0AfterCallProg]
+        simp [func0CallLocals, func0AfterCallProg]
         iapply func0_afterCall_frame_smallStep_wp
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
+          (R := R)
           0 b b b 0 b 0 b shiftXY shiftX shiftY nextY nextX
           (by simp [Nat.gcd_zero_left])
         iframe
@@ -4384,29 +4435,30 @@ theorem func0_smallStep_wp
     · by_cases hb : b = 0
       · subst b
         iapply func1_rightZero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-            pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-            pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-            pointsTo_u32 1048540 nextX))
-          [func0CallerFrame a 0] result oldX oldY a ha
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+            pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+            pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+            pointsTo_u32 0 1048540 nextX))
+          [func0CallerFrame a 0 ⟨0⟩] result oldX oldY a ha
         · iintro Hresources
           icases Hresources with
             ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
           icases HRscratch with
             ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
               HnextY'', HnextX''⟩
-          iapply Wasm.SmallStep.wp_returnFromCallExplicit
+          simp only [func0CallerFrame]
+          iapply Wasm.SmallStep.wp_returnFromCallExplicit $$ Hruntime''
           inext
-          simp [func0CallerFrame, func0CallLocals, func0AfterCallProg]
+          simp [func0CallLocals, func0AfterCallProg]
           iapply func0_afterCall_frame_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := R)
             a 0 a a a 0 a 0 shiftXY shiftX shiftY nextY nextX
             (by simp [Nat.gcd_zero_right])
           iframe
         · iframe
       · iapply func1_nonzero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
-          [func0CallerFrame a b]
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»))
+          [func0CallerFrame a b ⟨0⟩]
           result oldX oldY a b ha hb
           shiftXY shiftX shiftY nextX nextY
         · intro g loopX loopY d6 d8 d7 d9 hg
@@ -4418,12 +4470,13 @@ theorem func0_smallStep_wp
           icases HRouter with
             ⟨HRruntime, Hglobal'', HouterA'', HouterB''⟩
           icases HRruntime with ⟨HR'', Hruntime''⟩
-          iapply Wasm.SmallStep.wp_returnFromCallExplicit
+          simp only [func0CallerFrame]
+          iapply Wasm.SmallStep.wp_returnFromCallExplicit $$ Hruntime''
           inext
-          simp only [func0CallerFrame, func0CallLocals, func0AfterCallProg,
+          simp only [func0CallLocals, func0AfterCallProg,
             List.take, List.append_nil]
           iapply func0_afterCall_frame_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := R)
             a b (UInt64.ofNat (Nat.gcd a.toNat b.toNat))
             (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) g g a b
             (sharedShiftWord a b) (operandShiftWord a) (operandShiftWord b)
@@ -4432,34 +4485,35 @@ theorem func0_smallStep_wp
         · iframe
   · iframe
 
-def func2CallerFrame (a b : UInt64) : Wasm.SmallStep.CallFrame :=
+def func2CallerFrame (a b : UInt64) (ri : Wasm.SmallStep.ModuleInstanceId) : Wasm.SmallStep.CallFrame :=
   { locals := ⟨[.i64 a, .i64 b], [], []⟩
     continuation := [.ret]
     resultArity := 1
     callerRemainder := []
-    control := [] }
+    control := []
+    returningInstance := ri }
 
 /-- Complete small-step Iris rule for the exported `func2` wrapper. -/
 theorem func2_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32) :
-    R ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048576) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 oldOuterA ∗
-      pointsTo_u64 1048568 oldOuterB ⊢
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048576) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 oldOuterA ∗
+      pointsTo_u64 0 1048568 oldOuterB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], [], []⟩,
         func2, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
-      {{ rs, func0FramePost (iprop(R ∗ runtimeModuleOwn «module»)) a b rs }} := by
+      {{ rs, func0FramePost R a b rs }} := by
   iintro Hresources
   simp only [func2]
   iapply Wasm.SmallStep.wp_localGet rfl
@@ -4480,16 +4534,18 @@ theorem func2_smallStep_wp
        continuation := [.ret]
        resultArity := 1
        callerRemainder := []
-       control := [] } : Wasm.SmallStep.CallFrame) =
-      func2CallerFrame a b from rfl]
+       control := []
+       returningInstance := ⟨0⟩ } : Wasm.SmallStep.CallFrame) =
+      func2CallerFrame a b ⟨0⟩ from rfl]
   iapply func0_smallStep_wp_to_return
-    R [func2CallerFrame a b]
+    R [func2CallerFrame a b ⟨0⟩]
     a b result oldX oldY oldOuterA oldOuterB
     shiftXY shiftX shiftY nextY nextX
-  · iintro Hpost
-    iapply Wasm.SmallStep.wp_returnFromCallExplicit
+  · iintro ⟨Hruntime, Hpost⟩
+    simp only [func2CallerFrame]
+    iapply Wasm.SmallStep.wp_returnFromCallExplicit $$ Hruntime
     inext
-    simp only [func2CallerFrame, List.take, List.append_nil]
+    simp only [List.take, List.append_nil]
     iapply Wasm.SmallStep.wp_returnFromFunction
     inext
     simp only [List.take, List.append_nil]
@@ -4509,20 +4565,20 @@ theorem func0_initialFrameMem_eq :
 
 theorem func0InitialHeap_agrees :
     heapAgreesWithMem func0InitialHeap
-      («module».initialStore : Store Unit).mem := by
+      (fun id => if id = 0 then some («module».initialStore : Store Unit).mem else none) := by
   rw [← func0_initialFrameMem_eq]
   exact gcdFrameHeap_agrees
     («module».initialStore : Store Unit).mem 0 0 0 0 0 0 0 0 0 0
 
 theorem func0InitialHeap_inBounds :
     heapAddressesInBounds func0InitialHeap
-      («module».initialStore : Store Unit).mem := by
+      (fun id => if id = 0 then some («module».initialStore : Store Unit).mem else none) := by
   rw [← func0_initialFrameMem_eq]
   apply gcdFrameHeap_inBounds
   rfl
 
 def func0GlobalHeap : WasmGlobalMap Value :=
-  insert ∅ 0 (.i32 1048576)
+  insert ∅ ⟨0, 0⟩ (.i32 1048576)
 
 theorem func0GlobalHeap_agrees :
     globalHeapAgrees func0GlobalHeap
@@ -4534,16 +4590,18 @@ theorem func0GlobalHeap_agrees :
     simp only [get?_insert_eq rfl] at hget
     obtain rfl := Option.some.inj hget
     rfl
-  · rw [get?_insert_ne (Ne.symm hindex), get?_empty] at hget
+  · rw [get?_insert_ne (show (⟨0, 0⟩ : GlobalKey) ≠ ⟨0, index⟩ from fun h => hindex (congrArg GlobalKey.index h).symm), get?_empty] at hget
     contradiction
 
 theorem func0GlobalHeap_pointsTo [WasmGlobalGS Unit] :
     ([∗map] index ↦ value ∈ func0GlobalHeap,
       globalPointsTo index value) ⊢
-      globalPointsTo 0 (.i32 1048576) := by
+      globalPointsToAt 0 0 (.i32 1048576) := by
   unfold func0GlobalHeap
-  rw [(BI.BigSepM.bigSepM_insert (get?_empty 0)).to_eq,
+  rw [(BI.BigSepM.bigSepM_insert (get?_empty (⟨0, 0⟩ : GlobalKey))).to_eq,
     BI.BigSepM.bigSepM_empty.to_eq, BI.sep_emp.to_eq]
+  simp only [globalPointsToAt_eq]
+  rfl
 
 def func0Config (a b : UInt64) : Wasm.SmallStep.Config Unit :=
   let initial : Store Unit := «module».initialStore
@@ -4551,7 +4609,7 @@ def func0Config (a b : UInt64) : Wasm.SmallStep.Config Unit :=
       ⟨⟨[.i64 a, .i64 b], func0InitialLocals, []⟩,
         func0, 1, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := {} }
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm := initial } }
 
 def func2Config (a b : UInt64) : Wasm.SmallStep.Config Unit :=
@@ -4560,30 +4618,119 @@ def func2Config (a b : UInt64) : Wasm.SmallStep.Config Unit :=
       ⟨⟨[.i64 a, .i64 b], [], []⟩,
         func2, 1, [], [], []⟩
     store :=
-      { runtime := { module := «module», host := {} }
+      { runtime := { instances := #[{ module := «module», host := {} }], entry := ⟨0⟩ }
         wasm := initial } }
 
+/-- Closed operational partial correctness of opt0 `func0` from the canonical
+module store. -/
+theorem func0_smallStep_partiallyMeets (a b : UInt64) :
+    Wasm.SmallStep.PartiallyMeets
+      (func0Config a b)
+      (fun rs _store =>
+        rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]) := by
+  apply Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_partiallyMeets
+    (α := Unit)
+    (σ := func0InitialHeap)
+    (globalσ := func0GlobalHeap)
+    (φ := fun rs => rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))])
+  · exact func0InitialHeap_agrees
+  · exact func0InitialHeap_inBounds
+  · exact func0GlobalHeap_agrees
+  · simp only [func0Config]; decide
+  · intro gs
+    unfold func0InitialHeap
+    simp only [func0Config, Wasm.SmallStep.RuntimeEnv.currentModule_mk1]
+    iintro ⟨Hframe, Hglobals, Hruntime⟩
+    ihave Hglobal := func0GlobalHeap_pointsTo $$ Hglobals
+    ihave Hslots := gcdFrameHeap_pointsTo
+      0 0 0 0 0 0 0 0 0 0 $$ Hframe
+    icases Hslots with
+      ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
+        HouterA, HouterB⟩
+    have hpost : ∀ rs : List Value,
+        func0FramePost (iprop(⌜True⌝))
+            a b rs ⊢
+          (iprop(⌜rs =
+            [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
+      intro rs
+      unfold func0FramePost
+      iintro ⟨%hrs, _Hresources⟩
+      ipureintro
+      exact hrs
+    iapply wp_mono hpost
+    iapply func0_smallStep_wp
+      (R := iprop(⌜True⌝))
+      a b 0 0 0 0 0 0 0 0 0 0
+    isplitl []
+    · ipureintro
+      trivial
+    · iframe
+
+/-- Closed operational partial correctness of the exported opt0 `func2`
+wrapper from the canonical module store. -/
+theorem func2_smallStep_partiallyMeets (a b : UInt64) :
+    Wasm.SmallStep.PartiallyMeets
+      (func2Config a b)
+      (fun rs _store =>
+        rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]) := by
+  apply Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_partiallyMeets
+    (α := Unit)
+    (σ := func0InitialHeap)
+    (globalσ := func0GlobalHeap)
+    (φ := fun rs => rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))])
+  · exact func0InitialHeap_agrees
+  · exact func0InitialHeap_inBounds
+  · exact func0GlobalHeap_agrees
+  · simp only [func2Config]; decide
+  · intro gs
+    unfold func0InitialHeap
+    simp only [func2Config, Wasm.SmallStep.RuntimeEnv.currentModule_mk1]
+    iintro ⟨Hframe, Hglobals, Hruntime⟩
+    ihave Hglobal := func0GlobalHeap_pointsTo $$ Hglobals
+    ihave Hslots := gcdFrameHeap_pointsTo
+      0 0 0 0 0 0 0 0 0 0 $$ Hframe
+    icases Hslots with
+      ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
+        HouterA, HouterB⟩
+    have hpost : ∀ rs : List Value,
+        func0FramePost (iprop(⌜True⌝))
+            a b rs ⊢
+          (iprop(⌜rs =
+            [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
+      intro rs
+      unfold func0FramePost
+      iintro ⟨%hrs, _Hresources⟩
+      ipureintro
+      exact hrs
+    iapply wp_mono hpost
+    iapply func2_smallStep_wp
+      (R := iprop(⌜True⌝))
+      a b 0 0 0 0 0 0 0 0 0 0
+    isplitl []
+    · ipureintro
+      trivial
+    · iframe
 
 /-! ## Total weakest precondition versions of non-loop theorems -/
 
 theorem twp_func1_spillPrefix_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldX oldY : UInt64)
     (hcontinue :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-        pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+        pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
           func1.drop 12, 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], calls⟩ :
@@ -4600,14 +4747,14 @@ theorem twp_func1_spillPrefix_smallStep_wp
     List.set]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HouterALater : pointsTo_u64 (1048560 + 0) a $$ [HouterA]
+  ihave HouterALater : pointsTo_u64 0 (1048560 + 0) a $$ [HouterA]
   · rw [show (1048560 : UInt32) + 0 = 1048560 by decide]
     iexact HouterA
   iapply Wasm.SmallStep.twp_load64 a
       (by decide) (by decide) (by decide) (by decide) (by decide)
       (by decide) (by decide) (by decide) $$ HouterALater
   iintro HouterA
-  ihave HxLater : pointsTo_u64 (1048512 + 8) oldX $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) oldX $$ [Hx]
   · rw [show (1048512 : UInt32) + 8 = 1048520 by decide]
     iexact Hx
   iapply Wasm.SmallStep.twp_store64 oldX
@@ -4616,14 +4763,14 @@ theorem twp_func1_spillPrefix_smallStep_wp
   iintro Hx
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HouterBLater : pointsTo_u64 (1048568 + 0) b $$ [HouterB]
+  ihave HouterBLater : pointsTo_u64 0 (1048568 + 0) b $$ [HouterB]
   · rw [show (1048568 : UInt32) + 0 = 1048568 by decide]
     iexact HouterB
   iapply Wasm.SmallStep.twp_load64 b
       (by decide) (by decide) (by decide) (by decide) (by decide)
       (by decide) (by decide) (by decide) $$ HouterBLater
   iintro HouterB
-  ihave HyLater : pointsTo_u64 (1048512 + 16) oldY $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) oldY $$ [Hy]
   · rw [show (1048512 : UInt32) + 16 = 1048528 by decide]
     iexact Hy
   iapply Wasm.SmallStep.twp_store64 oldY
@@ -4632,27 +4779,27 @@ theorem twp_func1_spillPrefix_smallStep_wp
   iintro Hy
   simp only [func1SpilledLocals, func1, List.drop] at hcontinue
   have hOuterAProp :
-      pointsTo_u64 ((1048560 : UInt32) + 0) a = pointsTo_u64 1048560 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048560 : UInt32) + 0) a = pointsTo_u64 0 1048560 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hOuterBProp :
-      pointsTo_u64 ((1048568 : UInt32) + 0) b = pointsTo_u64 1048568 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
+      pointsTo_u64 0 ((1048568 : UInt32) + 0) b = pointsTo_u64 0 1048568 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) a = pointsTo_u64 1048520 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) a = pointsTo_u64 0 1048520 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16) b = pointsTo_u64 1048528 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
-  ihave HouterAExact : pointsTo_u64 1048560 a $$ [HouterA]
+      pointsTo_u64 0 ((1048512 : UInt32) + 16) b = pointsTo_u64 0 1048528 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
+  ihave HouterAExact : pointsTo_u64 0 1048560 a $$ [HouterA]
   · rw [← hOuterAProp]
     iexact HouterA
-  ihave HouterBExact : pointsTo_u64 1048568 b $$ [HouterB]
+  ihave HouterBExact : pointsTo_u64 0 1048568 b $$ [HouterB]
   · rw [← hOuterBProp]
     iexact HouterB
-  ihave HxExact : pointsTo_u64 1048520 a $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 a $$ [Hx]
   · rw [← hXProp]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 b $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 b $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   iapply hcontinue
@@ -4661,27 +4808,27 @@ theorem twp_func1_spillPrefix_smallStep_wp
 theorem twp_func1_spillPrefix_frame_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (a b : UInt64)
     (hcontinue :
-      pointsTo_u64 1048512 result ∗
-        pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-        pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-        pointsTo_u32 1048540 nextX ∗
-        globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-        pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ⊢
+      pointsTo_u64 0 1048512 result ∗
+        pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+        pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+        pointsTo_u32 0 1048540 nextX ∗
+        globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+        pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
           func1.drop 12, 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    globalPointsTo 0 (.i32 1048560) ∗
+    globalPointsToAt 0 0 (.i32 1048560) ∗
       ([∗map] address ↦ byte ∈
         gcdFrameHeap result oldX oldY shiftXY shiftX shiftY nextY nextX a b,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) byte) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
@@ -4694,10 +4841,10 @@ theorem twp_func1_spillPrefix_frame_smallStep_wp
     ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
       HouterA, HouterB⟩
   iapply twp_func1_spillPrefix_smallStep_wp
-    (R := iprop(pointsTo_u64 1048512 result ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX))
+    (R := iprop(pointsTo_u64 0 1048512 result ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX))
     (calls := calls) (a := a) (b := b) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -4711,23 +4858,23 @@ theorem twp_func1_spillPrefix_frame_smallStep_wp
 theorem twp_func1_leftZero_core_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (result b : UInt64)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-        pointsTo_u64 1048512 b ∗
-        pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+        pointsTo_u64 0 1048512 b ∗
+        pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, [.i64 b]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         func1.drop 12, 1, [], [], calls⟩ :
@@ -4738,11 +4885,11 @@ theorem twp_func1_leftZero_core_smallStep_wp_to_return
   iapply Wasm.SmallStep.twp_block
   iapply Wasm.SmallStep.twp_block
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) 0 $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) 0 $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) 0 =
-          pointsTo_u64 1048520 0 :=
-      congrArg (fun address => pointsTo_u64 address 0) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) 0 =
+          pointsTo_u64 0 1048520 0 :=
+      congrArg (fun address => pointsTo_u64 0 address 0) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.twp_load64 0
@@ -4758,18 +4905,18 @@ theorem twp_func1_leftZero_core_smallStep_wp_to_return
   simp only [List.take_nil, List.drop_nil, List.nil_append]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) 0 $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) 0 $$ [Hx]
   · iexact Hx
   iapply Wasm.SmallStep.twp_load64 0
       (by decide) (by decide) (by decide) (by decide) (by decide)
       (by decide) (by decide) (by decide) $$ HxLater
   iintro Hx
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) b =
-          pointsTo_u64 1048528 b :=
-      congrArg (fun address => pointsTo_u64 address b) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) b =
+          pointsTo_u64 0 1048528 b :=
+      congrArg (fun address => pointsTo_u64 0 address b) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.twp_load64 b
@@ -4781,11 +4928,11 @@ theorem twp_func1_leftZero_core_smallStep_wp_to_return
     apply UInt64.toNat.inj
     rw [UInt64.toNat_or]
     simp]
-  ihave HresultLater : pointsTo_u64 (1048512 + 0) result $$ [Hresult]
+  ihave HresultLater : pointsTo_u64 0 (1048512 + 0) result $$ [Hresult]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 0) result =
-          pointsTo_u64 1048512 result :=
-      congrArg (fun address => pointsTo_u64 address result) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 0) result =
+          pointsTo_u64 0 1048512 result :=
+      congrArg (fun address => pointsTo_u64 0 address result) (by decide)
     rw [h]
     iexact Hresult
   iapply Wasm.SmallStep.twp_store64 result
@@ -4795,28 +4942,28 @@ theorem twp_func1_leftZero_core_smallStep_wp_to_return
   iapply Wasm.SmallStep.twp_br rfl
   simp only [List.take_nil, List.nil_append]
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HresultLater : pointsTo_u64 (1048512 + 0) b $$ [Hresult]
+  ihave HresultLater : pointsTo_u64 0 (1048512 + 0) b $$ [Hresult]
   · iexact Hresult
   iapply Wasm.SmallStep.twp_load64 b
       (by decide) (by decide) (by decide) (by decide) (by decide)
       (by decide) (by decide) (by decide) $$ HresultLater
   iintro Hresult
   have hResultProp :
-      pointsTo_u64 ((1048512 : UInt32) + 0) b = pointsTo_u64 1048512 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 0) b = pointsTo_u64 0 1048512 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) 0 = pointsTo_u64 1048520 0 :=
-    congrArg (fun address => pointsTo_u64 address 0) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) 0 = pointsTo_u64 0 1048520 0 :=
+    congrArg (fun address => pointsTo_u64 0 address 0) (by decide)
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16) b = pointsTo_u64 1048528 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
-  ihave HresultExact : pointsTo_u64 1048512 b $$ [Hresult]
+      pointsTo_u64 0 ((1048512 : UInt32) + 16) b = pointsTo_u64 0 1048528 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
+  ihave HresultExact : pointsTo_u64 0 1048512 b $$ [Hresult]
   · rw [← hResultProp]
     iexact Hresult
-  ihave HxExact : pointsTo_u64 1048520 0 $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 0 $$ [Hx]
   · rw [← hXProp]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 b $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 b $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   simp only [func1SpilledLocals] at hreturn
@@ -4826,21 +4973,21 @@ theorem twp_func1_leftZero_core_smallStep_wp_to_return
 theorem twp_func1_leftZero_core_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result b : UInt64) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         func1.drop 12, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
       [{ rs,
-        ⌜rs = [.i64 b]⌝ ∗ R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-          pointsTo_u64 1048512 b ∗
-          pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b }] := by
+        ⌜rs = [.i64 b]⌝ ∗ R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+          pointsTo_u64 0 1048512 b ∗
+          pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b }] := by
   iintro Hresources
   iapply twp_func1_leftZero_core_smallStep_wp_to_return R [] result b
   · iintro Hresources
@@ -4856,30 +5003,30 @@ theorem twp_func1_leftZero_core_smallStep_wp
 theorem twp_func1_leftZero_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY b : UInt64)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-        pointsTo_u64 1048512 b ∗
-        pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+        pointsTo_u64 0 1048512 b ∗
+        pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, [.i64 b]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], calls⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }] := by
   iintro ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy⟩
   iapply twp_func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result))
     (calls := calls) (a := 0) (b := b) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -4893,24 +5040,24 @@ theorem twp_func1_leftZero_smallStep_wp_to_return
 theorem twp_func1_leftZero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result oldX oldY b : UInt64) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
       [{ rs,
-        ⌜rs = [.i64 b]⌝ ∗ R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 0 ∗ pointsTo_u64 1048568 b ∗
-          pointsTo_u64 1048512 b ∗
-          pointsTo_u64 1048520 0 ∗ pointsTo_u64 1048528 b }] := by
+        ⌜rs = [.i64 b]⌝ ∗ R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 0 ∗ pointsTo_u64 0 1048568 b ∗
+          pointsTo_u64 0 1048512 b ∗
+          pointsTo_u64 0 1048520 0 ∗ pointsTo_u64 0 1048528 b }] := by
   iintro ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy⟩
   iapply twp_func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result))
     (calls := []) (a := 0) (b := b) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -4923,23 +5070,23 @@ theorem twp_func1_leftZero_smallStep_wp
 theorem twp_func1_rightZero_core_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (result a : UInt64) (ha : a ≠ 0)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-        pointsTo_u64 1048512 a ∗
-        pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+        pointsTo_u64 0 1048512 a ∗
+        pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, [.i64 a]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         func1.drop 12, 1, [], [], calls⟩ :
@@ -4950,11 +5097,11 @@ theorem twp_func1_rightZero_core_smallStep_wp_to_return
   iapply Wasm.SmallStep.twp_block
   iapply Wasm.SmallStep.twp_block
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) a =
-          pointsTo_u64 1048520 a :=
-      congrArg (fun address => pointsTo_u64 address a) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) a =
+          pointsTo_u64 0 1048520 a :=
+      congrArg (fun address => pointsTo_u64 0 address a) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.twp_load64 a
@@ -4968,11 +5115,11 @@ theorem twp_func1_rightZero_core_smallStep_wp_to_return
   rw [show (0 &&& 1 : UInt32) = 0 by decide]
   iapply Wasm.SmallStep.twp_brIfZero
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) 0 $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) 0 $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) 0 =
-          pointsTo_u64 1048528 0 :=
-      congrArg (fun address => pointsTo_u64 address 0) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) 0 =
+          pointsTo_u64 0 1048528 0 :=
+      congrArg (fun address => pointsTo_u64 0 address 0) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.twp_load64 0
@@ -4990,14 +5137,14 @@ theorem twp_func1_rightZero_core_smallStep_wp_to_return
   simp only [List.take_nil, List.drop_nil, List.nil_append]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · iexact Hx
   iapply Wasm.SmallStep.twp_load64 a
       (by decide) (by decide) (by decide) (by decide) (by decide)
       (by decide) (by decide) (by decide) $$ HxLater
   iintro Hx
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) 0 $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) 0 $$ [Hy]
   · iexact Hy
   iapply Wasm.SmallStep.twp_load64 0
       (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -5008,11 +5155,11 @@ theorem twp_func1_rightZero_core_smallStep_wp_to_return
     apply UInt64.toNat.inj
     rw [UInt64.toNat_or]
     simp]
-  ihave HresultLater : pointsTo_u64 (1048512 + 0) result $$ [Hresult]
+  ihave HresultLater : pointsTo_u64 0 (1048512 + 0) result $$ [Hresult]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 0) result =
-          pointsTo_u64 1048512 result :=
-      congrArg (fun address => pointsTo_u64 address result) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 0) result =
+          pointsTo_u64 0 1048512 result :=
+      congrArg (fun address => pointsTo_u64 0 address result) (by decide)
     rw [h]
     iexact Hresult
   iapply Wasm.SmallStep.twp_store64 result
@@ -5022,28 +5169,28 @@ theorem twp_func1_rightZero_core_smallStep_wp_to_return
   iapply Wasm.SmallStep.twp_br rfl
   simp only [List.take_nil, List.nil_append]
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HresultLater : pointsTo_u64 (1048512 + 0) a $$ [Hresult]
+  ihave HresultLater : pointsTo_u64 0 (1048512 + 0) a $$ [Hresult]
   · iexact Hresult
   iapply Wasm.SmallStep.twp_load64 a
       (by decide) (by decide) (by decide) (by decide) (by decide)
       (by decide) (by decide) (by decide) $$ HresultLater
   iintro Hresult
   have hResultProp :
-      pointsTo_u64 ((1048512 : UInt32) + 0) a = pointsTo_u64 1048512 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 0) a = pointsTo_u64 0 1048512 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) a = pointsTo_u64 1048520 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) a = pointsTo_u64 0 1048520 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16) 0 = pointsTo_u64 1048528 0 :=
-    congrArg (fun address => pointsTo_u64 address 0) (by decide)
-  ihave HresultExact : pointsTo_u64 1048512 a $$ [Hresult]
+      pointsTo_u64 0 ((1048512 : UInt32) + 16) 0 = pointsTo_u64 0 1048528 0 :=
+    congrArg (fun address => pointsTo_u64 0 address 0) (by decide)
+  ihave HresultExact : pointsTo_u64 0 1048512 a $$ [Hresult]
   · rw [← hResultProp]
     iexact Hresult
-  ihave HxExact : pointsTo_u64 1048520 a $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 a $$ [Hx]
   · rw [← hXProp]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 0 $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 0 $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   simp only [func1SpilledLocals] at hreturn
@@ -5053,21 +5200,21 @@ theorem twp_func1_rightZero_core_smallStep_wp_to_return
 theorem twp_func1_rightZero_core_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result a : UInt64) (ha : a ≠ 0) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         func1.drop 12, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
       [{ rs,
-        ⌜rs = [.i64 a]⌝ ∗ R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-          pointsTo_u64 1048512 a ∗
-          pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 }] := by
+        ⌜rs = [.i64 a]⌝ ∗ R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+          pointsTo_u64 0 1048512 a ∗
+          pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 }] := by
   iintro Hresources
   iapply twp_func1_rightZero_core_smallStep_wp_to_return R [] result a ha
   · iintro Hresources
@@ -5083,30 +5230,30 @@ theorem twp_func1_rightZero_core_smallStep_wp
 theorem twp_func1_rightZero_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY a : UInt64) (ha : a ≠ 0)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-        pointsTo_u64 1048512 a ∗
-        pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+        pointsTo_u64 0 1048512 a ∗
+        pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, [.i64 a]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], calls⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }] := by
   iintro ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy⟩
   iapply twp_func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result))
     (calls := calls) (a := a) (b := 0) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -5120,24 +5267,24 @@ theorem twp_func1_rightZero_smallStep_wp_to_return
 theorem twp_func1_rightZero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result oldX oldY a : UInt64) (ha : a ≠ 0) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
       [{ rs,
-        ⌜rs = [.i64 a]⌝ ∗ R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 0 ∗
-          pointsTo_u64 1048512 a ∗
-          pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 0 }] := by
+        ⌜rs = [.i64 a]⌝ ∗ R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 0 ∗
+          pointsTo_u64 0 1048512 a ∗
+          pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 0 }] := by
   iintro ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy⟩
   iapply twp_func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result))
     (calls := []) (a := a) (b := 0) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -5150,22 +5297,22 @@ theorem twp_func1_rightZero_smallStep_wp
 theorem twp_func1_zero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result oldX oldY a b : UInt64) (hz : a = 0 ∨ b = 0) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
       [{ rs,
         ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-          R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-          pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-          pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b }] := by
+          R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+          pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+          pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b }] := by
   rcases hz with ha | hb
   · subst a
     simpa using twp_func1_leftZero_smallStep_wp R result oldX oldY b
@@ -5181,10 +5328,10 @@ theorem twp_func1_zero_frame_smallStep_wp
     (result oldX oldY : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (a b : UInt64) (hz : a = 0 ∨ b = 0) :
-    globalPointsTo 0 (.i32 1048560) ∗
+    globalPointsToAt 0 0 (.i32 1048560) ∗
       ([∗map] address ↦ byte ∈
         gcdFrameHeap result oldX oldY shiftXY shiftX shiftY nextY nextX a b,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) byte) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
@@ -5192,13 +5339,13 @@ theorem twp_func1_zero_frame_smallStep_wp
         Wasm.SmallStep.Expr Unit) @ s; E
       [{ rs,
         ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-          (pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-            pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-            pointsTo_u32 1048540 nextX) ∗
-          globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-          pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-          pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b }] := by
+          (pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+            pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+            pointsTo_u32 0 1048540 nextX) ∗
+          globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+          pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+          pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b }] := by
   iintro ⟨Hglobal, Hframe⟩
   ihave Hslots := gcdFrameHeap_pointsTo
     result oldX oldY shiftXY shiftX shiftY nextY nextX a b $$ Hframe
@@ -5206,29 +5353,29 @@ theorem twp_func1_zero_frame_smallStep_wp
     ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
       HouterA, HouterB⟩
   iapply twp_func1_zero_smallStep_wp
-    (R := iprop(pointsTo_u32 1048556 shiftXY ∗
-      pointsTo_u32 1048552 shiftX ∗ pointsTo_u32 1048548 shiftY ∗
-      pointsTo_u32 1048544 nextY ∗ pointsTo_u32 1048540 nextX))
+    (R := iprop(pointsTo_u32 0 1048556 shiftXY ∗
+      pointsTo_u32 0 1048552 shiftX ∗ pointsTo_u32 0 1048548 shiftY ∗
+      pointsTo_u32 0 1048544 nextY ∗ pointsTo_u32 0 1048540 nextX))
     result oldX oldY a b hz
   iframe
 
 theorem twp_func1_sharedShift_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (oldShift : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-        pointsTo_u32 1048556 (sharedShiftWord a b) ⊢
+      R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+        pointsTo_u32 0 1048556 (sharedShiftWord a b) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SharedShiftLocals a b, []⟩,
           meatLoopProg.drop 12, 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-      pointsTo_u32 1048556 oldShift ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+      pointsTo_u32 0 1048556 oldShift ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         meatLoopProg, 1, [], controls, calls⟩ :
@@ -5237,11 +5384,11 @@ theorem twp_func1_sharedShift_smallStep_wp
   simp only [meatLoopProg, func1SpilledLocals]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) a =
-          pointsTo_u64 1048520 a :=
-      congrArg (fun address => pointsTo_u64 address a) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) a =
+          pointsTo_u64 0 1048520 a :=
+      congrArg (fun address => pointsTo_u64 0 address a) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.twp_load64 a
@@ -5249,11 +5396,11 @@ theorem twp_func1_sharedShift_smallStep_wp
       (by decide) (by decide) (by decide) $$ HxLater
   iintro Hx
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) b =
-          pointsTo_u64 1048528 b :=
-      congrArg (fun address => pointsTo_u64 address b) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) b =
+          pointsTo_u64 0 1048528 b :=
+      congrArg (fun address => pointsTo_u64 0 address b) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.twp_load64 b
@@ -5264,11 +5411,11 @@ theorem twp_func1_sharedShift_smallStep_wp
   iapply Wasm.SmallStep.twp_ctzI64
   iapply Wasm.SmallStep.twp_wrapI64
   ihave HshiftLater :
-      pointsTo_u32 (1048512 + 44) oldShift $$ [Hshift]
+      pointsTo_u32 0 (1048512 + 44) oldShift $$ [Hshift]
   · have h :
-        pointsTo_u32 ((1048512 : UInt32) + 44) oldShift =
-          pointsTo_u32 1048556 oldShift :=
-      congrArg (fun address => pointsTo_u32 address oldShift) (by decide)
+        pointsTo_u32 0 ((1048512 : UInt32) + 44) oldShift =
+          pointsTo_u32 0 1048556 oldShift :=
+      congrArg (fun address => pointsTo_u32 0 address oldShift) (by decide)
     rw [h]
     iexact Hshift
   iapply Wasm.SmallStep.twp_store32 oldShift
@@ -5276,7 +5423,7 @@ theorem twp_func1_sharedShift_smallStep_wp
   iintro Hshift
   iapply Wasm.SmallStep.twp_localGet rfl
   ihave HshiftLater :
-      pointsTo_u32 (1048512 + 44) (sharedShiftWord a b) $$ [Hshift]
+      pointsTo_u32 0 (1048512 + 44) (sharedShiftWord a b) $$ [Hshift]
   · rw [sharedShiftWord]
     iexact Hshift
   iapply Wasm.SmallStep.twp_load32 (sharedShiftWord a b)
@@ -5288,23 +5435,23 @@ theorem twp_func1_sharedShift_smallStep_wp
   simp only [func1SharedShiftLocals, meatLoopProg, List.drop]
     at hcontinue
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) a = pointsTo_u64 1048520 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) a = pointsTo_u64 0 1048520 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16) b = pointsTo_u64 1048528 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 16) b = pointsTo_u64 0 1048528 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
   have hShiftProp :
-      pointsTo_u32 ((1048512 : UInt32) + 44) (sharedShiftWord a b) =
-        pointsTo_u32 1048556 (sharedShiftWord a b) :=
-    congrArg (fun address => pointsTo_u32 address (sharedShiftWord a b)) (by decide)
-  ihave HxExact : pointsTo_u64 1048520 a $$ [Hx]
+      pointsTo_u32 0 ((1048512 : UInt32) + 44) (sharedShiftWord a b) =
+        pointsTo_u32 0 1048556 (sharedShiftWord a b) :=
+    congrArg (fun address => pointsTo_u32 0 address (sharedShiftWord a b)) (by decide)
+  ihave HxExact : pointsTo_u64 0 1048520 a $$ [Hx]
   · rw [← hXProp]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 b $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 b $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   ihave HshiftExact :
-      pointsTo_u32 1048556 (sharedShiftWord a b) $$ [Hshift]
+      pointsTo_u32 0 1048556 (sharedShiftWord a b) $$ [Hshift]
   · rw [← hShiftProp]
     iexact Hshift
   iapply hcontinue
@@ -5313,19 +5460,19 @@ theorem twp_func1_sharedShift_smallStep_wp
 theorem twp_func1_normalizeX_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (ha : a ≠ 0) (oldShiftX : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 (oddPart64 a) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ⊢
+      R ∗ pointsTo_u64 0 1048520 (oddPart64 a) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1XShiftLocals a b, []⟩,
           meatLoopProg.drop 30, 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u32 1048552 oldShiftX ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u32 0 1048552 oldShiftX ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SharedShiftLocals a b, []⟩,
         meatLoopProg.drop 12, 1, [], controls, calls⟩ :
@@ -5334,11 +5481,11 @@ theorem twp_func1_normalizeX_smallStep_wp
   simp only [meatLoopProg, List.drop, func1SharedShiftLocals]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) a =
-          pointsTo_u64 1048520 a :=
-      congrArg (fun address => pointsTo_u64 address a) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) a =
+          pointsTo_u64 0 1048520 a :=
+      congrArg (fun address => pointsTo_u64 0 address a) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.twp_load64 a
@@ -5348,11 +5495,11 @@ theorem twp_func1_normalizeX_smallStep_wp
   iapply Wasm.SmallStep.twp_ctzI64
   iapply Wasm.SmallStep.twp_wrapI64
   ihave HshiftXLater :
-      pointsTo_u32 (1048512 + 40) oldShiftX $$ [HshiftX]
+      pointsTo_u32 0 (1048512 + 40) oldShiftX $$ [HshiftX]
   · have h :
-        pointsTo_u32 ((1048512 : UInt32) + 40) oldShiftX =
-          pointsTo_u32 1048552 oldShiftX :=
-      congrArg (fun address => pointsTo_u32 address oldShiftX) (by decide)
+        pointsTo_u32 0 ((1048512 : UInt32) + 40) oldShiftX =
+          pointsTo_u32 0 1048552 oldShiftX :=
+      congrArg (fun address => pointsTo_u32 0 address oldShiftX) (by decide)
     rw [h]
     iexact HshiftX
   iapply Wasm.SmallStep.twp_store32 oldShiftX
@@ -5360,7 +5507,7 @@ theorem twp_func1_normalizeX_smallStep_wp
   iintro HshiftX
   iapply Wasm.SmallStep.twp_localGet rfl
   ihave HshiftXLater :
-      pointsTo_u32 (1048512 + 40) (operandShiftWord a) $$ [HshiftX]
+      pointsTo_u32 0 (1048512 + 40) (operandShiftWord a) $$ [HshiftX]
   · rw [operandShiftWord]
     iexact HshiftX
   iapply Wasm.SmallStep.twp_load32 (operandShiftWord a)
@@ -5371,7 +5518,7 @@ theorem twp_func1_normalizeX_smallStep_wp
     List.set]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · iexact Hx
   iapply Wasm.SmallStep.twp_load64 a
       (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -5385,7 +5532,7 @@ theorem twp_func1_normalizeX_smallStep_wp
   rw [UInt32.and_comm (operandShiftWord a) 63]
   unfold operandShiftWord
   rw [shift_pipeline a ha]
-  ihave HxLater : pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · iexact Hx
   iapply Wasm.SmallStep.twp_store64 a
       (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -5394,30 +5541,30 @@ theorem twp_func1_normalizeX_smallStep_wp
   simp only [func1XShiftLocals, operandShiftWord, oddPart64,
     meatLoopProg, List.drop] at hcontinue
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8)
           (a >>> (UInt64.ofNat (ctz64 64 a) % 64)) =
-        pointsTo_u64 1048520
+        pointsTo_u64 0 1048520
           (a >>> (UInt64.ofNat (ctz64 64 a) % 64)) :=
     congrArg
       (fun address =>
-        pointsTo_u64 address (a >>> (UInt64.ofNat (ctz64 64 a) % 64)))
+        pointsTo_u64 0 address (a >>> (UInt64.ofNat (ctz64 64 a) % 64)))
       (by decide)
   have hShiftProp :
-      pointsTo_u32 ((1048512 : UInt32) + 40)
+      pointsTo_u32 0 ((1048512 : UInt32) + 40)
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 a)).toNat % 2 ^ 32)) =
-        pointsTo_u32 1048552
+        pointsTo_u32 0 1048552
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 a)).toNat % 2 ^ 32)) :=
     congrArg
-      (fun address => pointsTo_u32 address
+      (fun address => pointsTo_u32 0 address
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 a)).toNat % 2 ^ 32)))
       (by decide)
   ihave HxExact :
-      pointsTo_u64 1048520
+      pointsTo_u64 0 1048520
         (a >>> (UInt64.ofNat (ctz64 64 a) % 64)) $$ [Hx]
   · rw [← hXProp]
     iexact Hx
   ihave HshiftExact :
-      pointsTo_u32 1048552
+      pointsTo_u32 0 1048552
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 a)).toNat % 2 ^ 32)) $$ [HshiftX]
   · rw [← hShiftProp]
     iexact HshiftX
@@ -5427,19 +5574,19 @@ theorem twp_func1_normalizeX_smallStep_wp
 theorem twp_func1_normalizeY_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (hb : b ≠ 0) (oldShiftY : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048528 (oddPart64 b) ∗
-        pointsTo_u32 1048548 (operandShiftWord b) ⊢
+      R ∗ pointsTo_u64 0 1048528 (oddPart64 b) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1NormalizedLocals a b, []⟩,
           meatLoopProg.drop 48, 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048528 b ∗ pointsTo_u32 1048548 oldShiftY ⊢
+    R ∗ pointsTo_u64 0 1048528 b ∗ pointsTo_u32 0 1048548 oldShiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1XShiftLocals a b, []⟩,
         meatLoopProg.drop 30, 1, [], controls, calls⟩ :
@@ -5448,11 +5595,11 @@ theorem twp_func1_normalizeY_smallStep_wp
   simp only [meatLoopProg, List.drop, func1XShiftLocals]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) b =
-          pointsTo_u64 1048528 b :=
-      congrArg (fun address => pointsTo_u64 address b) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) b =
+          pointsTo_u64 0 1048528 b :=
+      congrArg (fun address => pointsTo_u64 0 address b) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.twp_load64 b
@@ -5462,11 +5609,11 @@ theorem twp_func1_normalizeY_smallStep_wp
   iapply Wasm.SmallStep.twp_ctzI64
   iapply Wasm.SmallStep.twp_wrapI64
   ihave HshiftYLater :
-      pointsTo_u32 (1048512 + 36) oldShiftY $$ [HshiftY]
+      pointsTo_u32 0 (1048512 + 36) oldShiftY $$ [HshiftY]
   · have h :
-        pointsTo_u32 ((1048512 : UInt32) + 36) oldShiftY =
-          pointsTo_u32 1048548 oldShiftY :=
-      congrArg (fun address => pointsTo_u32 address oldShiftY) (by decide)
+        pointsTo_u32 0 ((1048512 : UInt32) + 36) oldShiftY =
+          pointsTo_u32 0 1048548 oldShiftY :=
+      congrArg (fun address => pointsTo_u32 0 address oldShiftY) (by decide)
     rw [h]
     iexact HshiftY
   iapply Wasm.SmallStep.twp_store32 oldShiftY
@@ -5474,7 +5621,7 @@ theorem twp_func1_normalizeY_smallStep_wp
   iintro HshiftY
   iapply Wasm.SmallStep.twp_localGet rfl
   ihave HshiftYLater :
-      pointsTo_u32 (1048512 + 36) (operandShiftWord b) $$ [HshiftY]
+      pointsTo_u32 0 (1048512 + 36) (operandShiftWord b) $$ [HshiftY]
   · rw [operandShiftWord]
     iexact HshiftY
   iapply Wasm.SmallStep.twp_load32 (operandShiftWord b)
@@ -5485,7 +5632,7 @@ theorem twp_func1_normalizeY_smallStep_wp
     List.set]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · iexact Hy
   iapply Wasm.SmallStep.twp_load64 b
       (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -5499,7 +5646,7 @@ theorem twp_func1_normalizeY_smallStep_wp
   rw [UInt32.and_comm (operandShiftWord b) 63]
   unfold operandShiftWord
   rw [shift_pipeline b hb]
-  ihave HyLater : pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · iexact Hy
   iapply Wasm.SmallStep.twp_store64 b
       (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -5509,30 +5656,30 @@ theorem twp_func1_normalizeY_smallStep_wp
     operandShiftWord, oddPart64,
     meatLoopProg, List.drop] at hcontinue
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16)
+      pointsTo_u64 0 ((1048512 : UInt32) + 16)
           (b >>> (UInt64.ofNat (ctz64 64 b) % 64)) =
-        pointsTo_u64 1048528
+        pointsTo_u64 0 1048528
           (b >>> (UInt64.ofNat (ctz64 64 b) % 64)) :=
     congrArg
       (fun address =>
-        pointsTo_u64 address (b >>> (UInt64.ofNat (ctz64 64 b) % 64)))
+        pointsTo_u64 0 address (b >>> (UInt64.ofNat (ctz64 64 b) % 64)))
       (by decide)
   have hShiftProp :
-      pointsTo_u32 ((1048512 : UInt32) + 36)
+      pointsTo_u32 0 ((1048512 : UInt32) + 36)
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 b)).toNat % 2 ^ 32)) =
-        pointsTo_u32 1048548
+        pointsTo_u32 0 1048548
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 b)).toNat % 2 ^ 32)) :=
     congrArg
-      (fun address => pointsTo_u32 address
+      (fun address => pointsTo_u32 0 address
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 b)).toNat % 2 ^ 32)))
       (by decide)
   ihave HyExact :
-      pointsTo_u64 1048528
+      pointsTo_u64 0 1048528
         (b >>> (UInt64.ofNat (ctz64 64 b) % 64)) $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   ihave HshiftExact :
-      pointsTo_u32 1048548
+      pointsTo_u32 0 1048548
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 b)).toNat % 2 ^ 32)) $$ [HshiftY]
   · rw [← hShiftProp]
     iexact HshiftY
@@ -5542,49 +5689,49 @@ theorem twp_func1_normalizeY_smallStep_wp
 theorem twp_func1_normalization_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (oldShared oldShiftX oldShiftY : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 (oddPart64 a) ∗
-        pointsTo_u64 1048528 (oddPart64 b) ∗
-        pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b) ⊢
+      R ∗ pointsTo_u64 0 1048520 (oddPart64 a) ∗
+        pointsTo_u64 0 1048528 (oddPart64 b) ∗
+        pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1NormalizedLocals a b, []⟩,
           meatLoopProg.drop 48, 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-      pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldShiftX ∗ pointsTo_u32 1048548 oldShiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+      pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldShiftX ∗ pointsTo_u32 0 1048548 oldShiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         meatLoopProg, 1, [], controls, calls⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }] := by
   iintro ⟨HR, Hx, Hy, Hshared, HshiftX, HshiftY⟩
   iapply twp_func1_sharedShift_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u32 1048552 oldShiftX ∗
-      pointsTo_u32 1048548 oldShiftY))
+    (R := iprop(R ∗ pointsTo_u32 0 1048552 oldShiftX ∗
+      pointsTo_u32 0 1048548 oldShiftY))
     controls calls a b oldShared
   · iintro Hresources
     icases Hresources with ⟨HRshifts, Hx', Hy', Hshared'⟩
     icases HRshifts with ⟨HR', HshiftX', HshiftY'⟩
     iapply twp_func1_normalizeX_smallStep_wp
-      (R := iprop(R ∗ pointsTo_u64 1048528 b ∗
-        pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048548 oldShiftY))
+      (R := iprop(R ∗ pointsTo_u64 0 1048528 b ∗
+        pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048548 oldShiftY))
       controls calls a b ha oldShiftX
     · iintro Hresources
       icases Hresources with ⟨HRrest, HxOdd, HshiftXNew⟩
       icases HRrest with ⟨HR'', Hy'', Hshared'', HshiftY''⟩
       iapply twp_func1_normalizeY_smallStep_wp
-        (R := iprop(R ∗ pointsTo_u64 1048520 (oddPart64 a) ∗
-          pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-          pointsTo_u32 1048552 (operandShiftWord a)))
+        (R := iprop(R ∗ pointsTo_u64 0 1048520 (oddPart64 a) ∗
+          pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+          pointsTo_u32 0 1048552 (operandShiftWord a)))
         controls calls a b hb oldShiftY
       · iintro Hresources
         icases Hresources with ⟨HRfinal, HyOdd, HshiftYNew⟩
@@ -5598,21 +5745,21 @@ theorem twp_func1_normalization_smallStep_wp
 theorem twp_func1_equalRecombine_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b g oldResult : UInt64)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 g ∗
-        pointsTo_u64 1048512 (recombinedWord a b g) ⊢
+      R ∗ pointsTo_u64 0 1048520 g ∗
+        pointsTo_u64 0 1048512 (recombinedWord a b g) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
           [.br 2], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048512 oldResult ⊢
+    R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048512 oldResult ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -5622,11 +5769,11 @@ theorem twp_func1_equalRecombine_smallStep_wp
   simp only [equalRecombineProg, func1LoopHeaderLocals]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) g $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) g $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) g =
-          pointsTo_u64 1048520 g :=
-      congrArg (fun address => pointsTo_u64 address g) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) g =
+          pointsTo_u64 0 1048520 g :=
+      congrArg (fun address => pointsTo_u64 0 address g) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.twp_load64 g
@@ -5639,11 +5786,11 @@ theorem twp_func1_equalRecombine_smallStep_wp
   iapply Wasm.SmallStep.twp_extendUI32
   iapply Wasm.SmallStep.twp_shlI64
   ihave HresultLater :
-      pointsTo_u64 (1048512 + 0) oldResult $$ [Hresult]
+      pointsTo_u64 0 (1048512 + 0) oldResult $$ [Hresult]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 0) oldResult =
-          pointsTo_u64 1048512 oldResult :=
-      congrArg (fun address => pointsTo_u64 address oldResult) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 0) oldResult =
+          pointsTo_u64 0 1048512 oldResult :=
+      congrArg (fun address => pointsTo_u64 0 address oldResult) (by decide)
     rw [h]
     iexact Hresult
   iapply Wasm.SmallStep.twp_store64 oldResult
@@ -5652,22 +5799,22 @@ theorem twp_func1_equalRecombine_smallStep_wp
   iintro Hresult
   simp only [func1LoopHeaderLocals, recombinedWord] at hcontinue
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) g = pointsTo_u64 1048520 g :=
-    congrArg (fun address => pointsTo_u64 address g) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) g = pointsTo_u64 0 1048520 g :=
+    congrArg (fun address => pointsTo_u64 0 address g) (by decide)
   have hResultProp :
-      pointsTo_u64 ((1048512 : UInt32) + 0)
+      pointsTo_u64 0 ((1048512 : UInt32) + 0)
           (g <<< (UInt64.ofNat ((sharedShiftWord a b &&& 63).toNat) % 64)) =
-        pointsTo_u64 1048512
+        pointsTo_u64 0 1048512
           (g <<< (UInt64.ofNat ((sharedShiftWord a b &&& 63).toNat) % 64)) :=
     congrArg
-      (fun address => pointsTo_u64 address
+      (fun address => pointsTo_u64 0 address
         (g <<< (UInt64.ofNat ((sharedShiftWord a b &&& 63).toNat) % 64)))
       (by decide)
-  ihave HxExact : pointsTo_u64 1048520 g $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 g $$ [Hx]
   · rw [← hXProp]
     iexact Hx
   ihave HresultExact :
-      pointsTo_u64 1048512
+      pointsTo_u64 0 1048512
         (g <<< (UInt64.ofNat ((sharedShiftWord a b &&& 63).toNat) % 64)) $$
         [Hresult]
   · rw [← hResultProp]
@@ -5678,22 +5825,22 @@ theorem twp_func1_equalRecombine_smallStep_wp
 theorem twp_func1_equalBlock_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b g oldResult : UInt64)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (recombinedWord a b g) ⊢
+      R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (recombinedWord a b g) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
           [.br 2], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-      pointsTo_u64 1048512 oldResult ⊢
+    R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+      pointsTo_u64 0 1048512 oldResult ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -5706,11 +5853,11 @@ theorem twp_func1_equalBlock_smallStep_wp
       .and, .extendUI32, .shlI64, .store64 0, .br 2] from rfl]
   simp only [func1LoopHeaderLocals]
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) g $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) g $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) g =
-          pointsTo_u64 1048520 g :=
-      congrArg (fun address => pointsTo_u64 address g) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) g =
+          pointsTo_u64 0 1048520 g :=
+      congrArg (fun address => pointsTo_u64 0 address g) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.twp_load64 g
@@ -5718,11 +5865,11 @@ theorem twp_func1_equalBlock_smallStep_wp
       (by decide) (by decide) (by decide) $$ HxLater
   iintro Hx
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) g $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) g $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) g =
-          pointsTo_u64 1048528 g :=
-      congrArg (fun address => pointsTo_u64 address g) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) g =
+          pointsTo_u64 0 1048528 g :=
+      congrArg (fun address => pointsTo_u64 0 address g) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.twp_load64 g
@@ -5741,22 +5888,22 @@ theorem twp_func1_equalBlock_smallStep_wp
     [.i32 1048512, .i32 (sharedShiftWord a b), .i32 (operandShiftWord a),
       .i32 (operandShiftWord b), .i64 c6, .i32 c7, .i64 c8, .i32 c9] =
       func1LoopHeaderLocals a b c6 c8 c7 c9 from rfl]
-  ihave HxExact : pointsTo_u64 1048520 g $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 g $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) g =
-          pointsTo_u64 1048520 g :=
-      congrArg (fun address => pointsTo_u64 address g) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) g =
+          pointsTo_u64 0 1048520 g :=
+      congrArg (fun address => pointsTo_u64 0 address g) (by decide)
     rw [← h]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 g $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 g $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) g =
-          pointsTo_u64 1048528 g :=
-      congrArg (fun address => pointsTo_u64 address g) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) g =
+          pointsTo_u64 0 1048528 g :=
+      congrArg (fun address => pointsTo_u64 0 address g) (by decide)
     rw [← h]
     iexact Hy
   iapply twp_func1_equalRecombine_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048528 g))
+    (R := iprop(R ∗ pointsTo_u64 0 1048528 g))
     controls calls a b g oldResult c6 c8 c7 c9
   · iintro Hresources
     icases Hresources with ⟨⟨HR', Hy'⟩, Hx', Hresult'⟩
@@ -5767,17 +5914,17 @@ theorem twp_func1_equalBlock_smallStep_wp
 theorem twp_func1_nonzeroGuards_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ⊢
+      R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
           meatLoopProg, 1, [], [func1OuterFrame func1OuterBody], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         func1.drop 12, 1, [], [], calls⟩ :
@@ -5791,7 +5938,7 @@ theorem twp_func1_nonzeroGuards_smallStep_wp
   iapply Wasm.SmallStep.twp_block
   iapply Wasm.SmallStep.twp_block
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) a $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) a $$ [Hx]
   · rw [show (1048512 : UInt32) + 8 = 1048520 from rfl]
     iexact Hx
   iapply Wasm.SmallStep.twp_load64 a
@@ -5805,7 +5952,7 @@ theorem twp_func1_nonzeroGuards_smallStep_wp
   rw [show (0 &&& 1 : UInt32) = 0 by decide]
   iapply Wasm.SmallStep.twp_brIfZero
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) b $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) b $$ [Hy]
   · rw [show (1048512 : UInt32) + 16 = 1048528 from rfl]
     iexact Hy
   iapply Wasm.SmallStep.twp_load64 b
@@ -5821,17 +5968,17 @@ theorem twp_func1_nonzeroGuards_smallStep_wp
   iapply Wasm.SmallStep.twp_brIf (by decide) rfl
   simp only [List.take_nil, List.nil_append]
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8) a =
-        pointsTo_u64 1048520 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8) a =
+        pointsTo_u64 0 1048520 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16) b =
-        pointsTo_u64 1048528 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
-  ihave HxExact : pointsTo_u64 1048520 a $$ [Hx]
+      pointsTo_u64 0 ((1048512 : UInt32) + 16) b =
+        pointsTo_u64 0 1048528 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
+  ihave HxExact : pointsTo_u64 0 1048520 a $$ [Hx]
   · rw [← hXProp]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 b $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 b $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   simp only [List.drop_nil]
@@ -5844,25 +5991,25 @@ theorem twp_func1_nonzeroGuards_smallStep_wp
 theorem twp_func1_nonzeroFinish_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerBody : Program)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b g d6 d8 : UInt64) (shiftX shiftY d7 d9 : UInt32)
     (_hgcd : g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat)
     (hreturn :
-      R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-        pointsTo_u32 1048540 shiftX ∗ pointsTo_u32 1048544 shiftY ⊢
+      R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+        pointsTo_u32 0 1048540 shiftX ∗ pointsTo_u32 0 1048544 shiftY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b d6 d8 d7 d9,
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-      pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-      pointsTo_u32 1048540 shiftX ∗ pointsTo_u32 1048544 shiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+      pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+      pointsTo_u32 0 1048540 shiftX ∗ pointsTo_u32 0 1048544 shiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩,
@@ -5875,7 +6022,7 @@ theorem twp_func1_nonzeroFinish_smallStep_wp_to_return
     List.nil_append]
   iapply Wasm.SmallStep.twp_localGet rfl
   ihave HresultLater :
-      pointsTo_u64 ((1048512 : UInt32) + 0)
+      pointsTo_u64 0 ((1048512 : UInt32) + 0)
         (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) $$ [Hresult]
   · rw [show (1048512 : UInt32) + 0 = 1048512 from rfl]
     iexact Hresult
@@ -5885,15 +6032,15 @@ theorem twp_func1_nonzeroFinish_smallStep_wp_to_return
       (by decide) (by decide) (by decide) $$ HresultLater
   iintro Hresult
   ihave HresultExact :
-      pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))
+      pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))
       $$ [Hresult]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 0)
+        pointsTo_u64 0 ((1048512 : UInt32) + 0)
             (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) =
-          pointsTo_u64 1048512
+          pointsTo_u64 0 1048512
             (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) :=
       congrArg
-        (fun address => pointsTo_u64 address
+        (fun address => pointsTo_u64 0 address
           (UInt64.ofNat (Nat.gcd a.toNat b.toNat))) (by decide)
     rw [← h]
     iexact Hresult
@@ -5903,13 +6050,13 @@ theorem twp_func1_nonzeroFinish_smallStep_wp_to_return
 theorem twp_func1_nonzeroFinish_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (outerBody : Program)
     (a b g d6 d8 : UInt64) (shiftX shiftY d7 d9 : UInt32)
     (hgcd : g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat) :
-    R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-      pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-      pointsTo_u32 1048540 shiftX ∗ pointsTo_u32 1048544 shiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+      pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+      pointsTo_u32 0 1048540 shiftX ∗ pointsTo_u32 0 1048544 shiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩,
@@ -5918,10 +6065,10 @@ theorem twp_func1_nonzeroFinish_smallStep_wp
         []⟩ : Wasm.SmallStep.Expr Unit) @ s; E
       [{ rs,
         ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-          R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-          pointsTo_u64 1048512
+          R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+          pointsTo_u64 0 1048512
             (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-          pointsTo_u32 1048540 shiftX ∗ pointsTo_u32 1048544 shiftY }] := by
+          pointsTo_u32 0 1048540 shiftX ∗ pointsTo_u32 0 1048544 shiftY }] := by
   iintro Hresources
   iapply twp_func1_nonzeroFinish_smallStep_wp_to_return
     R outerBody [] a b g d6 d8 shiftX shiftY d7 d9 hgcd
@@ -5938,21 +6085,21 @@ theorem twp_func1_nonzeroFinish_smallStep_wp
 theorem twp_func1_loopNormalizeY_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x d : UInt64) (hd : d ≠ 0) (oldShift : UInt32)
     (c8 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048528 (oddPart64 d) ∗
-        pointsTo_u32 1048544 (operandShiftWord d) ⊢
+      R ∗ pointsTo_u64 0 1048528 (oddPart64 d) ∗
+        pointsTo_u32 0 1048544 (operandShiftWord d) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopYNormalizedLocals a b x d c8 c9, []⟩,
           [.br 1], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048528 d ∗ pointsTo_u32 1048544 oldShift ⊢
+    R ∗ pointsTo_u64 0 1048528 d ∗ pointsTo_u32 0 1048544 oldShift ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopYLocals a b x c8 c7 c9, []⟩,
@@ -5962,11 +6109,11 @@ theorem twp_func1_loopNormalizeY_smallStep_wp
   simp only [loopNormalizeYProg, func1LoopYLocals]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) d $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) d $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) d =
-          pointsTo_u64 1048528 d :=
-      congrArg (fun address => pointsTo_u64 address d) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) d =
+          pointsTo_u64 0 1048528 d :=
+      congrArg (fun address => pointsTo_u64 0 address d) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.twp_load64 d
@@ -5976,11 +6123,11 @@ theorem twp_func1_loopNormalizeY_smallStep_wp
   iapply Wasm.SmallStep.twp_ctzI64
   iapply Wasm.SmallStep.twp_wrapI64
   ihave HshiftLater :
-      pointsTo_u32 (1048512 + 32) oldShift $$ [Hshift]
+      pointsTo_u32 0 (1048512 + 32) oldShift $$ [Hshift]
   · have h :
-        pointsTo_u32 ((1048512 : UInt32) + 32) oldShift =
-          pointsTo_u32 1048544 oldShift :=
-      congrArg (fun address => pointsTo_u32 address oldShift) (by decide)
+        pointsTo_u32 0 ((1048512 : UInt32) + 32) oldShift =
+          pointsTo_u32 0 1048544 oldShift :=
+      congrArg (fun address => pointsTo_u32 0 address oldShift) (by decide)
     rw [h]
     iexact Hshift
   iapply Wasm.SmallStep.twp_store32 oldShift
@@ -5988,7 +6135,7 @@ theorem twp_func1_loopNormalizeY_smallStep_wp
   iintro Hshift
   iapply Wasm.SmallStep.twp_localGet rfl
   ihave HshiftLater :
-      pointsTo_u32 (1048512 + 32) (operandShiftWord d) $$ [Hshift]
+      pointsTo_u32 0 (1048512 + 32) (operandShiftWord d) $$ [Hshift]
   · rw [operandShiftWord]
     iexact Hshift
   iapply Wasm.SmallStep.twp_load32 (operandShiftWord d)
@@ -5999,7 +6146,7 @@ theorem twp_func1_loopNormalizeY_smallStep_wp
     List.set]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) d $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) d $$ [Hy]
   · iexact Hy
   iapply Wasm.SmallStep.twp_load64 d
       (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -6013,7 +6160,7 @@ theorem twp_func1_loopNormalizeY_smallStep_wp
   rw [UInt32.and_comm (operandShiftWord d) 63]
   unfold operandShiftWord
   rw [shift_pipeline d hd]
-  ihave HyLater : pointsTo_u64 (1048512 + 16) d $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) d $$ [Hy]
   · iexact Hy
   iapply Wasm.SmallStep.twp_store64 d
       (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -6021,30 +6168,30 @@ theorem twp_func1_loopNormalizeY_smallStep_wp
   iintro Hy
   simp only [func1LoopYNormalizedLocals, operandShiftWord, oddPart64] at hcontinue
   have hYProp :
-      pointsTo_u64 ((1048512 : UInt32) + 16)
+      pointsTo_u64 0 ((1048512 : UInt32) + 16)
           (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) =
-        pointsTo_u64 1048528
+        pointsTo_u64 0 1048528
           (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) :=
     congrArg
       (fun address =>
-        pointsTo_u64 address (d >>> (UInt64.ofNat (ctz64 64 d) % 64)))
+        pointsTo_u64 0 address (d >>> (UInt64.ofNat (ctz64 64 d) % 64)))
       (by decide)
   have hShiftProp :
-      pointsTo_u32 ((1048512 : UInt32) + 32)
+      pointsTo_u32 0 ((1048512 : UInt32) + 32)
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) =
-        pointsTo_u32 1048544
+        pointsTo_u32 0 1048544
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) :=
     congrArg
-      (fun address => pointsTo_u32 address
+      (fun address => pointsTo_u32 0 address
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)))
       (by decide)
   ihave HyExact :
-      pointsTo_u64 1048528
+      pointsTo_u64 0 1048528
         (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) $$ [Hy]
   · rw [← hYProp]
     iexact Hy
   ihave HshiftExact :
-      pointsTo_u32 1048544
+      pointsTo_u32 0 1048544
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) $$
         [Hshift]
   · rw [← hShiftProp]
@@ -6055,24 +6202,24 @@ theorem twp_func1_loopNormalizeY_smallStep_wp
 theorem twp_func1_loopDecreaseY_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y : UInt64) (hsub : y - x ≠ 0)
     (oldShift : UInt32)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 x ∗
-        pointsTo_u64 1048528 (oddPart64 (y - x)) ∗
-        pointsTo_u32 1048544 (operandShiftWord (y - x)) ⊢
+      R ∗ pointsTo_u64 0 1048520 x ∗
+        pointsTo_u64 0 1048528 (oddPart64 (y - x)) ∗
+        pointsTo_u32 0 1048544 (operandShiftWord (y - x)) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopYNormalizedLocals a b x (y - x) c8 c9, []⟩,
           [.br 1], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048544 oldShift ⊢
+    R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048544 oldShift ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -6088,11 +6235,11 @@ theorem twp_func1_loopDecreaseY_smallStep_wp
       .extendUI32, .shrUI64, .store64 16, .br 1] from rfl]
   simp only [func1LoopHeaderLocals]
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) x $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) x $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) x =
-          pointsTo_u64 1048520 x :=
-      congrArg (fun address => pointsTo_u64 address x) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+          pointsTo_u64 0 1048520 x :=
+      congrArg (fun address => pointsTo_u64 0 address x) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.twp_load64 x
@@ -6104,11 +6251,11 @@ theorem twp_func1_loopDecreaseY_smallStep_wp
     List.set]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) y $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) y $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) y =
-          pointsTo_u64 1048528 y :=
-      congrArg (fun address => pointsTo_u64 address y) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+          pointsTo_u64 0 1048528 y :=
+      congrArg (fun address => pointsTo_u64 0 address y) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.twp_load64 y
@@ -6117,7 +6264,7 @@ theorem twp_func1_loopDecreaseY_smallStep_wp
   iintro Hy
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_subI64
-  ihave HyLater : pointsTo_u64 (1048512 + 16) y $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) y $$ [Hy]
   · iexact Hy
   iapply Wasm.SmallStep.twp_store64 y
       (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -6133,22 +6280,22 @@ theorem twp_func1_loopDecreaseY_smallStep_wp
     [.i32 1048512, .i32 (sharedShiftWord a b), .i32 (operandShiftWord a),
       .i32 (operandShiftWord b), .i64 x, .i32 c7, .i64 c8, .i32 c9] =
       func1LoopYLocals a b x c8 c7 c9 from rfl]
-  ihave HxExact : pointsTo_u64 1048520 x $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 x $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) x =
-          pointsTo_u64 1048520 x :=
-      congrArg (fun address => pointsTo_u64 address x) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+          pointsTo_u64 0 1048520 x :=
+      congrArg (fun address => pointsTo_u64 0 address x) (by decide)
     rw [← h]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 (y - x) $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 (y - x) $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) (y - x) =
-          pointsTo_u64 1048528 (y - x) :=
-      congrArg (fun address => pointsTo_u64 address (y - x)) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) (y - x) =
+          pointsTo_u64 0 1048528 (y - x) :=
+      congrArg (fun address => pointsTo_u64 0 address (y - x)) (by decide)
     rw [← h]
     iexact Hy
   iapply twp_func1_loopNormalizeY_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048520 x))
+    (R := iprop(R ∗ pointsTo_u64 0 1048520 x))
     controls calls a b x (y - x) hsub oldShift c8 c7 c9
   · iintro Hresources
     icases Hresources with ⟨⟨HR', Hx'⟩, Hy', Hshift'⟩
@@ -6159,21 +6306,21 @@ theorem twp_func1_loopDecreaseY_smallStep_wp
 theorem twp_func1_loopNormalizeX_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b y d : UInt64) (hd : d ≠ 0) (oldShift : UInt32)
     (c6 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 (oddPart64 d) ∗
-        pointsTo_u32 1048540 (operandShiftWord d) ⊢
+      R ∗ pointsTo_u64 0 1048520 (oddPart64 d) ∗
+        pointsTo_u32 0 1048540 (operandShiftWord d) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopXNormalizedLocals a b y d c6 c7, []⟩,
           [.br 0], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 d ∗ pointsTo_u32 1048540 oldShift ⊢
+    R ∗ pointsTo_u64 0 1048520 d ∗ pointsTo_u32 0 1048540 oldShift ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopXLocals a b y c6 c7 c9, []⟩,
@@ -6183,11 +6330,11 @@ theorem twp_func1_loopNormalizeX_smallStep_wp
   simp only [loopNormalizeXProg, func1LoopXLocals]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) d $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) d $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) d =
-          pointsTo_u64 1048520 d :=
-      congrArg (fun address => pointsTo_u64 address d) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) d =
+          pointsTo_u64 0 1048520 d :=
+      congrArg (fun address => pointsTo_u64 0 address d) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.twp_load64 d
@@ -6197,11 +6344,11 @@ theorem twp_func1_loopNormalizeX_smallStep_wp
   iapply Wasm.SmallStep.twp_ctzI64
   iapply Wasm.SmallStep.twp_wrapI64
   ihave HshiftLater :
-      pointsTo_u32 (1048512 + 28) oldShift $$ [Hshift]
+      pointsTo_u32 0 (1048512 + 28) oldShift $$ [Hshift]
   · have h :
-        pointsTo_u32 ((1048512 : UInt32) + 28) oldShift =
-          pointsTo_u32 1048540 oldShift :=
-      congrArg (fun address => pointsTo_u32 address oldShift) (by decide)
+        pointsTo_u32 0 ((1048512 : UInt32) + 28) oldShift =
+          pointsTo_u32 0 1048540 oldShift :=
+      congrArg (fun address => pointsTo_u32 0 address oldShift) (by decide)
     rw [h]
     iexact Hshift
   iapply Wasm.SmallStep.twp_store32 oldShift
@@ -6209,7 +6356,7 @@ theorem twp_func1_loopNormalizeX_smallStep_wp
   iintro Hshift
   iapply Wasm.SmallStep.twp_localGet rfl
   ihave HshiftLater :
-      pointsTo_u32 (1048512 + 28) (operandShiftWord d) $$ [Hshift]
+      pointsTo_u32 0 (1048512 + 28) (operandShiftWord d) $$ [Hshift]
   · rw [operandShiftWord]
     iexact Hshift
   iapply Wasm.SmallStep.twp_load32 (operandShiftWord d)
@@ -6220,7 +6367,7 @@ theorem twp_func1_loopNormalizeX_smallStep_wp
     List.set]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) d $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) d $$ [Hx]
   · iexact Hx
   iapply Wasm.SmallStep.twp_load64 d
       (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -6234,7 +6381,7 @@ theorem twp_func1_loopNormalizeX_smallStep_wp
   rw [UInt32.and_comm (operandShiftWord d) 63]
   unfold operandShiftWord
   rw [shift_pipeline d hd]
-  ihave HxLater : pointsTo_u64 (1048512 + 8) d $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) d $$ [Hx]
   · iexact Hx
   iapply Wasm.SmallStep.twp_store64 d
       (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -6242,30 +6389,30 @@ theorem twp_func1_loopNormalizeX_smallStep_wp
   iintro Hx
   simp only [func1LoopXNormalizedLocals, operandShiftWord, oddPart64] at hcontinue
   have hXProp :
-      pointsTo_u64 ((1048512 : UInt32) + 8)
+      pointsTo_u64 0 ((1048512 : UInt32) + 8)
           (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) =
-        pointsTo_u64 1048520
+        pointsTo_u64 0 1048520
           (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) :=
     congrArg
       (fun address =>
-        pointsTo_u64 address (d >>> (UInt64.ofNat (ctz64 64 d) % 64)))
+        pointsTo_u64 0 address (d >>> (UInt64.ofNat (ctz64 64 d) % 64)))
       (by decide)
   have hShiftProp :
-      pointsTo_u32 ((1048512 : UInt32) + 28)
+      pointsTo_u32 0 ((1048512 : UInt32) + 28)
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) =
-        pointsTo_u32 1048540
+        pointsTo_u32 0 1048540
           (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) :=
     congrArg
-      (fun address => pointsTo_u32 address
+      (fun address => pointsTo_u32 0 address
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)))
       (by decide)
   ihave HxExact :
-      pointsTo_u64 1048520
+      pointsTo_u64 0 1048520
         (d >>> (UInt64.ofNat (ctz64 64 d) % 64)) $$ [Hx]
   · rw [← hXProp]
     iexact Hx
   ihave HshiftExact :
-      pointsTo_u32 1048540
+      pointsTo_u32 0 1048540
         (UInt32.ofNat ((UInt64.ofNat (ctz64 64 d)).toNat % 2 ^ 32)) $$
         [Hshift]
   · rw [← hShiftProp]
@@ -6276,24 +6423,24 @@ theorem twp_func1_loopNormalizeX_smallStep_wp
 theorem twp_func1_loopDecreaseX_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (controls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y : UInt64) (hsub : x - y ≠ 0)
     (oldShift : UInt32)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hcontinue :
-      R ∗ pointsTo_u64 1048520 (oddPart64 (x - y)) ∗
-        pointsTo_u64 1048528 y ∗
-        pointsTo_u32 1048540 (operandShiftWord (x - y)) ⊢
+      R ∗ pointsTo_u64 0 1048520 (oddPart64 (x - y)) ∗
+        pointsTo_u64 0 1048528 y ∗
+        pointsTo_u32 0 1048540 (operandShiftWord (x - y)) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopXNormalizedLocals a b y (x - y) c6 c7, []⟩,
           [.br 0], 1, [], controls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048540 oldShift ⊢
+    R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048540 oldShift ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -6309,11 +6456,11 @@ theorem twp_func1_loopDecreaseX_smallStep_wp
       .extendUI32, .shrUI64, .store64 8, .br 0] from rfl]
   simp only [func1LoopHeaderLocals]
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) y $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) y $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) y =
-          pointsTo_u64 1048528 y :=
-      congrArg (fun address => pointsTo_u64 address y) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+          pointsTo_u64 0 1048528 y :=
+      congrArg (fun address => pointsTo_u64 0 address y) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.twp_load64 y
@@ -6325,11 +6472,11 @@ theorem twp_func1_loopDecreaseX_smallStep_wp
     List.set]
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) x $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) x $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) x =
-          pointsTo_u64 1048520 x :=
-      congrArg (fun address => pointsTo_u64 address x) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+          pointsTo_u64 0 1048520 x :=
+      congrArg (fun address => pointsTo_u64 0 address x) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.twp_load64 x
@@ -6338,7 +6485,7 @@ theorem twp_func1_loopDecreaseX_smallStep_wp
   iintro Hx
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_subI64
-  ihave HxLater : pointsTo_u64 (1048512 + 8) x $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) x $$ [Hx]
   · iexact Hx
   iapply Wasm.SmallStep.twp_store64 x
       (by decide) (by decide) (by decide) (by decide) (by decide)
@@ -6354,22 +6501,22 @@ theorem twp_func1_loopDecreaseX_smallStep_wp
     [.i32 1048512, .i32 (sharedShiftWord a b), .i32 (operandShiftWord a),
       .i32 (operandShiftWord b), .i64 c6, .i32 c7, .i64 y, .i32 c9] =
       func1LoopXLocals a b y c6 c7 c9 from rfl]
-  ihave HxExact : pointsTo_u64 1048520 (x - y) $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 (x - y) $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) (x - y) =
-          pointsTo_u64 1048520 (x - y) :=
-      congrArg (fun address => pointsTo_u64 address (x - y)) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) (x - y) =
+          pointsTo_u64 0 1048520 (x - y) :=
+      congrArg (fun address => pointsTo_u64 0 address (x - y)) (by decide)
     rw [← h]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 y $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 y $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) y =
-          pointsTo_u64 1048528 y :=
-      congrArg (fun address => pointsTo_u64 address y) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+          pointsTo_u64 0 1048528 y :=
+      congrArg (fun address => pointsTo_u64 0 address y) (by decide)
     rw [← h]
     iexact Hy
   iapply twp_func1_loopNormalizeX_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048528 y))
+    (R := iprop(R ∗ pointsTo_u64 0 1048528 y))
     controls calls a b y (x - y) hsub oldShift c6 c7 c9
   · iintro Hresources
     icases Hresources with ⟨⟨HR', Hy'⟩, Hx', Hshift'⟩
@@ -6380,15 +6527,15 @@ theorem twp_func1_loopDecreaseX_smallStep_wp
 theorem twp_func1_loopEqualityDispatch_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y oldResult : UInt64)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hfinish : ∀ (_ : x = y),
-      R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 x ∗
-        pointsTo_u64 1048512 (recombinedWord a b x) ⊢
+      R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 x ∗
+        pointsTo_u64 0 1048512 (recombinedWord a b x) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -6396,16 +6543,16 @@ theorem twp_func1_loopEqualityDispatch_smallStep_wp
           func1EqualityFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }])
     (hnext : ∀ (_ : x ≠ y),
-      R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-        pointsTo_u64 1048512 oldResult ⊢
+      R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+        pointsTo_u64 0 1048512 oldResult ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
           func1AfterEqualityProg, 1, [],
           func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u64 1048512 oldResult ⊢
+    R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u64 0 1048512 oldResult ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -6424,11 +6571,11 @@ theorem twp_func1_loopEqualityDispatch_smallStep_wp
         .and, .extendUI32, .shlI64, .store64 0, .br 2] from rfl]
     simp only [func1LoopHeaderLocals]
     iapply Wasm.SmallStep.twp_localGet rfl
-    ihave HxLater : pointsTo_u64 (1048512 + 8) x $$ [Hx]
+    ihave HxLater : pointsTo_u64 0 (1048512 + 8) x $$ [Hx]
     · have h :
-          pointsTo_u64 ((1048512 : UInt32) + 8) x =
-            pointsTo_u64 1048520 x :=
-        congrArg (fun address => pointsTo_u64 address x) (by decide)
+          pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+            pointsTo_u64 0 1048520 x :=
+        congrArg (fun address => pointsTo_u64 0 address x) (by decide)
       rw [h]
       iexact Hx
     iapply Wasm.SmallStep.twp_load64 x
@@ -6436,11 +6583,11 @@ theorem twp_func1_loopEqualityDispatch_smallStep_wp
         (by decide) (by decide) (by decide) $$ HxLater
     iintro Hx
     iapply Wasm.SmallStep.twp_localGet rfl
-    ihave HyLater : pointsTo_u64 (1048512 + 16) y $$ [Hy]
+    ihave HyLater : pointsTo_u64 0 (1048512 + 16) y $$ [Hy]
     · have h :
-          pointsTo_u64 ((1048512 : UInt32) + 16) y =
-            pointsTo_u64 1048528 y :=
-        congrArg (fun address => pointsTo_u64 address y) (by decide)
+          pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+            pointsTo_u64 0 1048528 y :=
+        congrArg (fun address => pointsTo_u64 0 address y) (by decide)
       rw [h]
       iexact Hy
     iapply Wasm.SmallStep.twp_load64 y
@@ -6457,18 +6604,18 @@ theorem twp_func1_loopEqualityDispatch_smallStep_wp
       [.i32 1048512, .i32 (sharedShiftWord a b), .i32 (operandShiftWord a),
         .i32 (operandShiftWord b), .i64 c6, .i32 c7, .i64 c8, .i32 c9] =
         func1LoopHeaderLocals a b c6 c8 c7 c9 from rfl]
-    ihave HxExact : pointsTo_u64 1048520 x $$ [Hx]
+    ihave HxExact : pointsTo_u64 0 1048520 x $$ [Hx]
     · have h :
-          pointsTo_u64 ((1048512 : UInt32) + 8) x =
-            pointsTo_u64 1048520 x :=
-        congrArg (fun address => pointsTo_u64 address x) (by decide)
+          pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+            pointsTo_u64 0 1048520 x :=
+        congrArg (fun address => pointsTo_u64 0 address x) (by decide)
       rw [← h]
       iexact Hx
-    ihave HyExact : pointsTo_u64 1048528 y $$ [Hy]
+    ihave HyExact : pointsTo_u64 0 1048528 y $$ [Hy]
     · have h :
-          pointsTo_u64 ((1048512 : UInt32) + 16) y =
-            pointsTo_u64 1048528 y :=
-        congrArg (fun address => pointsTo_u64 address y) (by decide)
+          pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+            pointsTo_u64 0 1048528 y :=
+        congrArg (fun address => pointsTo_u64 0 address y) (by decide)
       rw [← h]
       iexact Hy
     iapply hnext hxy
@@ -6477,8 +6624,8 @@ theorem twp_func1_loopEqualityDispatch_smallStep_wp
 theorem twp_func1_loopDecreaseDispatch_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y : UInt64)
@@ -6486,10 +6633,10 @@ theorem twp_func1_loopDecreaseDispatch_smallStep_wp
     (oldShiftX oldShiftY : UInt32)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hcontinueX : ∀ (_ : y < x),
-      R ∗ pointsTo_u64 1048520 (oddPart64 (x - y)) ∗
-        pointsTo_u64 1048528 y ∗
-        pointsTo_u32 1048540 (operandShiftWord (x - y)) ∗
-        pointsTo_u32 1048544 oldShiftY ⊢
+      R ∗ pointsTo_u64 0 1048520 (oddPart64 (x - y)) ∗
+        pointsTo_u64 0 1048528 y ∗
+        pointsTo_u32 0 1048540 (operandShiftWord (x - y)) ∗
+        pointsTo_u32 0 1048544 oldShiftY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopXNormalizedLocals a b y (x - y) c6 c7, []⟩,
@@ -6497,18 +6644,18 @@ theorem twp_func1_loopDecreaseDispatch_smallStep_wp
           func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }])
     (hcontinueY : ∀ (_ : ¬ y < x),
-      R ∗ pointsTo_u64 1048520 x ∗
-        pointsTo_u64 1048528 (oddPart64 (y - x)) ∗
-        pointsTo_u32 1048540 oldShiftX ∗
-        pointsTo_u32 1048544 (operandShiftWord (y - x)) ⊢
+      R ∗ pointsTo_u64 0 1048520 x ∗
+        pointsTo_u64 0 1048528 (oddPart64 (y - x)) ∗
+        pointsTo_u32 0 1048540 oldShiftX ∗
+        pointsTo_u32 0 1048544 (operandShiftWord (y - x)) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopYNormalizedLocals a b x (y - x) c8 c9, []⟩,
           [.br 1], 1, [],
           func1DecreaseYFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048540 oldShiftX ∗ pointsTo_u32 1048544 oldShiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048540 oldShiftX ∗ pointsTo_u32 0 1048544 oldShiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -6527,11 +6674,11 @@ theorem twp_func1_loopDecreaseDispatch_smallStep_wp
       .extendUI32, .shrUI64, .store64 16, .br 1] from rfl]
   simp only [func1LoopHeaderLocals]
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HxLater : pointsTo_u64 (1048512 + 8) x $$ [Hx]
+  ihave HxLater : pointsTo_u64 0 (1048512 + 8) x $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) x =
-          pointsTo_u64 1048520 x :=
-      congrArg (fun address => pointsTo_u64 address x) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+          pointsTo_u64 0 1048520 x :=
+      congrArg (fun address => pointsTo_u64 0 address x) (by decide)
     rw [h]
     iexact Hx
   iapply Wasm.SmallStep.twp_load64 x
@@ -6539,29 +6686,29 @@ theorem twp_func1_loopDecreaseDispatch_smallStep_wp
       (by decide) (by decide) (by decide) $$ HxLater
   iintro Hx
   iapply Wasm.SmallStep.twp_localGet rfl
-  ihave HyLater : pointsTo_u64 (1048512 + 16) y $$ [Hy]
+  ihave HyLater : pointsTo_u64 0 (1048512 + 16) y $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) y =
-          pointsTo_u64 1048528 y :=
-      congrArg (fun address => pointsTo_u64 address y) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+          pointsTo_u64 0 1048528 y :=
+      congrArg (fun address => pointsTo_u64 0 address y) (by decide)
     rw [h]
     iexact Hy
   iapply Wasm.SmallStep.twp_load64 y
       (by decide) (by decide) (by decide) (by decide) (by decide)
       (by decide) (by decide) (by decide) $$ HyLater
   iintro Hy
-  ihave HxExact : pointsTo_u64 1048520 x $$ [Hx]
+  ihave HxExact : pointsTo_u64 0 1048520 x $$ [Hx]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 8) x =
-          pointsTo_u64 1048520 x :=
-      congrArg (fun address => pointsTo_u64 address x) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 8) x =
+          pointsTo_u64 0 1048520 x :=
+      congrArg (fun address => pointsTo_u64 0 address x) (by decide)
     rw [← h]
     iexact Hx
-  ihave HyExact : pointsTo_u64 1048528 y $$ [Hy]
+  ihave HyExact : pointsTo_u64 0 1048528 y $$ [Hy]
   · have h :
-        pointsTo_u64 ((1048512 : UInt32) + 16) y =
-          pointsTo_u64 1048528 y :=
-      congrArg (fun address => pointsTo_u64 address y) (by decide)
+        pointsTo_u64 0 ((1048512 : UInt32) + 16) y =
+          pointsTo_u64 0 1048528 y :=
+      congrArg (fun address => pointsTo_u64 0 address y) (by decide)
     rw [← h]
     iexact Hy
   by_cases hlt : y < x
@@ -6586,7 +6733,7 @@ theorem twp_func1_loopDecreaseDispatch_smallStep_wp
         .i32 (operandShiftWord b), .i64 c6, .i32 c7, .i64 c8, .i32 c9] =
         func1LoopHeaderLocals a b c6 c8 c7 c9 from rfl]
     iapply twp_func1_loopDecreaseX_smallStep_wp
-      (R := iprop(R ∗ pointsTo_u32 1048544 oldShiftY))
+      (R := iprop(R ∗ pointsTo_u32 0 1048544 oldShiftY))
       (func1LoopFrame :: outerControls) calls a b x y hsubX oldShiftX
       c6 c8 c7 c9
     · iintro Hresources
@@ -6630,7 +6777,7 @@ theorem twp_func1_loopDecreaseDispatch_smallStep_wp
         .i32 (operandShiftWord b), .i64 c6, .i32 c7, .i64 c8, .i32 c9] =
         func1LoopHeaderLocals a b c6 c8 c7 c9 from rfl]
     iapply twp_func1_loopDecreaseY_smallStep_wp
-      (R := iprop(R ∗ pointsTo_u32 1048540 oldShiftX))
+      (R := iprop(R ∗ pointsTo_u32 0 1048540 oldShiftX))
       (func1DecreaseYFrame :: func1LoopFrame :: outerControls)
       calls a b x y hsubY oldShiftY c6 c8 c7 c9
     · iintro Hresources
@@ -6643,17 +6790,17 @@ theorem twp_func1_loopDecreaseDispatch_smallStep_wp
 theorem twp_func1_loopBodyDispatch_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b x y oldResult : UInt64)
     (oldShiftX oldShiftY : UInt32)
     (c6 c8 : UInt64) (c7 c9 : UInt32)
     (hfinish : ∀ (_ : x = y),
-      R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 x ∗
-        pointsTo_u64 1048512 (recombinedWord a b x) ∗
-        pointsTo_u32 1048540 oldShiftX ∗ pointsTo_u32 1048544 oldShiftY ⊢
+      R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 x ∗
+        pointsTo_u64 0 1048512 (recombinedWord a b x) ∗
+        pointsTo_u32 0 1048540 oldShiftX ∗ pointsTo_u32 0 1048544 oldShiftY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -6661,29 +6808,29 @@ theorem twp_func1_loopBodyDispatch_smallStep_wp
           func1EqualityFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }])
     (hbackX : ∀ (_ : x ≠ y) (_ : y < x),
-      R ∗ pointsTo_u64 1048520 (oddPart64 (x - y)) ∗
-        pointsTo_u64 1048528 y ∗ pointsTo_u64 1048512 oldResult ∗
-        pointsTo_u32 1048540 (operandShiftWord (x - y)) ∗
-        pointsTo_u32 1048544 oldShiftY ⊢
+      R ∗ pointsTo_u64 0 1048520 (oddPart64 (x - y)) ∗
+        pointsTo_u64 0 1048528 y ∗ pointsTo_u64 0 1048512 oldResult ∗
+        pointsTo_u32 0 1048540 (operandShiftWord (x - y)) ∗
+        pointsTo_u32 0 1048544 oldShiftY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopXNormalizedLocals a b y (x - y) c6 c7, []⟩,
           [.br 0], 1, [], func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }])
     (hbackY : ∀ (_ : x ≠ y) (_ : ¬ y < x),
-      R ∗ pointsTo_u64 1048520 x ∗
-        pointsTo_u64 1048528 (oddPart64 (y - x)) ∗
-        pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048540 oldShiftX ∗
-        pointsTo_u32 1048544 (operandShiftWord (y - x)) ⊢
+      R ∗ pointsTo_u64 0 1048520 x ∗
+        pointsTo_u64 0 1048528 (oddPart64 (y - x)) ∗
+        pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048540 oldShiftX ∗
+        pointsTo_u32 0 1048544 (operandShiftWord (y - x)) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopYNormalizedLocals a b x (y - x) c8 c9, []⟩,
           [.br 1], 1, [],
           func1DecreaseYFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048540 oldShiftX ∗
-      pointsTo_u32 1048544 oldShiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048540 oldShiftX ∗
+      pointsTo_u32 0 1048544 oldShiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568],
           func1LoopHeaderLocals a b c6 c8 c7 c9, []⟩,
@@ -6703,8 +6850,8 @@ theorem twp_func1_loopBodyDispatch_smallStep_wp
        belowStack := [] } : Wasm.SmallStep.ControlFrame) =
       func1EqualityFrame from rfl]
   iapply twp_func1_loopEqualityDispatch_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u32 1048540 oldShiftX ∗
-      pointsTo_u32 1048544 oldShiftY))
+    (R := iprop(R ∗ pointsTo_u32 0 1048540 oldShiftX ∗
+      pointsTo_u32 0 1048544 oldShiftY))
     outerControls calls a b x y oldResult
     c6 c8 c7 c9
   · intro hxy
@@ -6730,7 +6877,7 @@ theorem twp_func1_loopBodyDispatch_smallStep_wp
          belowStack := [] } : Wasm.SmallStep.ControlFrame) =
         func1DecreaseYFrame from rfl]
     iapply twp_func1_loopDecreaseDispatch_smallStep_wp
-      (R := iprop(R ∗ pointsTo_u64 1048512 oldResult))
+      (R := iprop(R ∗ pointsTo_u64 0 1048512 oldResult))
       outerControls calls a b x y hxy oldShiftX oldShiftY
       c6 c8 c7 c9
     · intro hlt
@@ -6762,10 +6909,10 @@ structure SteinLoopState where
 private theorem twp_stein_loop_wf_family_from
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
     {ι : Type} (measure : ι → Nat)
     (locals : ι → Locals)
-    (I : ι → IProp WasmHeapGF)
+    (I : ι → IProp (WasmHeapGF Unit))
     (initial : ι) (initialLocals : Locals)
     {paramArity resultArity arity : Nat}
     {body code : Program}
@@ -6812,8 +6959,8 @@ private theorem twp_stein_loop_wf_family_from
 theorem twp_func1_loopEntry_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
@@ -6821,19 +6968,19 @@ theorem twp_func1_loopEntry_smallStep_wp
     (hfinish : ∀ (g : UInt64) (shiftX shiftY : UInt32)
         (d6 d8 : UInt64) (d7 d9 : UInt32),
       g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat →
-      R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-        pointsTo_u32 1048540 shiftX ∗ pointsTo_u32 1048544 shiftY ⊢
+      R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+        pointsTo_u32 0 1048540 shiftX ∗ pointsTo_u32 0 1048544 shiftY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩,
           [.br 2], 1, [],
           func1EqualityFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 (oddPart64 a) ∗
-      pointsTo_u64 1048528 (oddPart64 b) ∗
-      pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048540 oldShiftX ∗
-      pointsTo_u32 1048544 oldShiftY ⊢
+    R ∗ pointsTo_u64 0 1048520 (oddPart64 a) ∗
+      pointsTo_u64 0 1048528 (oddPart64 b) ∗
+      pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048540 oldShiftX ∗
+      pointsTo_u32 0 1048544 oldShiftY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1NormalizedLocals a b, []⟩,
         func1LoopEntryProg, 1, [], outerControls, calls⟩ :
@@ -6846,13 +6993,13 @@ theorem twp_func1_loopEntry_smallStep_wp
     by simpa [oddPart64, oddPart_toNat] using UInt64.shr_ctz_toNat_odd b hb
   iintro ⟨HR, Hx, Hy, Hresult, HshiftX, HshiftY⟩
   simp only [func1LoopEntryProg]
-  let Inv : SteinLoopState → IProp WasmHeapGF := fun st => iprop(
+  let Inv : SteinLoopState → IProp (WasmHeapGF Unit) := fun st => iprop(
     ⌜st.x ≠ 0⌝ ∗ ⌜st.y ≠ 0⌝ ∗ ⌜st.x.toNat % 2 = 1⌝ ∗ ⌜st.y.toNat % 2 = 1⌝ ∗
     ⌜Nat.gcd st.x.toNat st.y.toNat =
       Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat⌝ ∗
-    R ∗ pointsTo_u64 1048520 st.x ∗ pointsTo_u64 1048528 st.y ∗
-    pointsTo_u64 1048512 oldResult ∗
-    pointsTo_u32 1048540 st.oldShiftX ∗ pointsTo_u32 1048544 st.oldShiftY)
+    R ∗ pointsTo_u64 0 1048520 st.x ∗ pointsTo_u64 0 1048528 st.y ∗
+    pointsTo_u64 0 1048512 oldResult ∗
+    pointsTo_u32 0 1048540 st.oldShiftX ∗ pointsTo_u32 0 1048544 st.oldShiftY)
   iapply twp_stein_loop_wf_family_from
     (measure := fun st : SteinLoopState => st.x.toNat + st.y.toNat)
     (locals := fun st =>
@@ -6886,7 +7033,7 @@ theorem twp_func1_loopEntry_smallStep_wp
         iintro Hresources
         icases Hresources with ⟨HR', Hx', Hy', Hresult', HshiftX', HshiftY'⟩
         ihave HresultFixed :
-            pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) $$ [Hresult']
+            pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) $$ [Hresult']
         · rw [← hresultEq]; iexact Hresult'
         iapply hfinish i.x i.oldShiftX i.oldShiftY i.c6 i.c8 i.c7 i.c9 hxGcd_i
         iframe
@@ -6978,8 +7125,8 @@ theorem twp_func1_loopEntry_smallStep_wp
 theorem twp_func1_nonzeroCore_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerControls : List Wasm.SmallStep.ControlFrame)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
@@ -6987,22 +7134,22 @@ theorem twp_func1_nonzeroCore_smallStep_wp
     (hfinish : ∀ (g : UInt64) (loopX loopY : UInt32)
         (d6 d8 : UInt64) (d7 d9 : UInt32),
       g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat →
-      R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b) ∗
-        pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-        pointsTo_u32 1048540 loopX ∗ pointsTo_u32 1048544 loopY ⊢
+      R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b) ∗
+        pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+        pointsTo_u32 0 1048540 loopX ∗ pointsTo_u32 0 1048544 loopY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩,
           [.br 2], 1, [],
           func1EqualityFrame :: func1LoopFrame :: outerControls, calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-      pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗ pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+      pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗ pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         meatLoopProg, 1, [], outerControls, calls⟩ :
@@ -7010,8 +7157,8 @@ theorem twp_func1_nonzeroCore_smallStep_wp
   iintro
     ⟨HR, Hx, Hy, Hresult, Hshared, HnormX, HnormY, HloopX, HloopY⟩
   iapply twp_func1_normalization_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 oldResult ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 oldResult ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY))
     outerControls calls a b ha hb oldShared oldNormX oldNormY
   · iintro Hresources
     icases Hresources with
@@ -7019,9 +7166,9 @@ theorem twp_func1_nonzeroCore_smallStep_wp
         Hshared', HnormX', HnormY'⟩
     rw [show meatLoopProg.drop 48 = func1LoopEntryProg from rfl]
     iapply twp_func1_loopEntry_smallStep_wp
-      (R := iprop(R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b)))
+      (R := iprop(R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b)))
       outerControls calls a b oldResult ha hb oldLoopX oldLoopY
     · intro g loopX loopY d6 d8 d7 d9 hg
       iintro Hresources
@@ -7036,8 +7183,8 @@ theorem twp_func1_nonzeroCore_smallStep_wp
 theorem twp_func1_nonzeroOuterCore_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (outerBody : Program)
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
@@ -7045,22 +7192,22 @@ theorem twp_func1_nonzeroOuterCore_smallStep_wp_to_return
     (hreturn : ∀ (g : UInt64) (loopX loopY : UInt32)
         (d6 d8 : UInt64) (d7 d9 : UInt32),
       g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat →
-      (R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b)) ∗
-        pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-        pointsTo_u32 1048540 loopX ∗ pointsTo_u32 1048544 loopY ⊢
+      (R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b)) ∗
+        pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+        pointsTo_u32 0 1048540 loopX ∗ pointsTo_u32 0 1048544 loopY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b d6 d8 d7 d9,
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-      pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗ pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+      pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗ pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         meatLoopProg, 1, [], [func1OuterFrame outerBody], calls⟩ :
@@ -7074,9 +7221,9 @@ theorem twp_func1_nonzeroOuterCore_smallStep_wp_to_return
     icases Hresources with
       ⟨HR, Hshared, HnormX, HnormY, Hx, Hy, Hresult, HloopX, HloopY⟩
     iapply twp_func1_nonzeroFinish_smallStep_wp_to_return
-      (R := iprop(R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b)))
+      (R := iprop(R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b)))
       outerBody calls a b g d6 d8 loopX loopY d7 d9 hg
     · iintro Hresources
       iapply hreturn g loopX loopY d6 d8 d7 d9 hg
@@ -7087,14 +7234,14 @@ theorem twp_func1_nonzeroOuterCore_smallStep_wp_to_return
 theorem twp_func1_nonzeroOuterCore_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (outerBody : Program)
     (a b oldResult : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (oldShared oldNormX oldNormY oldLoopX oldLoopY : UInt32) :
-    R ∗ pointsTo_u64 1048520 a ∗ pointsTo_u64 1048528 b ∗
-      pointsTo_u64 1048512 oldResult ∗ pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗ pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY ⊢
+    R ∗ pointsTo_u64 0 1048520 a ∗ pointsTo_u64 0 1048528 b ∗
+      pointsTo_u64 0 1048512 oldResult ∗ pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗ pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩,
         meatLoopProg, 1, [], [func1OuterFrame outerBody], []⟩ :
@@ -7104,14 +7251,14 @@ theorem twp_func1_nonzeroOuterCore_smallStep_wp
           ∃ g : UInt64, ∃ loopX loopY : UInt32,
             ⌜g.toNat =
               Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat⌝ ∗
-            R ∗ pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-            pointsTo_u64 1048512
+            R ∗ pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+            pointsTo_u64 0 1048512
               (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-            pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-            pointsTo_u32 1048552 (operandShiftWord a) ∗
-            pointsTo_u32 1048548 (operandShiftWord b) ∗
-            pointsTo_u32 1048540 loopX ∗
-            pointsTo_u32 1048544 loopY }] := by
+            pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+            pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+            pointsTo_u32 0 1048548 (operandShiftWord b) ∗
+            pointsTo_u32 0 1048540 loopX ∗
+            pointsTo_u32 0 1048544 loopY }] := by
   iintro Hresources
   iapply twp_func1_nonzeroCore_smallStep_wp R [func1OuterFrame outerBody] []
     a b oldResult ha hb oldShared oldNormX oldNormY oldLoopX oldLoopY
@@ -7122,26 +7269,26 @@ theorem twp_func1_nonzeroOuterCore_smallStep_wp
     have hpost : ∀ rs : List Value,
         (iprop(
           ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-            (R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-              pointsTo_u32 1048552 (operandShiftWord a) ∗
-              pointsTo_u32 1048548 (operandShiftWord b)) ∗
-            pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-            pointsTo_u64 1048512
+            (R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+              pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+              pointsTo_u32 0 1048548 (operandShiftWord b)) ∗
+            pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+            pointsTo_u64 0 1048512
               (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-            pointsTo_u32 1048540 loopX ∗ pointsTo_u32 1048544 loopY)) ⊢
+            pointsTo_u32 0 1048540 loopX ∗ pointsTo_u32 0 1048544 loopY)) ⊢
         (iprop(
           ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
             ∃ g' : UInt64, ∃ loopX' loopY' : UInt32,
               ⌜g'.toNat =
                 Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat⌝ ∗
-              R ∗ pointsTo_u64 1048520 g' ∗ pointsTo_u64 1048528 g' ∗
-              pointsTo_u64 1048512
+              R ∗ pointsTo_u64 0 1048520 g' ∗ pointsTo_u64 0 1048528 g' ∗
+              pointsTo_u64 0 1048512
                 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-              pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-              pointsTo_u32 1048552 (operandShiftWord a) ∗
-              pointsTo_u32 1048548 (operandShiftWord b) ∗
-              pointsTo_u32 1048540 loopX' ∗
-              pointsTo_u32 1048544 loopY')) := by
+              pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+              pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+              pointsTo_u32 0 1048548 (operandShiftWord b) ∗
+              pointsTo_u32 0 1048540 loopX' ∗
+              pointsTo_u32 0 1048544 loopY')) := by
       intro rs
       iintro ⟨%hrs, HR, Hx, Hy, Hresult, HloopX, HloopY⟩
       icases HR with ⟨HR, Hshared, HnormX, HnormY⟩
@@ -7157,9 +7304,9 @@ theorem twp_func1_nonzeroOuterCore_smallStep_wp
         · iframe
     iapply twp.mono hpost
     iapply twp_func1_nonzeroFinish_smallStep_wp
-      (R := iprop(R ∗ pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b)))
+      (R := iprop(R ∗ pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b)))
       outerBody a b g d6 d8 loopX loopY d7 d9 hg
     iframe
   · iexact Hresources
@@ -7167,35 +7314,35 @@ theorem twp_func1_nonzeroOuterCore_smallStep_wp
 theorem twp_func1_nonzero_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (result oldX oldY a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (oldShared oldNormX oldNormY oldLoopX oldLoopY : UInt32)
     (hreturn : ∀ (g : UInt64) (loopX loopY : UInt32)
         (d6 d8 : UInt64) (d7 d9 : UInt32),
       g.toNat = Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat →
-      ((R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b) ∗
-        pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-        pointsTo_u32 1048552 (operandShiftWord a) ∗
-        pointsTo_u32 1048548 (operandShiftWord b)) ∗
-        pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-        pointsTo_u64 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-        pointsTo_u32 1048540 loopX ∗ pointsTo_u32 1048544 loopY ⊢
+      ((R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b) ∗
+        pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+        pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+        pointsTo_u32 0 1048548 (operandShiftWord b)) ∗
+        pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+        pointsTo_u64 0 1048512 (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
+        pointsTo_u32 0 1048540 loopX ∗ pointsTo_u32 0 1048544 loopY ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i32 1048560, .i32 1048568],
             func1LoopHeaderLocals a b d6 d8 d7 d9,
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗ pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗ pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], calls⟩ :
@@ -7204,12 +7351,12 @@ theorem twp_func1_nonzero_smallStep_wp_to_return
     ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy,
       Hshared, HnormX, HnormY, HloopX, HloopY⟩
   iapply twp_func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result ∗
-      pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗
-      pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗
-      pointsTo_u32 1048544 oldLoopY))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result ∗
+      pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗
+      pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗
+      pointsTo_u32 0 1048544 oldLoopY))
     (calls := calls) (a := a) (b := b) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -7218,14 +7365,14 @@ theorem twp_func1_nonzero_smallStep_wp_to_return
       ⟨HR', Hresult', Hshared', HnormX', HnormY', HloopX', HloopY'⟩
     iapply twp_func1_nonzeroGuards_smallStep_wp
       (R := iprop(
-        (R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b) ∗
-        pointsTo_u64 1048512 result ∗
-        pointsTo_u32 1048556 oldShared ∗
-        pointsTo_u32 1048552 oldNormX ∗
-        pointsTo_u32 1048548 oldNormY ∗
-        pointsTo_u32 1048540 oldLoopX ∗
-        pointsTo_u32 1048544 oldLoopY))
+        (R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b) ∗
+        pointsTo_u64 0 1048512 result ∗
+        pointsTo_u32 0 1048556 oldShared ∗
+        pointsTo_u32 0 1048552 oldNormX ∗
+        pointsTo_u32 0 1048548 oldNormY ∗
+        pointsTo_u32 0 1048540 oldLoopX ∗
+        pointsTo_u32 0 1048544 oldLoopY))
       calls a b ha hb
     · iintro Hresources
       icases Hresources with ⟨HRouterScratch, Hx'', Hy''⟩
@@ -7233,8 +7380,8 @@ theorem twp_func1_nonzero_smallStep_wp_to_return
         ⟨HRouter, Hresult'', Hshared'', HnormX'', HnormY'',
           HloopX'', HloopY''⟩
       iapply twp_func1_nonzeroOuterCore_smallStep_wp_to_return
-        (R := iprop(R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b))
+        (R := iprop(R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b))
         func1OuterBody calls a b result ha hb
         oldShared oldNormX oldNormY oldLoopX oldLoopY
       · intro g loopX loopY d6 d8 d7 d9 hg
@@ -7248,16 +7395,16 @@ theorem twp_func1_nonzero_smallStep_wp_to_return
 theorem twp_func1_nonzero_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (result oldX oldY a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0)
     (oldShared oldNormX oldNormY oldLoopX oldLoopY : UInt32) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗ pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗ pointsTo_u32 1048544 oldLoopY ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗ pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗ pointsTo_u32 0 1048544 oldLoopY ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
         func1, 1, [], [], []⟩ :
@@ -7267,26 +7414,26 @@ theorem twp_func1_nonzero_smallStep_wp
           ∃ g : UInt64, ∃ loopX loopY : UInt32,
             ⌜g.toNat =
               Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat⌝ ∗
-            (R ∗ globalPointsTo 0 (.i32 1048560) ∗
-              pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b) ∗
-            pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-            pointsTo_u64 1048512
+            (R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+              pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b) ∗
+            pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+            pointsTo_u64 0 1048512
               (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-            pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-            pointsTo_u32 1048552 (operandShiftWord a) ∗
-            pointsTo_u32 1048548 (operandShiftWord b) ∗
-            pointsTo_u32 1048540 loopX ∗
-            pointsTo_u32 1048544 loopY }] := by
+            pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+            pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+            pointsTo_u32 0 1048548 (operandShiftWord b) ∗
+            pointsTo_u32 0 1048540 loopX ∗
+            pointsTo_u32 0 1048544 loopY }] := by
   iintro
     ⟨HR, Hglobal, HouterA, HouterB, Hresult, Hx, Hy,
       Hshared, HnormX, HnormY, HloopX, HloopY⟩
   iapply twp_func1_spillPrefix_smallStep_wp
-    (R := iprop(R ∗ pointsTo_u64 1048512 result ∗
-      pointsTo_u32 1048556 oldShared ∗
-      pointsTo_u32 1048552 oldNormX ∗
-      pointsTo_u32 1048548 oldNormY ∗
-      pointsTo_u32 1048540 oldLoopX ∗
-      pointsTo_u32 1048544 oldLoopY))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result ∗
+      pointsTo_u32 0 1048556 oldShared ∗
+      pointsTo_u32 0 1048552 oldNormX ∗
+      pointsTo_u32 0 1048548 oldNormY ∗
+      pointsTo_u32 0 1048540 oldLoopX ∗
+      pointsTo_u32 0 1048544 oldLoopY))
     (calls := []) (a := a) (b := b) (oldX := oldX) (oldY := oldY)
   · iintro Hresources
     icases Hresources with
@@ -7295,14 +7442,14 @@ theorem twp_func1_nonzero_smallStep_wp
       ⟨HR', Hresult', Hshared', HnormX', HnormY', HloopX', HloopY'⟩
     iapply twp_func1_nonzeroGuards_smallStep_wp
       (R := iprop(
-        (R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b) ∗
-        pointsTo_u64 1048512 result ∗
-        pointsTo_u32 1048556 oldShared ∗
-        pointsTo_u32 1048552 oldNormX ∗
-        pointsTo_u32 1048548 oldNormY ∗
-        pointsTo_u32 1048540 oldLoopX ∗
-        pointsTo_u32 1048544 oldLoopY))
+        (R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b) ∗
+        pointsTo_u64 0 1048512 result ∗
+        pointsTo_u32 0 1048556 oldShared ∗
+        pointsTo_u32 0 1048552 oldNormX ∗
+        pointsTo_u32 0 1048548 oldNormY ∗
+        pointsTo_u32 0 1048540 oldLoopX ∗
+        pointsTo_u32 0 1048544 oldLoopY))
       [] a b ha hb
     · iintro Hresources
       icases Hresources with ⟨HRouterScratch, Hx'', Hy''⟩
@@ -7310,8 +7457,8 @@ theorem twp_func1_nonzero_smallStep_wp
         ⟨HRouter, Hresult'', Hshared'', HnormX'', HnormY'',
           HloopX'', HloopY''⟩
       iapply twp_func1_nonzeroOuterCore_smallStep_wp
-        (R := iprop(R ∗ globalPointsTo 0 (.i32 1048560) ∗
-          pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b))
+        (R := iprop(R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+          pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b))
         func1OuterBody a b result ha hb
         oldShared oldNormX oldNormY oldLoopX oldLoopY
       iframe
@@ -7324,10 +7471,10 @@ theorem twp_func1_nonzero_frame_smallStep_wp
     (result oldX oldY : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (a b : UInt64) (ha : a ≠ 0) (hb : b ≠ 0) :
-    globalPointsTo 0 (.i32 1048560) ∗
+    globalPointsToAt 0 0 (.i32 1048560) ∗
       ([∗map] address ↦ byte ∈
         gcdFrameHeap result oldX oldY shiftXY shiftX shiftY nextY nextX a b,
-        pointsTo (GF := WasmHeapGF) (H := WasmHeapMap)
+        pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
           address (DFrac.own 1) byte) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i32 1048560, .i32 1048568], func1InitialLocals, []⟩,
@@ -7338,16 +7485,16 @@ theorem twp_func1_nonzero_frame_smallStep_wp
           ∃ g : UInt64, ∃ loopX loopY : UInt32,
             ⌜g.toNat =
               Nat.gcd (oddPart64 a).toNat (oddPart64 b).toNat⌝ ∗
-            (⌜True⌝ ∗ globalPointsTo 0 (.i32 1048560) ∗
-              pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b) ∗
-            pointsTo_u64 1048520 g ∗ pointsTo_u64 1048528 g ∗
-            pointsTo_u64 1048512
+            (⌜True⌝ ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+              pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b) ∗
+            pointsTo_u64 0 1048520 g ∗ pointsTo_u64 0 1048528 g ∗
+            pointsTo_u64 0 1048512
               (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) ∗
-            pointsTo_u32 1048556 (sharedShiftWord a b) ∗
-            pointsTo_u32 1048552 (operandShiftWord a) ∗
-            pointsTo_u32 1048548 (operandShiftWord b) ∗
-            pointsTo_u32 1048540 loopX ∗
-            pointsTo_u32 1048544 loopY }] := by
+            pointsTo_u32 0 1048556 (sharedShiftWord a b) ∗
+            pointsTo_u32 0 1048552 (operandShiftWord a) ∗
+            pointsTo_u32 0 1048548 (operandShiftWord b) ∗
+            pointsTo_u32 0 1048540 loopX ∗
+            pointsTo_u32 0 1048544 loopY }] := by
   iintro ⟨Hglobal, Hframe⟩
   ihave Hslots := gcdFrameHeap_pointsTo
     result oldX oldY shiftXY shiftX shiftY nextY nextX a b $$ Hframe
@@ -7365,21 +7512,21 @@ theorem twp_func1_nonzero_frame_smallStep_wp
 theorem twp_func0_callPrefix_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (a b oldOuterA oldOuterB : UInt64)
     (hcontinue :
-      R ∗ globalPointsTo 0 (.i32 1048560) ∗
-        pointsTo_u64 1048560 a ∗ pointsTo_u64 1048568 b ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+        pointsTo_u64 0 1048560 a ∗ pointsTo_u64 0 1048568 b ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i64 a, .i64 b], func0CallLocals,
             [.i32 1048568, .i32 1048560]⟩,
           .call 1 :: func0AfterCallProg, 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ globalPointsTo 0 (.i32 1048576) ∗
-      pointsTo_u64 1048560 oldOuterA ∗
-      pointsTo_u64 1048568 oldOuterB ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048576) ∗
+      pointsTo_u64 0 1048560 oldOuterA ∗
+      pointsTo_u64 0 1048568 oldOuterB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], func0InitialLocals, []⟩,
         func0, 1, [], [], calls⟩ :
@@ -7400,7 +7547,7 @@ theorem twp_func0_callPrefix_smallStep_wp
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
   ihave HouterALater :
-      pointsTo_u64 ((1048560 : UInt32) + 0) oldOuterA $$ [HouterA]
+      pointsTo_u64 0 ((1048560 : UInt32) + 0) oldOuterA $$ [HouterA]
   · rw [show (1048560 : UInt32) + 0 = 1048560 from rfl]
     iexact HouterA
   iapply Wasm.SmallStep.twp_store64 oldOuterA
@@ -7410,7 +7557,7 @@ theorem twp_func0_callPrefix_smallStep_wp
   iapply Wasm.SmallStep.twp_localGet rfl
   iapply Wasm.SmallStep.twp_localGet rfl
   ihave HouterBLater :
-      pointsTo_u64 ((1048560 : UInt32) + 8) oldOuterB $$ [HouterB]
+      pointsTo_u64 0 ((1048560 : UInt32) + 8) oldOuterB $$ [HouterB]
   · rw [show (1048560 : UInt32) + 8 = 1048568 from rfl]
     iexact HouterB
   iapply Wasm.SmallStep.twp_store64 oldOuterB
@@ -7424,17 +7571,17 @@ theorem twp_func0_callPrefix_smallStep_wp
   rw [show (8 : UInt32) + 1048560 = 1048568 from rfl]
   simp only [func0CallLocals, func0AfterCallProg] at hcontinue
   have hOuterAProp :
-      pointsTo_u64 ((1048560 : UInt32) + 0) a =
-        pointsTo_u64 1048560 a :=
-    congrArg (fun address => pointsTo_u64 address a) (by decide)
+      pointsTo_u64 0 ((1048560 : UInt32) + 0) a =
+        pointsTo_u64 0 1048560 a :=
+    congrArg (fun address => pointsTo_u64 0 address a) (by decide)
   have hOuterBProp :
-      pointsTo_u64 ((1048560 : UInt32) + 8) b =
-        pointsTo_u64 1048568 b :=
-    congrArg (fun address => pointsTo_u64 address b) (by decide)
-  ihave HouterAExact : pointsTo_u64 1048560 a $$ [HouterA]
+      pointsTo_u64 0 ((1048560 : UInt32) + 8) b =
+        pointsTo_u64 0 1048568 b :=
+    congrArg (fun address => pointsTo_u64 0 address b) (by decide)
+  ihave HouterAExact : pointsTo_u64 0 1048560 a $$ [HouterA]
   · rw [← hOuterAProp]
     iexact HouterA
-  ihave HouterBExact : pointsTo_u64 1048568 b $$ [HouterB]
+  ihave HouterBExact : pointsTo_u64 0 1048568 b $$ [HouterB]
   · rw [← hOuterBProp]
     iexact HouterB
   iapply hcontinue
@@ -7443,12 +7590,12 @@ theorem twp_func0_callPrefix_smallStep_wp
 theorem twp_func0_afterCall_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (a b : UInt64)
     (hreturn :
-      R ∗ globalPointsTo 0 (.i32 1048576) ⊢
+      R ∗ globalPointsToAt 0 0 (.i32 1048576) ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i64 a, .i64 b],
             [.i32 1048560,
@@ -7456,7 +7603,7 @@ theorem twp_func0_afterCall_smallStep_wp_to_return
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], func0CallLocals,
           [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
@@ -7480,9 +7627,9 @@ theorem twp_func0_afterCall_smallStep_wp_to_return
 theorem twp_func0_afterCall_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (a b : UInt64) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], func0CallLocals,
           [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
@@ -7490,7 +7637,7 @@ theorem twp_func0_afterCall_smallStep_wp
         Wasm.SmallStep.Expr Unit) @ s; E
       [{ rs,
         ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-          R ∗ globalPointsTo 0 (.i32 1048576) }] := by
+          R ∗ globalPointsToAt 0 0 (.i32 1048576) }] := by
   iintro Hresources
   iapply twp_func0_afterCall_smallStep_wp_to_return R [] a b
   · iintro Hresources
@@ -7506,18 +7653,18 @@ theorem twp_func0_afterCall_smallStep_wp
 theorem twp_func0_afterCall_frame_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (a b returned result x y outerA outerB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (hreturned :
       returned = UInt64.ofNat (Nat.gcd a.toNat b.toNat)) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB ⊢
+    R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], [.i32 1048560, .i64 0],
           [.i64 returned]⟩,
@@ -7531,13 +7678,13 @@ theorem twp_func0_afterCall_frame_smallStep_wp
   have hpost : ∀ rs : List Value,
       (iprop(
         ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝ ∗
-        (R ∗ pointsTo_u64 1048512 result ∗
-          pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-          pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-          pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-          pointsTo_u32 1048540 nextX ∗
-          pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB) ∗
-        globalPointsTo 0 (.i32 1048576))) ⊢
+        (R ∗ pointsTo_u64 0 1048512 result ∗
+          pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+          pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+          pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+          pointsTo_u32 0 1048540 nextX ∗
+          pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB) ∗
+        globalPointsToAt 0 0 (.i32 1048576))) ⊢
       func0FramePost R a b rs := by
     intro rs
     iintro ⟨%hrs, Hframe, Hglobal⟩
@@ -7562,12 +7709,12 @@ theorem twp_func0_afterCall_frame_smallStep_wp
   iapply twp.mono hpost
   have hafter := twp_func0_afterCall_smallStep_wp
     (s := s) (E := E)
-    (R := iprop(R ∗ pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB))
+    (R := iprop(R ∗ pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB))
     a b
   simp only [func0CallLocals, func0AfterCallProg] at hafter
   iapply hafter
@@ -7579,8 +7726,9 @@ theorem twp_func0_afterCall_frame_smallStep_wp
 theorem twp_func0_resumeCaller_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
+    {ri : Wasm.SmallStep.ModuleInstanceId}
     (calls : List Wasm.SmallStep.CallFrame)
     (calleeLocals : Locals)
     (a b returned result x y outerA outerB : UInt64)
@@ -7588,7 +7736,7 @@ theorem twp_func0_resumeCaller_smallStep_wp
     (hreturned :
       returned = UInt64.ofNat (Nat.gcd a.toNat b.toNat))
     (hreturn :
-      func0FramePost R a b
+      runtimeModuleOwn ri «module» ∗ func0FramePost R a b
           [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))] ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i64 a, .i64 b],
@@ -7597,46 +7745,53 @@ theorem twp_func0_resumeCaller_smallStep_wp
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ globalPointsTo 0 (.i32 1048560) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB ⊢
+    runtimeModuleOwn ri «module» ∗ R ∗ globalPointsToAt 0 0 (.i32 1048560) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨{ calleeLocals with
           values := [.i64 returned] },
         [.ret], 1, [], [],
-        func0CallerFrame a b :: calls⟩ :
+        func0CallerFrame a b ri :: calls⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }] := by
   subst returned
-  iintro Hresources
-  iapply Wasm.SmallStep.twp_returnFromCallExplicit
-  simp only [func0CallerFrame, func0CallLocals, func0AfterCallProg,
+  simp only [func0CallerFrame]
+  iintro ⟨Hruntime, Hresources⟩
+  iapply Wasm.SmallStep.twp_returnFromCallExplicit $$ Hruntime
+  iintro Hruntime'
+  simp only [func0CallLocals, func0AfterCallProg,
     List.take, List.append_nil]
+  icombine Hresources Hruntime' as Hresources
   have hafter := twp_func0_afterCall_smallStep_wp_to_return
     (s := s) (E := E) (Φ := Φ)
-    (R := iprop(R ∗ pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 x ∗ pointsTo_u64 1048528 y ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 outerA ∗ pointsTo_u64 1048568 outerB))
+    (R := iprop(R ∗ runtimeModuleOwn ri «module» ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 x ∗ pointsTo_u64 0 1048528 y ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 outerA ∗ pointsTo_u64 0 1048568 outerB))
     calls a b
   simp only [func0CallLocals, func0AfterCallProg] at hafter
   iapply hafter
   · iintro Hresources
-    iapply hreturn
-    iapply func0_exactFrame_entails_post
-      R a b result x y outerA outerB
-      shiftXY shiftX shiftY nextY nextX
     icases Hresources with ⟨Hframe, Hglobal⟩
     icases Hframe with
-      ⟨HR, Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY,
+      ⟨HR, Hruntime'', Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY,
         HnextY, HnextX, HouterA, HouterB⟩
-    iframe
-  · icases Hresources with
+    iapply hreturn
+    isplitl [Hruntime'']
+    · iexact Hruntime''
+    · iapply func0_exactFrame_entails_post
+        R a b result x y outerA outerB
+        shiftXY shiftX shiftY nextY nextX
+      iframe
+  · icases Hresources with ⟨HRstuff, Hruntime_b⟩
+    icases HRstuff with
       ⟨HR, Hglobal, Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY,
         HnextY, HnextX, HouterA, HouterB⟩
     iframe
@@ -7644,13 +7799,13 @@ theorem twp_func0_resumeCaller_smallStep_wp
 theorem twp_func0_smallStep_wp_to_return
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    {Φ : List Value → IProp WasmHeapGF}
-    (R : IProp WasmHeapGF)
+    {Φ : List Value → IProp (WasmHeapGF Unit)}
+    (R : IProp (WasmHeapGF Unit))
     (calls : List Wasm.SmallStep.CallFrame)
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32)
     (hreturn :
-      func0FramePost (iprop(R ∗ runtimeModuleOwn «module»)) a b
+      runtimeModuleOwn ⟨0⟩ «module» ∗ func0FramePost R a b
           [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))] ⊢
       WP (Wasm.SmallStep.Expr.running
         ⟨⟨[.i64 a, .i64 b],
@@ -7659,15 +7814,15 @@ theorem twp_func0_smallStep_wp_to_return
             [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⟩,
           [.ret], 1, [], [], calls⟩ :
           Wasm.SmallStep.Expr Unit) @ s; E [{ Φ }]) :
-    R ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048576) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 oldOuterA ∗
-      pointsTo_u64 1048568 oldOuterB ⊢
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048576) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 oldOuterA ∗
+      pointsTo_u64 0 1048568 oldOuterB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], func0InitialLocals, []⟩,
         func0, 1, [], [], calls⟩ :
@@ -7676,12 +7831,12 @@ theorem twp_func0_smallStep_wp_to_return
     ⟨HR, Hruntime, Hglobal, Hresult, Hx, Hy, HshiftXY, HshiftX,
       HshiftY, HnextY, HnextX, HouterA, HouterB⟩
   iapply twp_func0_callPrefix_smallStep_wp
-    (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX))
+    (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX))
     calls a b oldOuterA oldOuterB
   · iintro Hresources
     icases Hresources with
@@ -7701,16 +7856,17 @@ theorem twp_func0_smallStep_wp_to_return
          continuation := func0AfterCallProg
          resultArity := 1
          callerRemainder := []
-         control := [] } : Wasm.SmallStep.CallFrame) =
-        func0CallerFrame a b from rfl]
+         control := []
+         returningInstance := ⟨0⟩ } : Wasm.SmallStep.CallFrame) =
+        func0CallerFrame a b ⟨0⟩ from rfl]
     by_cases ha : a = 0
     · subst a
       iapply twp_func1_leftZero_smallStep_wp_to_return
-        (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-          pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-          pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-          pointsTo_u32 1048540 nextX))
-        (func0CallerFrame 0 b :: calls) result oldX oldY b
+        (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+          pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+          pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+          pointsTo_u32 0 1048540 nextX))
+        (func0CallerFrame 0 b ⟨0⟩ :: calls) result oldX oldY b
       · iintro Hresources
         icases Hresources with
           ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
@@ -7718,7 +7874,7 @@ theorem twp_func0_smallStep_wp_to_return
           ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
             HnextY'', HnextX''⟩
         iapply twp_func0_resumeCaller_smallStep_wp
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
+          (R := R)
           calls
           ⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩
           0 b b b 0 b 0 b shiftXY shiftX shiftY nextY nextX
@@ -7728,11 +7884,11 @@ theorem twp_func0_smallStep_wp_to_return
     · by_cases hb : b = 0
       · subst b
         iapply twp_func1_rightZero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-            pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-            pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-            pointsTo_u32 1048540 nextX))
-          (func0CallerFrame a 0 :: calls) result oldX oldY a ha
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+            pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+            pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+            pointsTo_u32 0 1048540 nextX))
+          (func0CallerFrame a 0 ⟨0⟩ :: calls) result oldX oldY a ha
         · iintro Hresources
           icases Hresources with
             ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
@@ -7740,7 +7896,7 @@ theorem twp_func0_smallStep_wp_to_return
             ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
               HnextY'', HnextX''⟩
           iapply twp_func0_resumeCaller_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := R)
             calls
             ⟨[.i32 1048560, .i32 1048568], func1SpilledLocals, []⟩
             a 0 a a a 0 a 0 shiftXY shiftX shiftY nextY nextX
@@ -7748,8 +7904,8 @@ theorem twp_func0_smallStep_wp_to_return
           iframe
         · iframe
       · iapply twp_func1_nonzero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
-          (func0CallerFrame a b :: calls)
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»))
+          (func0CallerFrame a b ⟨0⟩ :: calls)
           result oldX oldY a b ha hb
           shiftXY shiftX shiftY nextX nextY
         · intro g loopX loopY d6 d8 d7 d9 hg
@@ -7762,7 +7918,7 @@ theorem twp_func0_smallStep_wp_to_return
             ⟨HRruntime, Hglobal'', HouterA'', HouterB''⟩
           icases HRruntime with ⟨HR'', Hruntime''⟩
           iapply twp_func0_resumeCaller_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := R)
             calls
             ⟨[.i32 1048560, .i32 1048568],
               func1LoopHeaderLocals a b d6 d8 d7 d9, []⟩
@@ -7777,33 +7933,33 @@ theorem twp_func0_smallStep_wp_to_return
 theorem twp_func0_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32) :
-    R ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048576) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 oldOuterA ∗
-      pointsTo_u64 1048568 oldOuterB ⊢
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048576) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 oldOuterA ∗
+      pointsTo_u64 0 1048568 oldOuterB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], func0InitialLocals, []⟩,
         func0, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
-      [{ rs, func0FramePost (iprop(R ∗ runtimeModuleOwn «module»)) a b rs }] := by
+      [{ rs, func0FramePost (iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»)) a b rs }] := by
   iintro
     ⟨HR, Hruntime, Hglobal, Hresult, Hx, Hy, HshiftXY, HshiftX,
       HshiftY, HnextY, HnextX, HouterA, HouterB⟩
   iapply twp_func0_callPrefix_smallStep_wp
-    (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX))
+    (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX))
     [] a b oldOuterA oldOuterB
   · iintro Hresources
     icases Hresources with
@@ -7823,27 +7979,30 @@ theorem twp_func0_smallStep_wp
          continuation := func0AfterCallProg
          resultArity := 1
          callerRemainder := []
-         control := [] } : Wasm.SmallStep.CallFrame) =
-        func0CallerFrame a b from rfl]
+         control := []
+         returningInstance := ⟨0⟩ } : Wasm.SmallStep.CallFrame) =
+        func0CallerFrame a b ⟨0⟩ from rfl]
     by_cases ha : a = 0
     · subst a
       iapply twp_func1_leftZero_smallStep_wp_to_return
-        (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-          pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-          pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-          pointsTo_u32 1048540 nextX))
-        [func0CallerFrame 0 b] result oldX oldY b
+        (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+          pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+          pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+          pointsTo_u32 0 1048540 nextX))
+        [func0CallerFrame 0 b ⟨0⟩] result oldX oldY b
       · iintro Hresources
         icases Hresources with
           ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
         icases HRscratch with
           ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
             HnextY'', HnextX''⟩
-        iapply Wasm.SmallStep.twp_returnFromCallExplicit
-        simp only [func0CallerFrame, func0CallLocals, func0AfterCallProg,
+        simp only [func0CallerFrame]
+        iapply Wasm.SmallStep.twp_returnFromCallExplicit $$ Hruntime''
+        iintro Hruntime''
+        simp only [func0CallLocals, func0AfterCallProg,
           List.take, List.append_nil]
         iapply twp_func0_afterCall_frame_smallStep_wp
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»))
           0 b b b 0 b 0 b shiftXY shiftX shiftY nextY nextX
           (by simp [Nat.gcd_zero_left])
         iframe
@@ -7851,29 +8010,31 @@ theorem twp_func0_smallStep_wp
     · by_cases hb : b = 0
       · subst b
         iapply twp_func1_rightZero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module» ∗
-            pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-            pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-            pointsTo_u32 1048540 nextX))
-          [func0CallerFrame a 0] result oldX oldY a ha
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+            pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+            pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+            pointsTo_u32 0 1048540 nextX))
+          [func0CallerFrame a 0 ⟨0⟩] result oldX oldY a ha
         · iintro Hresources
           icases Hresources with
             ⟨HRscratch, Hglobal'', HouterA'', HouterB'', Hresult'', Hx'', Hy''⟩
           icases HRscratch with
             ⟨HR'', Hruntime'', HshiftXY'', HshiftX'', HshiftY'',
               HnextY'', HnextX''⟩
-          iapply Wasm.SmallStep.twp_returnFromCallExplicit
-          simp only [func0CallerFrame, func0CallLocals, func0AfterCallProg,
+          simp only [func0CallerFrame]
+          iapply Wasm.SmallStep.twp_returnFromCallExplicit $$ Hruntime''
+          iintro Hruntime''
+          simp only [func0CallLocals, func0AfterCallProg,
             List.take, List.append_nil]
           iapply twp_func0_afterCall_frame_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»))
             a 0 a a a 0 a 0 shiftXY shiftX shiftY nextY nextX
             (by simp [Nat.gcd_zero_right])
           iframe
         · iframe
       · iapply twp_func1_nonzero_smallStep_wp_to_return
-          (R := iprop(R ∗ runtimeModuleOwn «module»))
-          [func0CallerFrame a b]
+          (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»))
+          [func0CallerFrame a b ⟨0⟩]
           result oldX oldY a b ha hb
           shiftXY shiftX shiftY nextX nextY
         · intro g loopX loopY d6 d8 d7 d9 hg
@@ -7885,11 +8046,13 @@ theorem twp_func0_smallStep_wp
           icases HRouter with
             ⟨HRruntime, Hglobal'', HouterA'', HouterB''⟩
           icases HRruntime with ⟨HR'', Hruntime''⟩
-          iapply Wasm.SmallStep.twp_returnFromCallExplicit
-          simp only [func0CallerFrame, func0CallLocals, func0AfterCallProg,
+          simp only [func0CallerFrame]
+          iapply Wasm.SmallStep.twp_returnFromCallExplicit $$ Hruntime''
+          iintro Hruntime''
+          simp only [func0CallLocals, func0AfterCallProg,
             List.take, List.append_nil]
           iapply twp_func0_afterCall_frame_smallStep_wp
-            (R := iprop(R ∗ runtimeModuleOwn «module»))
+            (R := iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»))
             a b (UInt64.ofNat (Nat.gcd a.toNat b.toNat))
             (UInt64.ofNat (Nat.gcd a.toNat b.toNat)) g g a b
             (sharedShiftWord a b) (operandShiftWord a) (operandShiftWord b)
@@ -7901,23 +8064,23 @@ theorem twp_func0_smallStep_wp
 theorem twp_func2_smallStep_wp
     [Wasm.SmallStep.WasmSmallStepGS hlc Unit]
     {s : Stuckness} {E : CoPset}
-    (R : IProp WasmHeapGF)
+    (R : IProp (WasmHeapGF Unit))
     (a b result oldX oldY oldOuterA oldOuterB : UInt64)
     (shiftXY shiftX shiftY nextY nextX : UInt32) :
-    R ∗ runtimeModuleOwn «module» ∗
-      globalPointsTo 0 (.i32 1048576) ∗
-      pointsTo_u64 1048512 result ∗
-      pointsTo_u64 1048520 oldX ∗ pointsTo_u64 1048528 oldY ∗
-      pointsTo_u32 1048556 shiftXY ∗ pointsTo_u32 1048552 shiftX ∗
-      pointsTo_u32 1048548 shiftY ∗ pointsTo_u32 1048544 nextY ∗
-      pointsTo_u32 1048540 nextX ∗
-      pointsTo_u64 1048560 oldOuterA ∗
-      pointsTo_u64 1048568 oldOuterB ⊢
+    R ∗ runtimeModuleOwn ⟨0⟩ «module» ∗
+      globalPointsToAt 0 0 (.i32 1048576) ∗
+      pointsTo_u64 0 1048512 result ∗
+      pointsTo_u64 0 1048520 oldX ∗ pointsTo_u64 0 1048528 oldY ∗
+      pointsTo_u32 0 1048556 shiftXY ∗ pointsTo_u32 0 1048552 shiftX ∗
+      pointsTo_u32 0 1048548 shiftY ∗ pointsTo_u32 0 1048544 nextY ∗
+      pointsTo_u32 0 1048540 nextX ∗
+      pointsTo_u64 0 1048560 oldOuterA ∗
+      pointsTo_u64 0 1048568 oldOuterB ⊢
     WP (Wasm.SmallStep.Expr.running
       ⟨⟨[.i64 a, .i64 b], [], []⟩,
         func2, 1, [], [], []⟩ :
         Wasm.SmallStep.Expr Unit) @ s; E
-      [{ rs, func0FramePost (iprop(R ∗ runtimeModuleOwn «module»)) a b rs }] := by
+      [{ rs, func0FramePost (iprop(R ∗ runtimeModuleOwn ⟨0⟩ «module»)) a b rs }] := by
   iintro Hresources
   simp only [func2]
   iapply Wasm.SmallStep.twp_localGet rfl
@@ -7935,19 +8098,23 @@ theorem twp_func2_smallStep_wp
        continuation := [.ret]
        resultArity := 1
        callerRemainder := []
-       control := [] } : Wasm.SmallStep.CallFrame) =
-      func2CallerFrame a b from rfl]
+       control := []
+       returningInstance := ⟨0⟩ } : Wasm.SmallStep.CallFrame) =
+      func2CallerFrame a b ⟨0⟩ from rfl]
   iapply twp_func0_smallStep_wp_to_return
-    R [func2CallerFrame a b]
+    R [func2CallerFrame a b ⟨0⟩]
     a b result oldX oldY oldOuterA oldOuterB
     shiftXY shiftX shiftY nextY nextX
-  · iintro Hpost
-    iapply Wasm.SmallStep.twp_returnFromCallExplicit
-    simp only [func2CallerFrame, List.take, List.append_nil]
+  · iintro ⟨Hruntime, Hpost⟩
+    simp only [func2CallerFrame]
+    iapply Wasm.SmallStep.twp_returnFromCallExplicit $$ Hruntime
+    iintro Hruntime'
+    simp only [List.take, List.append_nil]
     iapply Wasm.SmallStep.twp_returnFromFunction
     simp only [List.take, List.append_nil]
     iapply twp.value rfl
-    iexact Hpost
+    iapply func0FramePost_absorb R (runtimeModuleOwn ⟨0⟩ «module») a b
+    iframe
   · iframe
 
 theorem func2_terminatesWith :
@@ -7964,8 +8131,10 @@ theorem func2_terminatesWith :
   · exact func0InitialHeap_agrees
   · exact func0InitialHeap_inBounds
   · exact func0GlobalHeap_agrees
+  · simp only [func2Config]; decide
   · intro _hlc _gs
     unfold func0InitialHeap
+    simp only [func2Config, Wasm.SmallStep.RuntimeEnv.currentModule_mk1]
     iintro ⟨Hframe, Hglobals, Hruntime⟩
     ihave Hglobal := func0GlobalHeap_pointsTo $$ Hglobals
     ihave Hslots := gcdFrameHeap_pointsTo
@@ -7974,108 +8143,19 @@ theorem func2_terminatesWith :
       ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
         HouterA, HouterB⟩
     have hpost : ∀ rs : List Value,
-        func0FramePost (iprop(⌜True⌝ ∗ runtimeModuleOwn «module»))
+        func0FramePost (iprop(⌜True⌝ ∗ runtimeModuleOwn ⟨0⟩ «module»))
             a b rs ⊢
           (iprop(∀ (store : Wasm.SmallStep.MachineStore Unit)
             (_observations : List Wasm.SmallStep.StepKind),
-            stateInterp (GF := WasmHeapGF) store 0 [] 0 -∗
+            stateInterp (GF := WasmHeapGF Unit) store 0 [] 0 -∗
             ⌜rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
       intro rs
       unfold func0FramePost
       iintro ⟨%hrs, _Hresources⟩ %store %_obs _Hstate
       ipureintro
       exact hrs
-    simp only [func2Config]
     iapply twp.mono hpost
     iapply twp_func2_smallStep_wp
-      (R := iprop(⌜True⌝))
-      a b 0 0 0 0 0 0 0 0 0 0
-    isplitl []
-    · ipureintro
-      trivial
-    · iframe
-
-/-- Closed operational partial correctness of opt0 `func0` from the canonical
-module store. -/
-theorem func0_smallStep_partiallyMeets (a b : UInt64) :
-    Wasm.SmallStep.PartiallyMeets
-      (func0Config a b)
-      (fun rs _store =>
-        rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]) := by
-  apply Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_partiallyMeets
-    (α := Unit)
-    (σ := func0InitialHeap)
-    (globalσ := func0GlobalHeap)
-    (φ := fun rs => rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))])
-  · exact func0InitialHeap_agrees
-  · exact func0InitialHeap_inBounds
-  · exact func0GlobalHeap_agrees
-  · intro gs
-    unfold func0InitialHeap
-    iintro ⟨Hframe, Hglobals, Hruntime⟩
-    ihave Hglobal := func0GlobalHeap_pointsTo $$ Hglobals
-    ihave Hslots := gcdFrameHeap_pointsTo
-      0 0 0 0 0 0 0 0 0 0 $$ Hframe
-    icases Hslots with
-      ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
-        HouterA, HouterB⟩
-    have hpost : ∀ rs : List Value,
-        func0FramePost (iprop(⌜True⌝ ∗ runtimeModuleOwn «module»))
-            a b rs ⊢
-          (iprop(⌜rs =
-            [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
-      intro rs
-      unfold func0FramePost
-      iintro ⟨%hrs, _Hresources⟩
-      ipureintro
-      exact hrs
-    simp only [func0Config]
-    iapply wp_mono hpost
-    iapply func0_smallStep_wp
-      (R := iprop(⌜True⌝))
-      a b 0 0 0 0 0 0 0 0 0 0
-    isplitl []
-    · ipureintro
-      trivial
-    · iframe
-
-/-- Closed operational partial correctness of the exported opt0 `func2`
-wrapper from the canonical module store. -/
-theorem func2_smallStep_partiallyMeets (a b : UInt64) :
-    Wasm.SmallStep.PartiallyMeets
-      (func2Config a b)
-      (fun rs _store =>
-        rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]) := by
-  apply Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_partiallyMeets
-    (α := Unit)
-    (σ := func0InitialHeap)
-    (globalσ := func0GlobalHeap)
-    (φ := fun rs => rs = [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))])
-  · exact func0InitialHeap_agrees
-  · exact func0InitialHeap_inBounds
-  · exact func0GlobalHeap_agrees
-  · intro gs
-    unfold func0InitialHeap
-    iintro ⟨Hframe, Hglobals, Hruntime⟩
-    ihave Hglobal := func0GlobalHeap_pointsTo $$ Hglobals
-    ihave Hslots := gcdFrameHeap_pointsTo
-      0 0 0 0 0 0 0 0 0 0 $$ Hframe
-    icases Hslots with
-      ⟨Hresult, Hx, Hy, HshiftXY, HshiftX, HshiftY, HnextY, HnextX,
-        HouterA, HouterB⟩
-    have hpost : ∀ rs : List Value,
-        func0FramePost (iprop(⌜True⌝ ∗ runtimeModuleOwn «module»))
-            a b rs ⊢
-          (iprop(⌜rs =
-            [.i64 (UInt64.ofNat (Nat.gcd a.toNat b.toNat))]⌝)) := by
-      intro rs
-      unfold func0FramePost
-      iintro ⟨%hrs, _Hresources⟩
-      ipureintro
-      exact hrs
-    simp only [func2Config]
-    iapply wp_mono hpost
-    iapply func2_smallStep_wp
       (R := iprop(⌜True⌝))
       a b 0 0 0 0 0 0 0 0 0 0
     isplitl []
