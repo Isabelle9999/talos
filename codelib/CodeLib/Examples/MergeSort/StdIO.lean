@@ -1074,8 +1074,10 @@ theorem sort_partiallyMeets (input : List UInt32) (hfit : Fits input) :
     iexact Hruntime
 
 theorem sort_stronglyNormalizing (input : List UInt32) (hfit : Fits input) :
-    Relation.StronglyNormalizing Iris.ProgramLogic.Language.ErasedStep
-      ([(sortConfig input).expr], (sortConfig input).store) := by
+    Iris.ProgramLogic.StronglyNormalizing
+      (Iris.ProgramLogic.ExprErasedStep (Expr := Expr Unit)
+        (State := MachineStore Unit) (Obs := StepKind))
+      ((sortConfig input).expr, (sortConfig input).store) := by
   apply Wasm.SmallStep.wasm_smallStep_heap_globals_runtime_stronglyNormalizing
     (sortConfig input) (sortHeap input) ∅
     (fun _values => iprop(True))
