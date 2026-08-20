@@ -2420,7 +2420,6 @@ theorem wasm_smallStep_heap_globals_runtime_store_terminates
       · iexact Hglobals
       · iexact HruntimeModule
 
-
 /-- Relational partial-correctness form of state-sensitive authoritative
 adequacy. -/
 theorem wasm_smallStep_heap_globals_runtime_store_partiallyMeets
