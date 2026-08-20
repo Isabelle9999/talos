@@ -598,7 +598,7 @@ theorem wasm_smallStep_stronglyNormalizing
 /-- Total-WP strong normalization with authoritative initial memory, globals,
 and runtime-module ownership. This is the termination counterpart of
 `wasm_smallStep_heap_globals_runtime_store_adequacy`. -/
-theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
+theorem wasm_smallStep_heap_globals_runtime_tags_stronglyNormalizing
     [WasmSmallStepGpreS α]
     (config : Config α)
     (σ : WasmHeapMap (Option UInt8))
@@ -614,7 +614,9 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
             address (DFrac.own 1) value) ∗
         ([∗map] index ↦ value ∈ globalσ,
           globalPointsTo index value) ∗
-        runtimeModuleOwn config.store.runtime.entry config.store.runtime.currentModule) ⊢
+        runtimeModuleOwn config.store.runtime.entry
+          config.store.runtime.currentModule ∗
+        tagTableOwn config.store.wasm.tagIds) ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           [{ Φ }]) :
     StronglyNormalizing
@@ -753,6 +755,10 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
   letI tagTableGS : WasmTagTableGS α :=
     { tagTableElem
       tagTableName }
+  ihave HtagTableOwn : tagTableOwn config.store.wasm.tagIds $$ [HtagTable]
+  · unfold tagTableOwn
+    iexact HtagTable
+  iintuitionistic HtagTableOwn
   letI gs : WasmSmallStepGS .hasNoLC α :=
     { toInvGS_gen := inv
       toWasmHeapGS := wasmHeapGS
@@ -779,8 +785,8 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
       iexact Hstate)
   dsimp only
   ihave Hexc : exceptionInterp config.store.wasm.exns config.store.wasm.tagIds $$
-      [Hexceptions HtagTable]
-  · unfold exceptionInterp tagTableOwn
+      [Hexceptions]
+  · unfold exceptionInterp
     isplitl [Hexceptions]
     · iexists (∅ : WasmExceptionMap (Nat × List Value))
       isplitl [Hexceptions]
@@ -788,8 +794,8 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
       · ipureintro
         exact exceptionHeapAgrees_empty _
     · iexists config.store.wasm.tagIds
-      isplitl [HtagTable]
-      · iexact HtagTable
+      isplitl []
+      · iexact HtagTableOwn
       · ipureintro
         exact List.prefix_rfl
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
@@ -825,10 +831,49 @@ theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
     isplitl [HglobalPoints]
     · unfold globalPointsTo
       iexact HglobalPoints
+    isplitl [HruntimeWP HinstanceFrag]
     · unfold runtimeModuleOwn
       isplitl [HruntimeWP]
       · unfold runtimeModuleElem; iexact HruntimeWP
       · unfold currentInstanceOwnN; iexact HinstanceFrag
+    · iexact HtagTableOwn
+
+/-- Tag-free specialization of
+`wasm_smallStep_heap_globals_runtime_tags_stronglyNormalizing`. -/
+theorem wasm_smallStep_heap_globals_runtime_stronglyNormalizing
+    [WasmSmallStepGpreS α]
+    (config : Config α)
+    (σ : WasmHeapMap (Option UInt8))
+    (globalσ : WasmGlobalMap Value)
+    (Φ : List Value → IProp (WasmHeapGF α))
+    (hagree : heapAgreesWithMem σ (storeResolve config.store))
+    (hinBounds : heapAddressesInBounds σ (storeResolve config.store))
+    (hglobals : globalHeapAgrees globalσ config.store.wasm.globals)
+    (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
+    (htwp : ∀ [WasmSmallStepGS .hasNoLC α],
+      (([∗map] address ↦ value ∈ σ,
+          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
+            address (DFrac.own 1) value) ∗
+        ([∗map] index ↦ value ∈ globalσ,
+          globalPointsTo index value) ∗
+        runtimeModuleOwn config.store.runtime.entry config.store.runtime.currentModule) ⊢
+        WP config.expr @ Stuckness.NotStuck; ⊤
+          [{ Φ }]) :
+    StronglyNormalizing
+      (ExprErasedStep (Expr := Expr α)
+        (State := MachineStore α) (Obs := StepKind))
+      (config.expr, config.store) := by
+  apply wasm_smallStep_heap_globals_runtime_tags_stronglyNormalizing
+    config σ globalσ Φ hagree hinBounds hglobals hwf
+  intro gs
+  iintro ⟨Hpoints, Hglobals, Hruntime, Htags⟩
+  iclear Htags
+  iapply htwp
+  isplitl [Hpoints]
+  · iexact Hpoints
+  isplitl [Hglobals]
+  · iexact Hglobals
+  · iexact Hruntime
 
 private theorem stronglyNormalizing_reaches_irreducible
     {β : Type _} {step : β → β → Prop} {start : β}
@@ -920,15 +965,20 @@ theorem wasm_smallStep_terminates
   iapply twp.to_wp
   exact htwp .hasLC
 
-/-- Closed adequacy with persistent knowledge of the concrete runtime module.
-This is the call-capable counterpart of `wasm_smallStep_adequacy`. -/
-theorem wasm_smallStep_runtime_adequacy
+/-- Closed adequacy with persistent knowledge of the concrete runtime module
+*and* of the entry instance's tag-identity table.  This is the call-capable
+counterpart of `wasm_smallStep_adequacy`, and the only entry point that hands
+out `tagTableOwn`, which the exception rules need.  `tagTableOwn` is
+persistent, so handing out the initial table costs the state interpretation
+nothing. -/
+theorem wasm_smallStep_runtime_tags_adequacy
     [WasmSmallStepGpreS α]
     (config : Config α) (φ : List Value → Prop)
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
       runtimeModuleOwn config.store.runtime.entry
-        config.store.runtime.currentModule ⊢
+        config.store.runtime.currentModule ∗
+        tagTableOwn config.store.wasm.tagIds ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values, ⌜φ values⌝ }}) :
     adequate Stuckness.NotStuck config.expr config.store
@@ -1062,6 +1112,10 @@ theorem wasm_smallStep_runtime_adequacy
   letI tagTableGS : WasmTagTableGS α :=
     { tagTableElem
       tagTableName }
+  ihave HtagTableOwn : tagTableOwn config.store.wasm.tagIds $$ [HtagTable]
+  · unfold tagTableOwn
+    iexact HtagTable
+  iintuitionistic HtagTableOwn
   letI gs : WasmSmallStepGS .hasLC α :=
     { toInvGS_gen := inv
       toWasmHeapGS := wasmHeapGS
@@ -1083,8 +1137,8 @@ theorem wasm_smallStep_runtime_adequacy
   iexists (fun _ => iprop(True))
   dsimp only
   ihave Hexc : exceptionInterp config.store.wasm.exns config.store.wasm.tagIds $$
-      [Hexceptions HtagTable]
-  · unfold exceptionInterp tagTableOwn
+      [Hexceptions]
+  · unfold exceptionInterp
     isplitl [Hexceptions]
     · iexists (∅ : WasmExceptionMap (Nat × List Value))
       isplitl [Hexceptions]
@@ -1092,8 +1146,8 @@ theorem wasm_smallStep_runtime_adequacy
       · ipureintro
         exact exceptionHeapAgrees_empty _
     · iexists config.store.wasm.tagIds
-      isplitl [HtagTable]
-      · iexact HtagTable
+      isplitl []
+      · iexact HtagTableOwn
       · ipureintro
         exact List.prefix_rfl
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
@@ -1125,10 +1179,33 @@ theorem wasm_smallStep_runtime_adequacy
         · simp [PartialMap.singleton, get?_insert_ne (Ne.symm h), get?_empty] at hm,
       fun id env hm => by simp [get?_empty] at hm⟩
   · iapply hwp
-    unfold runtimeModuleOwn
-    isplitl [HruntimeWP]
-    · unfold runtimeModuleElem; iexact HruntimeWP
-    · unfold currentInstanceOwnN; iexact HinstanceFrag
+    isplitl [HruntimeWP HinstanceFrag]
+    · unfold runtimeModuleOwn
+      isplitl [HruntimeWP]
+      · unfold runtimeModuleElem; iexact HruntimeWP
+      · unfold currentInstanceOwnN; iexact HinstanceFrag
+    · iexact HtagTableOwn
+
+/-- Closed adequacy with persistent knowledge of the concrete runtime module.
+This is the call-capable counterpart of `wasm_smallStep_adequacy`; it is the
+tag-free specialization of `wasm_smallStep_runtime_tags_adequacy`. -/
+theorem wasm_smallStep_runtime_adequacy
+    [WasmSmallStepGpreS α]
+    (config : Config α) (φ : List Value → Prop)
+    (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
+    (hwp : ∀ [WasmSmallStepGS .hasLC α],
+      runtimeModuleOwn config.store.runtime.entry
+        config.store.runtime.currentModule ⊢
+        WP config.expr @ Stuckness.NotStuck; ⊤
+          {{ values, ⌜φ values⌝ }}) :
+    adequate Stuckness.NotStuck config.expr config.store
+      (fun values _ => φ values) := by
+  apply wasm_smallStep_runtime_tags_adequacy config φ hwf
+  intro gs
+  iintro ⟨Hruntime, Htags⟩
+  iclear Htags
+  iapply hwp
+  iexact Hruntime
 
 /-- Relational partial-correctness form of call-capable runtime adequacy. -/
 theorem wasm_smallStep_runtime_partiallyMeets
@@ -3074,6 +3151,90 @@ theorem wasm_smallStep_heap_store_terminates
     isplitl [Hpoints]
     · iexact Hpoints
     · iexact HruntimeModule
+
+/-- Total-correctness runtime entry point that also hands out the entry
+instance's tag table.  This is the entry point the exception rules need: they
+consume `tagTableOwn` to learn that their tag index is canonical. -/
+theorem wasm_smallStep_runtime_tags_terminates
+    [WasmSmallStepGpreS α]
+    (config : Config α) (φ : List Value → Prop)
+    (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
+    (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
+      runtimeModuleOwn config.store.runtime.entry
+          config.store.runtime.currentModule ∗
+        tagTableOwn config.store.wasm.tagIds ⊢
+        WP config.expr @ Stuckness.NotStuck; ⊤
+          [{ values, ⌜φ values⌝ }]) :
+    TerminatesWith config (fun values _store => φ values) := by
+  apply stronglyNormalizing_adequate_terminates config
+    (fun values _store => φ values)
+  · apply wasm_smallStep_heap_globals_runtime_tags_stronglyNormalizing
+      config ∅ ∅ (fun values => iprop(⌜φ values⌝))
+      (heapAgreesWithMem_empty _) (heapAddressesInBounds_empty _)
+      (globalHeapAgrees_empty _) hwf
+    intro gs
+    simp only [BI.BigSepM.bigSepM_empty.to_eq]
+    iintro ⟨_Hheap, _Hglobals, Hruntime, Htags⟩
+    iapply htwp .hasNoLC
+    isplitl [Hruntime]
+    · iexact Hruntime
+    · iexact Htags
+  · apply wasm_smallStep_runtime_tags_adequacy config φ hwf
+    intro gs
+    iintro Hboth
+    iapply twp.to_wp
+    iapply htwp .hasLC
+    iexact Hboth
+
+/-- Total-correctness runtime entry point without tag knowledge. -/
+theorem wasm_smallStep_runtime_terminates
+    [WasmSmallStepGpreS α]
+    (config : Config α) (φ : List Value → Prop)
+    (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
+    (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
+      runtimeModuleOwn config.store.runtime.entry
+          config.store.runtime.currentModule ⊢
+        WP config.expr @ Stuckness.NotStuck; ⊤
+          [{ values, ⌜φ values⌝ }]) :
+    TerminatesWith config (fun values _store => φ values) := by
+  apply wasm_smallStep_runtime_tags_terminates config φ hwf
+  intro hlc _
+  iintro ⟨Hruntime, Htags⟩
+  iclear Htags
+  iapply htwp hlc
+  iexact Hruntime
+
+/-- Total-correctness entry point owning only the physical memory bytes, with a
+value-only postcondition. -/
+theorem wasm_smallStep_heap_terminates
+    [WasmSmallStepGpreS α]
+    (config : Config α) (σ : WasmHeapMap (Option UInt8))
+    (φ : List Value → Prop)
+    (hagree : heapAgreesWithMem σ (storeResolve config.store))
+    (hinBounds : heapAddressesInBounds σ (storeResolve config.store))
+    (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
+    (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
+      ([∗map] address ↦ value ∈ σ,
+        pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap)
+          address (DFrac.own 1) value) ⊢
+        WP config.expr @ Stuckness.NotStuck; ⊤
+          [{ values, ⌜φ values⌝ }]) :
+    TerminatesWith config (fun values _store => φ values) := by
+  apply wasm_smallStep_heap_store_terminates config σ
+    (fun values _store => φ values) hagree hinBounds hwf
+  intro hlc _
+  iintro ⟨Hpoints, Hruntime⟩
+  iclear Hruntime
+  iapply (twp.mono (Φ := fun values => iprop(⌜φ values⌝)) ?hmono)
+  case hmono =>
+    intro values
+    iintro %hφ
+    iintro %store %observations Hstate
+    iclear Hstate
+    ipureintro
+    exact hφ
+  iapply htwp hlc
+  iexact Hpoints
 
 /-- State-sensitive adequacy with explicit authoritative ownership of passive
 data-segment status in addition to memory, globals, and the runtime module. -/
