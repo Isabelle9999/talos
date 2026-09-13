@@ -1779,7 +1779,8 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
         ([∗map] index ↦ value ∈ elementSegmentσ,
           elementSegmentPointsTo index value) ∗
         runtimeModuleOwn config.store.runtime.entry
-          config.store.runtime.currentModule) ⊢
+          config.store.runtime.currentModule ∗
+        runtimeInstancesOwn config.store.runtime.instances) ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values,
             ∀ (store : MachineStore α) (_observations : List StepKind),
@@ -1833,8 +1834,9 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
   iexists (fun _ => iprop(True))
   dsimp only
   wasm_build_machine_aux config
+  iintuitionistic HruntimeInstances
   isplitl [Hheap Hglobals HsegmentsAuth HtablesAuth
-      HelementSegmentsAuth HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
+      HelementSegmentsAuth HruntimeModuleAuth' HinstanceState HhostEnvAuth HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
     iexists globalσ
@@ -1865,10 +1867,12 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
           · isplitl [HelementSegmentPoints]
             · unfold elementSegmentPointsTo
               iexact HelementSegmentPoints
-            · unfold runtimeModuleOwn
-              isplitl [HruntimeWP]
-              · unfold runtimeModuleElem; iexact HruntimeWP
-              · unfold currentInstanceOwnN; iexact HinstanceFrag
+            · isplitl [HruntimeWP HinstanceFrag]
+              · unfold runtimeModuleOwn
+                isplitl [HruntimeWP]
+                · unfold runtimeModuleElem; iexact HruntimeWP
+                · unfold currentInstanceOwnN; iexact HinstanceFrag
+              · unfold runtimeInstancesOwn; iexact HruntimeInstances
 
 theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_partiallyMeets
     [WasmSmallStepGpreS α]
@@ -1903,7 +1907,8 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_partiallyMeets
         ([∗map] index ↦ value ∈ elementSegmentσ,
           elementSegmentPointsTo index value) ∗
         runtimeModuleOwn config.store.runtime.entry
-          config.store.runtime.currentModule) ⊢
+          config.store.runtime.currentModule ∗
+        runtimeInstancesOwn config.store.runtime.instances) ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values,
             ∀ (store : MachineStore α) (_observations : List StepKind),

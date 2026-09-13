@@ -110,8 +110,8 @@ theorem call_indirect_traps :
       ⟨.trapped .indirectCallTypeMismatch, callConfig.store⟩ := by
   wasm_steps [.const, .const]
   exact Steps.cons
-    (.callIndirectTypeMismatch rfl rfl rfl (by decide) (by decide)
-      rfl rfl rfl (by decide +kernel))
+    (.callIndirectTypeMismatch (functionIndex := 0) rfl rfl rfl (by decide +kernel)
+      (by decide) rfl rfl rfl (by decide +kernel))
     (Steps.refl _)
 
 /-- `return_call_indirect (type $sub)` traps for the same reason — the
