@@ -201,6 +201,10 @@ verifier-report *crate:
 
 # ── housekeeping ──────────────────────────────────────────────────────────────
 
+# Compute cross-crate function duplicate inventory; writes docs/std_inventory.md.
+std-inventory:
+    python3 scripts/std-inventory.py
+
 # Remove Lake build artefacts from all Lean packages and Cargo target dir.
 [working-directory("scripts")]
 clean:
