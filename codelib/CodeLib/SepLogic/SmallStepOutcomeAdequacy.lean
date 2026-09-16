@@ -140,7 +140,7 @@ theorem wasm_smallStep_heap_globals_runtime_host_store_adequacy_outcome_at
       (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
   imod heapDomain_init_at (α := α) σ frontier hbelow with
-    ⟨%heapDomainGS, HheapDomain, HheapFrontier⟩
+    ⟨%heapDomainGS, HheapFrontierAuth, HheapFrontierFrag⟩
   letI _ : WasmHeapDomainGS α := heapDomainGS
   imod memoryPages_init (α := α) config.store.wasm.mem.pages with
     ⟨%memoryPagesGS, HmemoryPagesAuth, HmemoryPagesOwn⟩
@@ -154,6 +154,11 @@ theorem wasm_smallStep_heap_globals_runtime_host_store_adequacy_outcome_at
   wasm_alloc_fixed_runtime_resources config
   letI gs : WasmSmallStepGS .hasLC α := smallStepGS .hasLC inv
   iclear Hmeta
+  ihave HheapDomain : heapDomainInterp σ $$ [HheapFrontierAuth]
+  next =>
+    unfold heapDomainInterp
+    iexists frontier
+    iframe_pureexact using [HheapFrontierAuth] => hbelow
   imodintro
   iexists (fun store _observations =>
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
@@ -196,7 +201,8 @@ theorem wasm_smallStep_heap_globals_runtime_host_store_adequacy_outcome_at
           · isplitl [HhostStateFrag]
             · unfold hostStateOwn
               iexact HhostStateFrag
-            · isplitl_exact HheapFrontier
+            · isplitl [HheapFrontierFrag]
+              · unfold heapFrontierOwn; iexact HheapFrontierFrag
               · iexact HmemoryPagesOwn
 
 /-- Backwards-compatible outcome adequacy with the maximally permissive heap

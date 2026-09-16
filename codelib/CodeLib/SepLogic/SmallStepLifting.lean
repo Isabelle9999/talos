@@ -16,9 +16,6 @@ open Lean.Parser.Tactic
 
 variable {α : Type}
 variable [WasmSmallStepGS hlc α]
-local instance instWasmIrisGS :
-    IrisGS_gen hlc (Expr α) (WasmHeapGF α) :=
-  instIrisGS
 variable {s : Stuckness} {E : CoPset}
 variable {Φ : List Value → IProp (WasmHeapGF α)}
 /-- Generic lifting rule for a store-preserving deterministic Wasm step.

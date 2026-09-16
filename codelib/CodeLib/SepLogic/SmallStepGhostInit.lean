@@ -154,7 +154,9 @@ macro "wasm_alloc_memory_ghosts " config:term " from " heap:term : tactic =>
          (GF := WasmHeapGF α) (H := WasmHeapMap) ($heap) with
        ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
      imod heapDomain_init (α := α) ($heap) with
-       ⟨%heapDomainGS, HheapDomain⟩
+       ⟨%heapDomainGS, HheapFrontierAuth⟩
+     have HheapBelow : HeapBelow ($heap) UInt32.size :=
+       heapBelow_uint32Size ($heap)
      letI _ : WasmHeapDomainGS α := heapDomainGS
      imod memoryPages_init_authority (α := α)
          ($config).store.wasm.mem.pages with
@@ -402,11 +404,18 @@ set_option hygiene false in
 /-- Build the auxiliary machine interpretation from freshly allocated state. -/
 macro "wasm_build_machine_aux " config:term : tactic =>
   `(tactic|
-    (ihave HexceptionInterp :
+    (first
+     | (ihave HheapDomain : heapDomainInterp _ $$ [HheapFrontierAuth]
+        next =>
+          unfold heapDomainInterp
+          iexists UInt32.size
+          iframe_pureexact using [HheapFrontierAuth] => HheapBelow)
+     | skip
+     ihave HexceptionInterp :
          exceptionInterp ($config).store.wasm.exns ($config).store.wasm.tagIds $$
          [Hexceptions HtagTable]
      next =>
-       unfold exceptionInterp tagTableOwn
+       unfold exceptionInterp
        isplitl [Hexceptions]
        next =>
          iexists (∅ : WasmExceptionMap (Nat × List Value))

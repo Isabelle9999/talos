@@ -44,7 +44,7 @@ section swapElementsPartial
 
 variable {α : Type}
 variable [WasmSmallStepGS hlc α]
-attribute [local instance] instWasmIrisGS
+attribute [local instance] instIrisGS
 variable {s : Stuckness} {E : CoPset}
 variable {Φ : List Value → IProp (WasmHeapGF α)}
 

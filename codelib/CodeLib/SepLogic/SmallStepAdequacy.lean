@@ -399,6 +399,10 @@ theorem wasm_smallStep_heap_globals_runtime_tags_stronglyNormalizing
       isplitl []
       · iexact HtagTableOwn
       · ipureexact List.prefix_rfl -- The ordinary frontier is installed below.
+  ihave HheapDomain : heapDomainInterp _ $$ [HheapFrontierAuth]
+  · unfold heapDomainInterp
+    iexists UInt32.size
+    iframe_pureexact using [HheapFrontierAuth] => HheapBelow
   ihave Hexc : machineAuxInterp _ config.store.wasm.mem.pages
       config.store.wasm.exns config.store.wasm.tagIds $$
       [HmemoryPagesAuth HheapDomain HexceptionInterp]
@@ -621,6 +625,10 @@ theorem wasm_smallStep_runtime_tags_adequacy
       isplitl []
       · iexact HtagTableOwn
       · ipureexact List.prefix_rfl -- The ordinary frontier is installed below.
+  ihave HheapDomain : heapDomainInterp _ $$ [HheapFrontierAuth]
+  · unfold heapDomainInterp
+    iexists UInt32.size
+    iframe_pureexact using [HheapFrontierAuth] => HheapBelow
   ihave Hexc : machineAuxInterp _ config.store.wasm.mem.pages
       config.store.wasm.exns config.store.wasm.tagIds $$
       [HmemoryPagesAuth HheapDomain HexceptionInterp]
@@ -1141,7 +1149,8 @@ theorem wasm_smallStep_heap_globals_runtime_store_terminates
         (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
       ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
     imod heapDomain_init (α := α) σ with
-      ⟨%heapDomainGS, HheapDomain⟩
+      ⟨%heapDomainGS, HheapFrontierAuth⟩
+    have HheapBelow : HeapBelow σ UInt32.size := heapBelow_uint32Size σ
     letI _ : WasmHeapDomainGS α := heapDomainGS
     imod memoryPages_init_authority (α := α)
         config.store.wasm.mem.pages with
@@ -1375,7 +1384,8 @@ theorem wasm_smallStep_heap_store_terminates
         (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
       ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
     imod heapDomain_init (α := α) σ with
-      ⟨%heapDomainGS, HheapDomain⟩
+      ⟨%heapDomainGS, HheapFrontierAuth⟩
+    have HheapBelow : HeapBelow σ UInt32.size := heapBelow_uint32Size σ
     letI _ : WasmHeapDomainGS α := heapDomainGS
     imod memoryPages_init_authority (α := α)
         config.store.wasm.mem.pages with

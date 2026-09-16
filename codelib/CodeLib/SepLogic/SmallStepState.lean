@@ -144,6 +144,94 @@ attribute [reducible, instance] WasmSmallStepGS.hostState
 attribute [reducible, instance] WasmSmallStepGS.instanceGS
 attribute [reducible, instance] WasmSmallStepGS.runtimeInstances
 
+/-- Abstract ghost-state context for the Wasm small-step layer, parameterised
+over an arbitrary `BundledGFunctors`.  `invGS` is intentionally not a global
+instance to avoid diamonds with `IrisGS_gen`. -/
+class WasmGS (hlc : outParam HasLC) (GF : BundledGFunctors) (α : outParam Type) where
+  -- not an instance on purpose to avoid diamonds with IrisGS_gen
+  [invGS : InvGS_gen hlc GF]
+  heap            : genHeapGS MemoryKey (Option UInt8) GF WasmHeapMap
+  heapFrontierElem : ElemG GF
+      (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat)))))
+  heapFrontierName : GName
+  memoryPagesElem : ElemG GF MonoNatRF
+  memoryPagesName : GName
+  globalGS        : GhostMapG GF GlobalKey Value WasmGlobalMap
+  globalName      : GName
+  dataSegmentGS   : GhostMapG GF DataSegmentKey (Option (List UInt8)) WasmDataSegmentMap
+  dataSegmentName : GName
+  tableGS         : GhostMapG GF TableKey TableInst WasmTableMap
+  tableName       : GName
+  elementSegmentGS : GhostMapG GF ElementSegmentKey (Option (List (Option Nat)))
+      WasmElementSegmentMap
+  elementSegmentName : GName
+  exceptionGS     : GhostMapG GF Nat (Nat × List Value) WasmExceptionMap
+  exceptionName   : GName
+  runtimeModuleGS : GhostMapG GF Nat Module WasmRuntimeModuleMap
+  runtimeName     : GName
+  tagTableElem    : ElemG GF (constOF (Agree (DiscreteO (List Nat))))
+  tagTableName    : GName
+  hostEnvGS       : GhostMapG GF Nat (HostEnv α) WasmHostEnvMap
+  hostEnvName     : GName
+  hostStateElem   : ElemG GF
+      (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO α)))))
+  hostStateName   : GName
+  instanceElem    : ElemG GF
+      (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat)))))
+  instanceName    : GName
+  runtimeInstancesElem : ElemG GF
+      (constOF (Agree (DiscreteO (Array (ModuleInstance α)))))
+  runtimeInstancesName : GName
+
+attribute [reducible, instance] WasmGS.heap
+attribute [reducible, instance] WasmGS.heapFrontierElem
+attribute [reducible, instance] WasmGS.memoryPagesElem
+attribute [reducible, instance] WasmGS.globalGS
+attribute [reducible, instance] WasmGS.dataSegmentGS
+attribute [reducible, instance] WasmGS.tableGS
+attribute [reducible, instance] WasmGS.elementSegmentGS
+attribute [reducible, instance] WasmGS.exceptionGS
+attribute [reducible, instance] WasmGS.runtimeModuleGS
+attribute [reducible, instance] WasmGS.tagTableElem
+attribute [reducible, instance] WasmGS.hostEnvGS
+attribute [reducible, instance] WasmGS.hostStateElem
+attribute [reducible, instance] WasmGS.instanceElem
+attribute [reducible, instance] WasmGS.runtimeInstancesElem
+
+/-- Every `WasmSmallStepGS` is a `WasmGS` for `GF = WasmHeapGF α`.
+Existing code that uses `[WasmSmallStepGS hlc α]` gains
+`[WasmGS hlc (WasmHeapGF α) α]` automatically. -/
+@[reducible] instance instWasmGS_of_WasmSmallStepGS [gs : WasmSmallStepGS hlc α] :
+    WasmGS hlc (WasmHeapGF α) α where
+  invGS               := gs.toInvGS_gen
+  heap                := inferInstance
+  heapFrontierElem    := gs.heapDomain.heapFrontierElem
+  heapFrontierName    := gs.heapDomain.heapFrontierName
+  memoryPagesElem     := gs.memoryPages.memoryPagesElem
+  memoryPagesName     := gs.memoryPages.memoryPagesName
+  globalGS            := gs.global.toGhostMapG
+  globalName          := gs.global.globalName
+  dataSegmentGS       := gs.dataSegment.toGhostMapG
+  dataSegmentName     := gs.dataSegment.dataSegmentName
+  tableGS             := gs.table.toGhostMapG
+  tableName           := gs.table.tableName
+  elementSegmentGS    := gs.elementSegment.toGhostMapG
+  elementSegmentName  := gs.elementSegment.elementSegmentName
+  exceptionGS         := gs.exception.toGhostMapG
+  exceptionName       := gs.exception.exceptionName
+  runtimeModuleGS     := gs.runtime.toGhostMapG
+  runtimeName         := gs.runtime.runtimeName
+  tagTableElem        := gs.tagTable.tagTableElem
+  tagTableName        := gs.tagTable.tagTableName
+  hostEnvGS           := gs.hostEnv.toGhostMapG
+  hostEnvName         := gs.hostEnv.hostEnvName
+  hostStateElem       := gs.hostState.hostStateElem
+  hostStateName       := gs.hostState.hostStateName
+  instanceElem        := gs.instanceGS.instanceElem
+  instanceName        := gs.instanceGS.instanceName
+  runtimeInstancesElem  := gs.runtimeInstances.runtimeInstancesElem
+  runtimeInstancesName  := gs.runtimeInstances.runtimeInstancesName
+
 variable {α : Type}
 
 /-- Resolver that maps memory id 0 to the primary memory and ids ≥ 1 to
@@ -203,21 +291,27 @@ arguments (rather than the whole store) is what makes that framing work: after
 a record update of an unrelated field, `{ store with wasm := … }.wasm.exns`
 reduces to `store.wasm.exns`, so the framed proposition is recovered
 syntactically. -/
-def exceptionInterp [WasmExceptionGS α] [WasmTagTableGS α]
+def exceptionInterp [g : WasmGS hlc GF α]
     (exns : List (Nat × List Value)) (tagIds : List Nat) :
-    IProp (WasmHeapGF α) := iprop%
+    IProp GF := iprop%
   (∃ exceptionσ : WasmExceptionMap (Nat × List Value),
-      ghost_map_auth WasmExceptionGS.exceptionName (DFrac.own 1) exceptionσ ∗
+      ghost_map_auth g.exceptionName (DFrac.own 1) exceptionσ ∗
         ⌜exceptionHeapAgrees exceptionσ exns⌝) ∗
-    ∃ ids : List Nat, tagTableOwn ids ∗ ⌜ids.IsPrefix tagIds⌝
+    ∃ ids : List Nat,
+      iOwn (E := g.tagTableElem) g.tagTableName
+        (toAgree (⟨ids⟩ : DiscreteO (List Nat))) ∗
+      ⌜ids.IsPrefix tagIds⌝
 
 /-- Sparse primary-memory domain authority carried with the state
 interpretation.  The existential frontier is fixed for ordinary instructions;
 allocator commit rules can update it only while holding the exclusive client
 fragment. -/
-def heapDomainInterp [WasmHeapDomainGS α]
-    (σ : WasmHeapMap (Option UInt8)) : IProp (WasmHeapGF α) := iprop%
-  ∃ frontier : Nat, heapFrontierAuth frontier ∗ ⌜HeapBelow σ frontier⌝
+def heapDomainInterp [g : WasmGS hlc GF α]
+    (σ : WasmHeapMap (Option UInt8)) : IProp GF := iprop%
+  ∃ frontier : Nat,
+    iOwn (E := g.heapFrontierElem) g.heapFrontierName
+      (ExclAuth.auth (⟨frontier⟩ : DiscreteO Nat)) ∗
+    ⌜HeapBelow σ frontier⌝
 
 /-- Allocate the ordinary, maximally permissive sparse-heap frontier.
 
@@ -225,10 +319,11 @@ Legacy adequacy frontends use `UInt32.size`, which imposes no restriction
 beyond the address type itself.  Allocator-aware frontends instead allocate a
 tighter frontier and retain its fragment so that fresh ranges can be committed
 soundly. -/
-theorem heapDomain_init (σ : WasmHeapMap (Option UInt8)) :
+theorem heapDomain_init (_ : WasmHeapMap (Option UInt8)) :
     ⊢@{IProp (WasmHeapGF α)} |==>
       ∃ gs : WasmHeapDomainGS α,
-        @heapDomainInterp α gs σ := by
+        iOwn (E := gs.heapFrontierElem) gs.heapFrontierName
+          (ExclAuth.auth (⟨UInt32.size⟩ : DiscreteO Nat)) := by
   letI heapFrontierElem :
       ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
@@ -245,20 +340,20 @@ theorem heapDomain_init (σ : WasmHeapMap (Option UInt8)) :
       heapFrontierName }
   imodintro
   iexists gs
-  unfold heapDomainInterp heapFrontierAuth
-  iexists UInt32.size
-  iframe_pureexact using [HheapFrontierAuth] => heapBelow_uint32Size σ
+  iexact HheapFrontierAuth
 
 /-- Allocate a tight sparse-domain frontier and expose the matching exclusive
 client fragment.  Callers must prove that the initial authoritative sparse
 heap lies below this frontier; unlike `heapDomain_init`, this resource is meant
 to be advanced by allocator commit rules. -/
 theorem heapDomain_init_at (σ : WasmHeapMap (Option UInt8))
-    (frontier : Nat) (hbelow : HeapBelow σ frontier) :
+    (frontier : Nat) (_ : HeapBelow σ frontier) :
     ⊢@{IProp (WasmHeapGF α)} |==>
       ∃ gs : WasmHeapDomainGS α,
-        @heapDomainInterp α gs σ ∗
-          @heapFrontierOwn α gs frontier := by
+        iOwn (E := gs.heapFrontierElem) gs.heapFrontierName
+          (ExclAuth.auth (⟨frontier⟩ : DiscreteO Nat)) ∗
+        iOwn (E := gs.heapFrontierElem) gs.heapFrontierName
+          (ExclAuth.frag (⟨frontier⟩ : DiscreteO Nat)) := by
   letI heapFrontierElem :
       ElemG (WasmHeapGF α)
         (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF (DiscreteO Nat))))) := by
@@ -270,40 +365,36 @@ theorem heapDomain_init_at (σ : WasmHeapMap (Option UInt8))
     ⟨%heapFrontierName, HheapFrontierAll⟩
   ihave HheapFrontierPair := iOwn_op.mp $$ HheapFrontierAll
   icases HheapFrontierPair with
-    ⟨HheapFrontierAuth, HheapFrontierOwn⟩
+    ⟨HheapFrontierAuth, HheapFrontierFrag⟩
   let gs : WasmHeapDomainGS α :=
     { heapFrontierElem
       heapFrontierName }
   imodintro
   iexists gs
   isplitl [HheapFrontierAuth]
-  · unfold heapDomainInterp heapFrontierAuth
-    iexists frontier
-    iframe_pureexact using [HheapFrontierAuth] => hbelow
-  · unfold heapFrontierOwn
-    iexact HheapFrontierOwn
+  · iexact HheapFrontierAuth
+  · iexact HheapFrontierFrag
 
 /-- State components that are normally framed opaquely by lifting rules.  The
 heap-domain invariant is bundled with exception state so extending the sparse
 heap does not perturb the main state-interpretation resource tuple. -/
-def machineAuxInterp [WasmHeapDomainGS α] [WasmMemoryPagesGS α]
-    [WasmExceptionGS α] [WasmTagTableGS α]
+def machineAuxInterp [g : WasmGS hlc GF α]
     (σ : WasmHeapMap (Option UInt8))
     (pages : Nat)
     (exns : List (Nat × List Value)) (tagIds : List Nat) :
-    IProp (WasmHeapGF α) :=
-  iprop(memoryPagesAuth pages ∗ heapDomainInterp σ ∗
-    exceptionInterp exns tagIds)
+    IProp GF :=
+  iprop(iOwn (E := g.memoryPagesElem) g.memoryPagesName
+            (MonoNat.auth (DFrac.own 1) (MaxNat.ofNat pages)) ∗
+        heapDomainInterp σ ∗
+        exceptionInterp exns tagIds)
 
-theorem machineAuxInterp_heap_mono [WasmHeapDomainGS α]
-    [WasmMemoryPagesGS α]
-    [WasmExceptionGS α] [WasmTagTableGS α]
+theorem machineAuxInterp_heap_mono [g : WasmGS hlc GF α]
     {σ σ' : WasmHeapMap (Option UInt8)}
     {pages : Nat}
     {exns : List (Nat × List Value)} {tagIds : List Nat}
     (hbelow : ∀ frontier, HeapBelow σ frontier → HeapBelow σ' frontier) :
     machineAuxInterp (α := α) σ pages exns tagIds ⊢
-      machineAuxInterp σ' pages exns tagIds := by
+      machineAuxInterp (GF := GF) σ' pages exns tagIds := by
   unfold machineAuxInterp heapDomainInterp
   iintro ⟨Hpages, ⟨%frontier, Hfrontier, %Hbelow⟩, Hexceptions⟩
   isplitl_exact Hpages
@@ -313,41 +404,44 @@ theorem machineAuxInterp_heap_mono [WasmHeapDomainGS α]
     · iexact Hexceptions
 
 /-- Ghost knowledge of an exception entry pins the physical entry. -/
-theorem exceptionInterp_lookup [WasmExceptionGS α] [WasmTagTableGS α]
+theorem exceptionInterp_lookup [g : WasmGS hlc GF α]
     (exns : List (Nat × List Value)) (tagIds : List Nat)
     (index : Nat) (dq : DFrac) (tagAndArgs : Nat × List Value) :
-    exceptionInterp (α := α) exns tagIds ∗ exceptionPointsTo index dq tagAndArgs ⊢
+    exceptionInterp (GF := GF) exns tagIds ∗
+      ghost_map_elem g.exceptionName dq index tagAndArgs ⊢
       iprop(⌜exns[index]? = some tagAndArgs⌝) := by
   unfold exceptionInterp
   iintro ⟨⟨⟨%exceptionσ, Hauth, %hag⟩, Htags⟩, Helem⟩
   iclear Htags
-  ihave %hlookup := exceptionPointsTo_lookup exceptionσ index dq tagAndArgs $$
-    Hauth Helem
+  ihave %hlookup := ghost_map_lookup $$ Hauth Helem
   ipureexact hag index tagAndArgs hlookup
 
 /-- Ghost knowledge of the tag table is a prefix of the physical tag table.
 This is the *only* channel through which a rule may learn anything about
 tags; the state interpretation itself constrains nothing. -/
-theorem exceptionInterp_tagPrefix [WasmExceptionGS α] [WasmTagTableGS α]
+theorem exceptionInterp_tagPrefix [g : WasmGS hlc GF α]
     (exns : List (Nat × List Value)) (tagIds ids : List Nat) :
-    exceptionInterp (α := α) exns tagIds ∗ tagTableOwn ids ⊢
+    exceptionInterp (GF := GF) exns tagIds ∗
+      iOwn (E := g.tagTableElem) g.tagTableName
+        (toAgree (⟨ids⟩ : DiscreteO (List Nat))) ⊢
       iprop(⌜ids.IsPrefix tagIds⌝) := by
   unfold exceptionInterp
   iintro ⟨⟨Hexn, %ids', Hactual, %Hprefix⟩, Howned⟩
   iclear Hexn
-  ihave %heq := tagTableOwn_agree ids' ids $$ [$Hactual $Howned]
+  icombine Hactual Howned gives %Hvalid
+  have heq : ids' = ids := congrArg DiscreteO.car (toAgree_op_valid_iff_eq.mp Hvalid)
   ipureexact heq ▸ Hprefix
 
 /-- Monotonicity of `exceptionInterp` along the two physical lists.  Used when
 a rule replaces the whole `Store` (host-call return, instantiation) and only
 knows that the exception/tag facts are preserved rather than that the lists are
 literally unchanged. -/
-theorem exceptionInterp_mono [WasmExceptionGS α] [WasmTagTableGS α]
+theorem exceptionInterp_mono [g : WasmGS hlc GF α]
     {exns exns' : List (Nat × List Value)} {tagIds tagIds' : List Nat}
     (hexns : ∀ σ : WasmExceptionMap (Nat × List Value),
       exceptionHeapAgrees σ exns → exceptionHeapAgrees σ exns')
     (htags : ∀ ids : List Nat, ids.IsPrefix tagIds → ids.IsPrefix tagIds') :
-    exceptionInterp (α := α) exns tagIds ⊢ exceptionInterp exns' tagIds' := by
+    exceptionInterp (α := α) exns tagIds ⊢ exceptionInterp (GF := GF) exns' tagIds' := by
   unfold exceptionInterp
   iintro ⟨⟨%exceptionσ, Hauth, %hag⟩, %ids, Htags, %hpre⟩
   isplitl [Hauth]
@@ -356,9 +450,7 @@ theorem exceptionInterp_mono [WasmExceptionGS α] [WasmTagTableGS α]
   · iexists ids
     iframe_pureexact using [Htags] => htags ids hpre
 
-theorem machineAuxInterp_exception_mono [WasmHeapDomainGS α]
-    [WasmMemoryPagesGS α]
-    [WasmExceptionGS α] [WasmTagTableGS α]
+theorem machineAuxInterp_exception_mono [g : WasmGS hlc GF α]
     {σ : WasmHeapMap (Option UInt8)}
     {pages : Nat}
     {exns exns' : List (Nat × List Value)} {tagIds tagIds' : List Nat}
@@ -367,7 +459,7 @@ theorem machineAuxInterp_exception_mono [WasmHeapDomainGS α]
         exceptionHeapAgrees exceptionσ exns')
     (htags : ∀ ids : List Nat, ids.IsPrefix tagIds → ids.IsPrefix tagIds') :
     machineAuxInterp (α := α) σ pages exns tagIds ⊢
-      machineAuxInterp σ pages exns' tagIds' := by
+      machineAuxInterp (GF := GF) σ pages exns' tagIds' := by
   unfold machineAuxInterp
   iintro ⟨Hpages, Hdomain, Hexceptions⟩
   isplitl_exacts [Hpages Hdomain]
@@ -379,8 +471,8 @@ to, and it is decidable for a concrete tag table. -/
 def TagIndexCanonical (ids : List Nat) (index : Nat) : Prop :=
   ∃ id, ids[index]? = some id ∧ ids.findIdx? (· = id) = some index
 
-instance instStateInterp [WasmSmallStepGS hlc α] :
-    StateInterp (MachineStore α) StepKind (WasmHeapGF α) where
+@[reducible] instance instStateInterp [g : WasmGS hlc GF α] :
+    StateInterp (MachineStore α) StepKind GF where
   stateInterp store _ _ _ := iprop%
     ∃ σ : WasmHeapMap (Option UInt8),
       ∃ globalσ : WasmGlobalMap Value,
@@ -391,23 +483,20 @@ instance instStateInterp [WasmSmallStepGS hlc α] :
       ∃ runtimeModuleσ : WasmRuntimeModuleMap Module,
       ∃ hostEnvσ : WasmHostEnvMap (HostEnv α),
       genHeapInterp σ ∗
-        ghost_map_auth WasmSmallStepGS.global.globalName
-          (DFrac.own 1) globalσ ∗
-        ghost_map_auth WasmSmallStepGS.dataSegment.dataSegmentName
-          (DFrac.own 1) dataSegmentσ ∗
-        ghost_map_auth WasmSmallStepGS.table.tableName
-          (DFrac.own 1) tableσ ∗
-        ghost_map_auth
-          WasmSmallStepGS.elementSegment.elementSegmentName
-          (DFrac.own 1) elementSegmentσ ∗
-        ghost_map_auth WasmSmallStepGS.runtime.runtimeName
-          (DFrac.own 1) runtimeModuleσ ∗
-        ([∗map] id ↦ m ∈ runtimeModuleσ, runtimeModuleElem id m) ∗
-        runtimeInstancesOwn store.runtime.instances ∗
-        currentInstanceAuth store.runtime.entry ∗
-        ghost_map_auth WasmSmallStepGS.hostEnv.hostEnvName
-          (DFrac.own 1) hostEnvσ ∗
-        hostStateAuth store.wasm.host ∗
+        ghost_map_auth g.globalName (DFrac.own 1) globalσ ∗
+        ghost_map_auth g.dataSegmentName (DFrac.own 1) dataSegmentσ ∗
+        ghost_map_auth g.tableName (DFrac.own 1) tableσ ∗
+        ghost_map_auth g.elementSegmentName (DFrac.own 1) elementSegmentσ ∗
+        ghost_map_auth g.runtimeName (DFrac.own 1) runtimeModuleσ ∗
+        ([∗map] id ↦ m ∈ runtimeModuleσ,
+          ghost_map_elem g.runtimeName DFrac.discard id m) ∗
+        iOwn (E := g.runtimeInstancesElem) g.runtimeInstancesName
+          (toAgree ⟨store.runtime.instances⟩) ∗
+        iOwn (E := g.instanceElem) g.instanceName
+          (ExclAuth.auth (⟨store.runtime.entry.id⟩ : DiscreteO Nat)) ∗
+        ghost_map_auth g.hostEnvName (DFrac.own 1) hostEnvσ ∗
+        iOwn (E := g.hostStateElem) g.hostStateName
+          (ExclAuth.auth (⟨store.wasm.host⟩ : DiscreteO α)) ∗
       ⌜heapAgreesWithMem σ (storeResolve store) ∧
         heapAddressesInBounds σ (storeResolve store) ∧
         globalHeapAgrees globalσ store.wasm.globals ∧
@@ -1992,6 +2081,7 @@ theorem stateInterp_exception_facts [WasmSmallStepGS hlc α]
   iopen_state Hstate
   iunfold machineAuxInterp at Hexc
   icases Hexc with ⟨Hpages, Hdomain, Hexceptions⟩
+  iunfold exceptionPointsTo at Hexception
   ihave %hlookup :=
     exceptionInterp_lookup store.wasm.exns store.wasm.tagIds index dq tagAndArgs $$
       [$Hexceptions $Hexception]
@@ -3112,10 +3202,11 @@ theorem stateInterp_copy2_zero_four [WasmSmallStepGS hlc α]
     simp only [UInt32.reduceAdd]
     iframe
 
-instance instIrisGS [WasmSmallStepGS hlc α] :
-    IrisGS_gen hlc (Expr α) (WasmHeapGF α) where
+instance instIrisGS [g : WasmGS hlc GF α] :
+    IrisGS_gen hlc (Expr α) GF where
+  invGS := g.invGS
   numLatersPerStep _ := 0
   forkPost _ := iprop(True)
-  stateInterp_mono _ _ _ _ := by iintro $
+  stateInterp_mono _ _ _ _ := let _ := g.invGS; fupd_intro
 
 end Wasm.SmallStep
