@@ -1840,13 +1840,6 @@ private def func3DecodeTailLocals
     destination source (UInt32.ofNat bulk) (UInt32.ofNat (4 * length))
     (UInt32.ofNat state.remaining) (UInt32.ofNat bulk) aux10 []
 
-private theorem func3_decode_next_address (base : UInt32) (index : Nat) :
-    base + 4 * UInt32.ofNat index + 4 =
-      base + 4 * UInt32.ofNat (index + 1) := by
-  rw [UInt32.ofNat_add, UInt32.mul_add]
-  simp
-  ac_rfl
-
 private theorem func3_decode_decrement {remaining : Nat}
     (hpositive : 0 < remaining) :
     UInt32.ofNat remaining + 4294967295 =
@@ -1966,10 +1959,10 @@ theorem twp_func3_decode_tail_loop
     isplitl_exacts [Hsource Hdestination]
     iintro Hsource Hdestination
     wasm_twp_pures [twp_localGet twp_const twp_add]
-    rw [UInt32.add_comm (4 : UInt32), func3_decode_next_address]
+    rw [UInt32.add_comm (4 : UInt32), UInt32.add_stride4_add1]
     wasm_twp_localSet [List.length, List.set]
     wasm_twp_pures [twp_localGet twp_const twp_add]
-    rw [UInt32.add_comm (4 : UInt32), func3_decode_next_address]
+    rw [UInt32.add_comm (4 : UInt32), UInt32.add_stride4_add1]
     wasm_twp_localSet [List.length, List.set]
     wasm_twp_pures [twp_localGet twp_const twp_add]
     rw [UInt32.add_comm (4294967295 : UInt32), hdecrement]
@@ -2049,31 +2042,6 @@ private def func3DecodeBulkLocals
 private theorem func3_decode_byte_offset (index : Nat) :
     UInt32.ofNat (4 * index) = 4 * UInt32.ofNat index := by
   rw [UInt32.ofNat_mul]; rfl
-
-private theorem func3_decode_address_increment
-    (base : UInt32) (index increment : Nat) :
-    base + 4 * UInt32.ofNat index + 4 * UInt32.ofNat increment =
-      base + 4 * UInt32.ofNat (index + increment) := by
-  rw [UInt32.ofNat_add, UInt32.mul_add]
-  ac_rfl
-
-private theorem func3_decode_address_add4 (base : UInt32) (index : Nat) :
-    base + 4 * UInt32.ofNat index + 4 =
-      base + 4 * UInt32.ofNat (index + 1) := by
-  simpa only [show 4 * UInt32.ofNat 1 = (4 : UInt32) by decide] using
-    func3_decode_address_increment base index 1
-
-private theorem func3_decode_address_add8 (base : UInt32) (index : Nat) :
-    base + 4 * UInt32.ofNat index + 8 =
-      base + 4 * UInt32.ofNat (index + 2) := by
-  simpa only [show 4 * UInt32.ofNat 2 = (8 : UInt32) by decide] using
-    func3_decode_address_increment base index 2
-
-private theorem func3_decode_address_add12 (base : UInt32) (index : Nat) :
-    base + 4 * UInt32.ofNat index + 12 =
-      base + 4 * UInt32.ofNat (index + 3) := by
-  simpa only [show 4 * UInt32.ofNat 3 = (12 : UInt32) by decide] using
-    func3_decode_address_increment base index 3
 
 private theorem func3_decode_byte_offset_step (index : Nat) :
     4 * UInt32.ofNat index + 16 =
@@ -2203,9 +2171,9 @@ theorem twp_func3_decode_bulk_loop
     isplitl_exacts [Hsource Hdestination]
     iintro Hsource Hdestination
     wasm_twp_pures [twp_localGet twp_const twp_add]
-    rw [UInt32.add_comm (4 : UInt32), func3_decode_address_add4]
+    rw [UInt32.add_comm (4 : UInt32), UInt32.add_stride4_add1]
     wasm_twp_pures [twp_localGet twp_const twp_add]
-    rw [UInt32.add_comm (4 : UInt32), func3_decode_address_add4]
+    rw [UInt32.add_comm (4 : UInt32), UInt32.add_stride4_add1]
     have Hcopy1 := twp_func3_copy_decoded_word
       (hlc := hlc) source destination original initial (state.copied + 1)
       hlength hcopy1 (params := [])
@@ -2225,9 +2193,9 @@ theorem twp_func3_decode_bulk_loop
     isplitl_exacts [Hsource Hdestination]
     iintro Hsource Hdestination
     wasm_twp_pures [twp_localGet twp_const twp_add]
-    rw [UInt32.add_comm (8 : UInt32), func3_decode_address_add8]
+    rw [UInt32.add_comm (8 : UInt32), UInt32.add_stride4_add2]
     wasm_twp_pures [twp_localGet twp_const twp_add]
-    rw [UInt32.add_comm (8 : UInt32), func3_decode_address_add8]
+    rw [UInt32.add_comm (8 : UInt32), UInt32.add_stride4_add2]
     have Hcopy2 := twp_func3_copy_decoded_word
       (hlc := hlc) source destination original initial (state.copied + 2)
       hlength hcopy2 (params := [])
@@ -2247,9 +2215,9 @@ theorem twp_func3_decode_bulk_loop
     isplitl_exacts [Hsource Hdestination]
     iintro Hsource Hdestination
     wasm_twp_pures [twp_localGet twp_const twp_add]
-    rw [UInt32.add_comm (12 : UInt32), func3_decode_address_add12]
+    rw [UInt32.add_comm (12 : UInt32), UInt32.add_stride4_add3]
     wasm_twp_pures [twp_localGet twp_const twp_add]
-    rw [UInt32.add_comm (12 : UInt32), func3_decode_address_add12]
+    rw [UInt32.add_comm (12 : UInt32), UInt32.add_stride4_add3]
     have Hcopy3 := twp_func3_copy_decoded_word
       (hlc := hlc) source destination original initial (state.copied + 3)
       hlength hcopy3 (params := [])
@@ -3396,7 +3364,7 @@ theorem twp_func3_output_loop
     isplitl_exacts [Hruntime Hframe Hwords Hstreams]
     iintro Hruntime Hframe Hwords Hstreams
     wasm_twp_pures [twp_localGet twp_const twp_add]
-    rw [UInt32.add_comm (4 : UInt32), func3_decode_next_address]
+    rw [UInt32.add_comm (4 : UInt32), UInt32.add_stride4_add1]
     wasm_twp_localSet [List.length, List.set]
     wasm_twp_pures [twp_localGet twp_const twp_add]
     rw [UInt32.add_comm (4294967292 : UInt32), hcountdown]
