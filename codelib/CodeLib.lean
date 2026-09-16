@@ -1,3 +1,7 @@
+import CodeLib.Tactics.Rule
+import CodeLib.Tactics.Registry
+import CodeLib.Tactics.Pure
+import CodeLib.Tactics.Test
 import CodeLib.Attrs
 import CodeLib.Basic
 import CodeLib.Entry
