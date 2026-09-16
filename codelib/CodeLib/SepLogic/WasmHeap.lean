@@ -644,7 +644,7 @@ theorem exceptionPointsTo_update [gs : WasmExceptionGS α]
 
 /-- Persistent knowledge of the entry instance's tag-identity table.  Only the
 exception rules need it; every other rule is oblivious to tags. -/
-def tagTableOwn [gs : WasmTagTableGS α] (ids : List Nat) :
+@[reducible] def tagTableOwn [gs : WasmTagTableGS α] (ids : List Nat) :
     IProp (WasmHeapGF α) :=
   iOwn (E := gs.tagTableElem) gs.tagTableName (toAgree ⟨ids⟩)
 
@@ -770,7 +770,7 @@ theorem hostStateOwn_update {α : Type} [gs : WasmHostStateGS α]
   icases iOwn_op $$ Hboth with ⟨H1, H2⟩; iframe
 
 /-- Authoritative sparse-heap frontier, held inside `stateInterp`. -/
-def heapFrontierAuth {α : Type} [gs : WasmHeapDomainGS α]
+@[reducible] def heapFrontierAuth {α : Type} [gs : WasmHeapDomainGS α]
     (frontier : Nat) : IProp (WasmHeapGF α) :=
   iOwn (E := gs.heapFrontierElem) gs.heapFrontierName
     (ExclAuth.auth (⟨frontier⟩ : DiscreteO Nat))
@@ -807,7 +807,7 @@ theorem heapFrontierOwn_update {α : Type} [gs : WasmHeapDomainGS α]
   icases iOwn_op $$ Hboth with ⟨H1, H2⟩; iframe
 
 /-- Exact authoritative primary-memory page count, held inside `stateInterp`. -/
-def memoryPagesAuth {α : Type} [gs : WasmMemoryPagesGS α]
+@[reducible] def memoryPagesAuth {α : Type} [gs : WasmMemoryPagesGS α]
     (pages : Nat) : IProp (WasmHeapGF α) :=
   iOwn (E := gs.memoryPagesElem) gs.memoryPagesName
     (MonoNat.auth (DFrac.own 1) (MaxNat.ofNat pages))
