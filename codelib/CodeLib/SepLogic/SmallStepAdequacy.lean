@@ -209,7 +209,7 @@ theorem wasm_smallStep_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  wasm_build_machine_aux config
+  wasm_build_machine_aux config withHeap (∅ : WasmHeapMap (Option UInt8))
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists (∅ : WasmHeapMap (Option UInt8))
@@ -307,7 +307,7 @@ theorem wasm_smallStep_stronglyNormalizing
       iintro Hstate
       imodintro; iexact Hstate)
   dsimp only
-  wasm_build_machine_aux config
+  wasm_build_machine_aux config withHeap (∅ : WasmHeapMap (Option UInt8))
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists (∅ : WasmHeapMap (Option UInt8))
@@ -584,7 +584,7 @@ theorem wasm_smallStep_runtime_tags_adequacy
     (config : Config α) (φ : List Value → Prop)
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
-      runtimeModuleOwn config.store.runtime.entry
+      runtimeModuleOwn (GF := WasmHeapGF α) config.store.runtime.entry
         config.store.runtime.currentModule ∗
         tagTableOwn config.store.wasm.tagIds ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
@@ -671,7 +671,7 @@ theorem wasm_smallStep_runtime_adequacy
     (config : Config α) (φ : List Value → Prop)
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
-      runtimeModuleOwn config.store.runtime.entry
+      runtimeModuleOwn (GF := WasmHeapGF α) config.store.runtime.entry
         config.store.runtime.currentModule ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values, ⌜φ values⌝ }}) :
@@ -689,7 +689,7 @@ theorem wasm_smallStep_runtime_partiallyMeets
     (config : Config α) (φ : List Value → Prop)
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
-      runtimeModuleOwn config.store.runtime.entry
+      runtimeModuleOwn (GF := WasmHeapGF α) config.store.runtime.entry
         config.store.runtime.currentModule ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
           {{ values, ⌜φ values⌝ }}) :
@@ -704,7 +704,7 @@ theorem wasm_smallStep_runtime_instance_adequacy
     (config : Config α) (φ : List Value → Prop)
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
-      runtimeModuleOwn config.store.runtime.entry
+      runtimeModuleOwn (GF := WasmHeapGF α) config.store.runtime.entry
           config.store.runtime.currentModule ∗
         runtimeInstancesOwn config.store.runtime.instances ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
@@ -745,7 +745,7 @@ theorem wasm_smallStep_runtime_instance_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  wasm_build_machine_aux config
+  wasm_build_machine_aux config withHeap (∅ : WasmHeapMap (Option UInt8))
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstancesState HinstanceState HhostEnvAuth HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists (∅ : WasmHeapMap (Option UInt8))
@@ -784,7 +784,7 @@ theorem wasm_smallStep_runtime_instance_partiallyMeets
     (config : Config α) (φ : List Value → Prop)
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
-      runtimeModuleOwn config.store.runtime.entry
+      runtimeModuleOwn (GF := WasmHeapGF α) config.store.runtime.entry
           config.store.runtime.currentModule ∗
         runtimeInstancesOwn config.store.runtime.instances ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
@@ -802,7 +802,7 @@ theorem wasm_smallStep_instance_host_state_adequacy
     (config : Config α) (φ : List Value → Prop)
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
-      runtimeModuleOwn config.store.runtime.entry
+      runtimeModuleOwn (GF := WasmHeapGF α) config.store.runtime.entry
           config.store.runtime.currentModule ∗
         hostEnvOwn config.store.runtime.entry.id config.store.runtime.currentHost ∗
         hostStateOwn config.store.wasm.host ∗
@@ -844,7 +844,7 @@ theorem wasm_smallStep_instance_host_state_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  wasm_build_machine_aux config
+  wasm_build_machine_aux config withHeap (∅ : WasmHeapMap (Option UInt8))
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstancesState HinstanceState HhostEnvAuth' HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists (∅ : WasmHeapMap (Option UInt8))
@@ -884,7 +884,7 @@ theorem wasm_smallStep_instance_host_state_partiallyMeets
     (config : Config α) (φ : List Value → Prop)
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (hwp : ∀ [WasmSmallStepGS .hasLC α],
-      runtimeModuleOwn config.store.runtime.entry
+      runtimeModuleOwn (GF := WasmHeapGF α) config.store.runtime.entry
           config.store.runtime.currentModule ∗
         hostEnvOwn config.store.runtime.entry.id config.store.runtime.currentHost ∗
         hostStateOwn config.store.wasm.host ∗
@@ -932,7 +932,7 @@ theorem wasm_smallStep_heap_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  wasm_build_machine_aux config
+  wasm_build_machine_aux config withHeap σ
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
@@ -999,7 +999,7 @@ theorem wasm_smallStep_heap_globals_runtime_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  wasm_build_machine_aux config
+  wasm_build_machine_aux config withHeap σ
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
@@ -1078,7 +1078,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  wasm_build_machine_aux config
+  wasm_build_machine_aux config withHeap σ
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth' HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
@@ -1281,7 +1281,7 @@ theorem wasm_smallStep_heap_globals_runtime_store_terminates
         iintro Hstate
         imodintro; iexact Hstate)
     dsimp only
-    wasm_build_machine_aux config
+    wasm_build_machine_aux config withHeap σ
     isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
     · iapply (stateInterp_eq config.store 0 [] 0).mpr
       iexists σ
@@ -1515,7 +1515,7 @@ theorem wasm_smallStep_heap_store_terminates
         iintro Hstate
         imodintro; iexact Hstate)
     dsimp only
-    wasm_build_machine_aux config
+    wasm_build_machine_aux config withHeap σ
     isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
     · iapply (stateInterp_eq config.store 0 [] 0).mpr
       iexists σ
@@ -1559,7 +1559,7 @@ theorem wasm_smallStep_runtime_tags_terminates
     (config : Config α) (φ : List Value → Prop)
     (hwf : config.store.runtime.entry.id < config.store.runtime.instances.size)
     (htwp : ∀ (hlc : HasLC) [WasmSmallStepGS hlc α],
-      runtimeModuleOwn config.store.runtime.entry
+      runtimeModuleOwn (GF := WasmHeapGF α) config.store.runtime.entry
           config.store.runtime.currentModule ∗
         tagTableOwn config.store.wasm.tagIds ⊢
         WP config.expr @ Stuckness.NotStuck; ⊤
@@ -1687,7 +1687,7 @@ theorem wasm_smallStep_heap_globals_segments_runtime_store_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  wasm_build_machine_aux config
+  wasm_build_machine_aux config withHeap σ
   isplitl [Hheap Hglobals HsegmentsAuth Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
@@ -1842,7 +1842,7 @@ theorem wasm_smallStep_heap_globals_segments_tables_runtime_store_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  wasm_build_machine_aux config
+  wasm_build_machine_aux config withHeap σ
   isplitl [Hheap Hglobals HsegmentsAuth HtablesAuth
       HelementSegmentsAuth HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
@@ -2046,7 +2046,7 @@ theorem wasm_smallStep_heap_runtime_instance_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  wasm_build_machine_aux config
+  wasm_build_machine_aux config withHeap σ
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
@@ -2129,7 +2129,7 @@ theorem wasm_smallStep_heap_runtime_instances_adequacy
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
   iexists (fun _ => iprop(True))
   dsimp only
-  wasm_build_machine_aux config
+  wasm_build_machine_aux config withHeap σ
   isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstancesState HinstanceState HhostEnvAuth HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ

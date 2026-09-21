@@ -41,7 +41,8 @@ theorem heap_globals_runtime_host_store_adequacy
   imod genHeap_init (L := MemoryKey) (V := Option UInt8)
       (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
     ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-  imod heapDomain_init (α := α) σ with ⟨%heapDomainGS, HheapDomain⟩
+  imod heapDomain_init (α := α) σ with ⟨%heapDomainGS, HheapFrontierAuth⟩
+  have HheapBelow : HeapBelow σ UInt32.size := heapBelow_uint32Size σ
   letI _ : WasmHeapDomainGS α := heapDomainGS
   imod memoryPages_init_authority (α := α) config.store.wasm.mem.pages with
     ⟨%memoryPagesGS, HmemoryPagesAuth⟩
@@ -178,6 +179,10 @@ theorem heap_globals_runtime_host_store_adequacy
   letI tagTableGS : WasmTagTableGS α :=
     { tagTableElem
       tagTableName }
+  ihave HtagTableOwn : tagTableOwn config.store.wasm.tagIds $$ [HtagTable]
+  · unfold tagTableOwn
+    iexact HtagTable
+  iintuitionistic HtagTableOwn
   letI gs : WasmSmallStepGS .hasLC α :=
     { toInvGS_gen := inv
       toWasmHeapGS := wasmHeapGS
@@ -201,19 +206,20 @@ theorem heap_globals_runtime_host_store_adequacy
   iexists (fun _ => iprop(True))
   dsimp only
   ihave HexceptionInterp : exceptionInterp config.store.wasm.exns config.store.wasm.tagIds $$
-      [Hexceptions HtagTable]
-  · unfold exceptionInterp tagTableOwn
+      [Hexceptions]
+  · unfold exceptionInterp
     isplitl [Hexceptions]
     · iexists (∅ : WasmExceptionMap (Nat × List Value))
-      isplitl [Hexceptions]
-      · iexact Hexceptions
-      · ipureintro
-        exact exceptionHeapAgrees_empty _
+      isplitl_exact Hexceptions
+      · ipureexact exceptionHeapAgrees_empty _
     · iexists config.store.wasm.tagIds
-      isplitl [HtagTable]
-      · iexact HtagTable
-      · ipureintro
-        exact List.prefix_rfl
+      isplitl []
+      · iexact HtagTableOwn
+      · ipureexact List.prefix_rfl
+  ihave HheapDomain : heapDomainInterp _ $$ [HheapFrontierAuth]
+  · unfold heapDomainInterp
+    iexists UInt32.size
+    iframe_pureexact using [HheapFrontierAuth] => HheapBelow
   ihave Hexc : machineAuxInterp _ config.store.wasm.mem.pages
       config.store.wasm.exns config.store.wasm.tagIds $$
       [HmemoryPagesAuth HheapDomain HexceptionInterp]
@@ -304,7 +310,8 @@ theorem heap_globals_runtime_host_store_terminates
     imod genHeap_init (L := MemoryKey) (V := Option UInt8)
         (GF := WasmHeapGF α) (H := WasmHeapMap) σ with
       ⟨%heapGS, Hheap, Hpoints, Hmeta⟩
-    imod heapDomain_init (α := α) σ with ⟨%heapDomainGS, HheapDomain⟩
+    imod heapDomain_init (α := α) σ with ⟨%heapDomainGS, HheapFrontierAuth⟩
+    have HheapBelow : HeapBelow σ UInt32.size := heapBelow_uint32Size σ
     letI _ : WasmHeapDomainGS α := heapDomainGS
     imod memoryPages_init_authority (α := α) config.store.wasm.mem.pages with
       ⟨%memoryPagesGS, HmemoryPagesAuth⟩
@@ -441,6 +448,10 @@ theorem heap_globals_runtime_host_store_terminates
     letI tagTableGS : WasmTagTableGS α :=
       { tagTableElem
         tagTableName }
+    ihave HtagTableOwn : tagTableOwn config.store.wasm.tagIds $$ [HtagTable]
+    · unfold tagTableOwn
+      iexact HtagTable
+    iintuitionistic HtagTableOwn
     letI gs : WasmSmallStepGS .hasNoLC α :=
       { toInvGS_gen := inv
         toWasmHeapGS := wasmHeapGS
@@ -469,19 +480,20 @@ theorem heap_globals_runtime_host_store_terminates
         iexact Hstate)
     dsimp only
     ihave HexceptionInterp : exceptionInterp config.store.wasm.exns config.store.wasm.tagIds $$
-        [Hexceptions HtagTable]
-    · unfold exceptionInterp tagTableOwn
+        [Hexceptions]
+    · unfold exceptionInterp
       isplitl [Hexceptions]
       · iexists (∅ : WasmExceptionMap (Nat × List Value))
-        isplitl [Hexceptions]
-        · iexact Hexceptions
-        · ipureintro
-          exact exceptionHeapAgrees_empty _
+        isplitl_exact Hexceptions
+        · ipureexact exceptionHeapAgrees_empty _
       · iexists config.store.wasm.tagIds
-        isplitl [HtagTable]
-        · iexact HtagTable
-        · ipureintro
-          exact List.prefix_rfl
+        isplitl []
+        · iexact HtagTableOwn
+        · ipureexact List.prefix_rfl
+    ihave HheapDomain : heapDomainInterp _ $$ [HheapFrontierAuth]
+    · unfold heapDomainInterp
+      iexists UInt32.size
+      iframe_pureexact using [HheapFrontierAuth] => HheapBelow
     ihave Hexc : machineAuxInterp _ config.store.wasm.mem.pages
         config.store.wasm.exns config.store.wasm.tagIds $$
         [HmemoryPagesAuth HheapDomain HexceptionInterp]

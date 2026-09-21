@@ -6,30 +6,6 @@ open Wasm
 open Iris Iris.BI Iris.ProgramLogic Language.Notation Iris.Std
 open Wasm.SepLogic Wasm.SmallStep
 
-private theorem hostStateOwn_agree_update {α : Type} [gs : WasmHostStateGS α]
-    (actual expected newHost : α) :
-    hostStateAuth actual ∗ hostStateOwn expected ==∗
-      ⌜actual = expected⌝ ∗ hostStateAuth newHost ∗ hostStateOwn newHost := by
-  unfold hostStateAuth hostStateOwn
-  iintro ⟨Hauth, Hfrag⟩
-  icombine Hauth Hfrag as Hboth gives %Hvalid
-  have heq : actual = expected :=
-    congrArg DiscreteO.car (ExclAuth.agree (A := DiscreteO α) Hvalid)
-  subst expected
-  icases iOwn_op $$ Hboth with ⟨Hauth, Hfrag⟩
-  imod iOwn_update_op (E := gs.hostStateElem)
-      (ExclAuth.update (A := DiscreteO α)
-      (a := (⟨actual⟩ : DiscreteO α))
-      (b := ⟨actual⟩) (a' := ⟨newHost⟩)) $$ [Hauth Hfrag] with Hboth
-  · iframe
-  icases iOwn_op $$ Hboth with ⟨Hauth, Hfrag⟩
-  imodintro
-  isplit
-  · ipureintro; rfl
-  · isplitl [Hauth]
-    · iexact Hauth
-    · iexact Hfrag
-
 /-- Simultaneously learn that the client host fragment describes the physical
 host and update both sides.  The agreement fact is returned alongside the
 updated ownership, so callers can calculate the concrete host result without
@@ -46,32 +22,18 @@ theorem stateInterp_host_set_expected {hlc : HasLC} {α : Type}
         steps observations threads ∗
       hostStateOwn newHost := by
   iintro ⟨Hstate, HP⟩
-  icases (stateInterp_eq store steps observations threads).mp $$ Hstate with
-    ⟨%σ, %globalσ, %dataSegmentσ, %tableσ, %elementSegmentσ,
-      %runtimeModuleσ, %hostEnvσ, Hheap, Hglobals, Hsegments, Htables,
-      HelementSegments, HruntimeModuleAuth, HruntimeModuleBigSep,
-      HruntimeInstances, HinstanceAuth, HhostEnvAuth, Hstate_auth,
-      %Hfacts, Hexc⟩
-  imod hostStateOwn_agree_update store.wasm.host expected newHost
-      $$ [$Hstate_auth $HP] with ⟨%heq, Hstate_auth, HP⟩
+  ihave %heq : ⌜store.wasm.host = expected⌝ $$ [Hstate HP]
+  · iapply stateInterp_host_agree store steps observations threads expected
+    iframe
   subst expected
+  imod stateInterp_host_set store steps observations threads newHost $$
+      [$Hstate $HP] with ⟨Hstate', HP'⟩
   imodintro
   isplit
   · ipureintro; rfl
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments
-      HruntimeModuleAuth HruntimeModuleBigSep HruntimeInstances HinstanceAuth
-      HhostEnvAuth Hstate_auth Hexc]
-  · iapply (stateInterp_eq
-      { store with wasm := { store.wasm with host := newHost } }
-      steps observations threads).mpr
-    iexists σ; iexists globalσ; iexists dataSegmentσ; iexists tableσ
-    iexists elementSegmentσ; iexists runtimeModuleσ; iexists hostEnvσ
-    iframe Hheap Hglobals Hsegments Htables HelementSegments
-      HruntimeModuleAuth HruntimeModuleBigSep HruntimeInstances HinstanceAuth
-      HhostEnvAuth Hstate_auth Hexc
-    ipureintro
-    exact Hfacts
-  · iexact HP
+  isplitl [Hstate']
+  · iexact Hstate'
+  · iexact HP'
 
 /-- Total lifting for a host call whose contract proves that this invocation
 returns.  This is the return-only specialization needed for in-bounds stdio
