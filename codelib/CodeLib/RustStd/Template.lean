@@ -6,11 +6,11 @@ import CodeLib.SepLogic.SmallStepTotalLifting
 
 Reusable contract for `_RNvNtCsebHcaeoSrxy_3std5alloc8rust_oom` (class `51821617ff5a`).
 
-The body (modulo the crate-specific `call k; unreachable` tail) is identical
-across every crate that links Rust's `std`.  `template_rust_oom` captures the
-first 14 instructions; `RustOOMContractAt` states the WP contract for this
-prefix in terms of shadow-stack ownership; `rustOOM_instantiate` proves the
-contract holds for any SP ≥ 16.
+The body is identical across every crate that links Rust's `std`, modulo the
+crate-specific call target `k`.  `rustOOMPrefix` captures the first 14
+instructions; `template_rust_oom k` is the full body
+`rustOOMPrefix ++ [.call k, .unreachable]`; `RustOOMContractAt` states the WP
+contract; `rustOOM_instantiate` proves it holds for any SP ≥ 16.
 -/
 
 namespace Wasm.SmallStep
@@ -19,11 +19,9 @@ open Iris Iris.ProgramLogic Language.Notation
 open Wasm.SepLogic
 open scoped Outcome
 
-/-- The body prefix of `rust_oom` (14 instructions), ending just before the
-    crate-specific `call k; unreachable`.  Consumers prove
-    `func.body = template_rust_oom ++ [.call calleeAbsIdx, .unreachable]` by
-    `rfl` (the body is a transparent literal from `watFunctionBody%`). -/
-def template_rust_oom : Wasm.Program :=
+/-- The 14-instruction body prefix of `rust_oom`, ending just before the
+    crate-specific `call k; unreachable` tail. -/
+def rustOOMPrefix : Wasm.Program :=
   [ .globalGet 0                -- sp = global[0]
   , .const 16                   -- 16
   , .sub                        -- frame = sp - 16
@@ -39,6 +37,11 @@ def template_rust_oom : Wasm.Program :=
   , .const 8                    -- 8
   , .add                        -- frame + 8 = sp - 8
   ]
+
+/-- The full body of `rust_oom` parameterised by the crate-specific call target.
+    Consumers prove `func.body = template_rust_oom calleeAbsIdx` by `rfl`. -/
+def template_rust_oom (k : Nat) : Wasm.Program :=
+  rustOOMPrefix ++ [.call k, .unreachable]
 
 /-- Contract for the body of `rust_oom`.
 
@@ -73,7 +76,7 @@ def RustOOMContractAt [WasmSmallStepGS hlc α]
       pointsTo_u32 0 (sp - 8) w2 ∗ R ⊢
       WP (Expr.running
             ⟨⟨[.i32 ptr, .i32 len], [v₀], []⟩,
-              template_rust_oom ++ [.call calleeIdx, .unreachable] ++ code,
+              template_rust_oom calleeIdx ++ code,
               arity, remainder, controls, calls⟩ : Expr α) @ s; E [{ Φ }]
 
 -- ── Arithmetic helpers ────────────────────────────────────────────────────────
@@ -196,7 +199,7 @@ private theorem frame_8_add_eq {sp : UInt32} (hsp : (16 : UInt32) ≤ sp) :
 theorem rustOOM_instantiate [WasmSmallStepGS hlc α]
     (calleeIdx : Nat) (sp w1 w2 : UInt32) (hsp : (16 : UInt32) ≤ sp) :
     RustOOMContractAt (α := α) (hlc := hlc) calleeIdx sp w1 w2 := by
-  unfold RustOOMContractAt template_rust_oom
+  unfold RustOOMContractAt template_rust_oom rustOOMPrefix
   intro ptr len R v₀ code arity remainder controls calls s E Φ hcallee
   -- Convert precondition addresses to the form twp_store32 expects
   rw [← frame_add12_eq hsp, ← frame_add8_eq hsp]

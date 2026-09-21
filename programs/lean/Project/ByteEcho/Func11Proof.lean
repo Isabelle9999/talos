@@ -24,10 +24,10 @@ namespace Project.ByteEcho.Func11Proof
 
 open Wasm Wasm.SmallStep
 
-/-- `func11`'s body equals `template_rust_oom ++ [.call 10, .unreachable]`.
+/-- `func11`'s body equals `template_rust_oom 10`.
     Proved by kernel reduction of the WAT-decoded literal. -/
 theorem func11_body_eq :
-    Project.ByteEcho.func11 = template_rust_oom ++ [.call 10, .unreachable] := rfl
+    Project.ByteEcho.func11 = template_rust_oom 10 := rfl
 
 /-- `RustOOMContractAt` at callee abs-index 10 for ByteEcho's `rust_oom`.
     Contextual instantiation: `rustOOM_instantiate` applied at index 10.
