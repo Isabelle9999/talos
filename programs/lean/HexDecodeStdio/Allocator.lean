@@ -48,7 +48,7 @@ private theorem oomTrapTransfer
       Helements, HruntimeModules, HruntimeModulePoints,
       HruntimeInstances, Hinstance, HhostEnvs, HhostAuth, %Hfacts, Hexc⟩
   ihave %heq : ⌜store.wasm.host = host⌝ $$ [HhostAuth Hhost]
-  · iapply hostStateOwn_agree store.wasm.host host
+  · iapply (hostStateOwn_agree store.wasm.host host)
     iframe
   rw [heq]
   let newHost : Universal.State := {host with oom := { raised := true }}

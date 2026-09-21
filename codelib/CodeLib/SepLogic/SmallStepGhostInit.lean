@@ -402,16 +402,9 @@ macro "wasm_alloc_fixed_runtime_resources " config:term : tactic =>
 
 set_option hygiene false in
 /-- Build the auxiliary machine interpretation from freshly allocated state. -/
-macro "wasm_build_machine_aux " config:term : tactic =>
+macro "wasm_build_machine_aux " config:term " withHeap " heap:term : tactic =>
   `(tactic|
-    (first
-     | (ihave HheapDomain : heapDomainInterp _ $$ [HheapFrontierAuth]
-        next =>
-          unfold heapDomainInterp
-          iexists UInt32.size
-          iframe_pureexact using [HheapFrontierAuth] => HheapBelow)
-     | skip
-     ihave HexceptionInterp :
+    (ihave HexceptionInterp :
          exceptionInterp ($config).store.wasm.exns ($config).store.wasm.tagIds $$
          [Hexceptions HtagTable]
      next =>
@@ -429,7 +422,12 @@ macro "wasm_build_machine_aux " config:term : tactic =>
          next => iexact HtagTable
          next =>
            ipureexact List.prefix_rfl
-     ihave Hexc : machineAuxInterp _ ($config).store.wasm.mem.pages
+     ihave HheapDomain : heapDomainInterp ($heap) $$ [HheapFrontierAuth]
+     next =>
+       unfold heapDomainInterp
+       iexists UInt32.size
+       iframe_pureexact using [HheapFrontierAuth] => HheapBelow
+     ihave Hexc : machineAuxInterp ($heap) ($config).store.wasm.mem.pages
          ($config).store.wasm.exns ($config).store.wasm.tagIds $$
          [HmemoryPagesAuth HheapDomain HexceptionInterp]
      next =>
