@@ -25,10 +25,10 @@ namespace Project.Mergesort.Func28Proof
 
 open Wasm Wasm.SmallStep
 
-/-- `func28`'s body equals `template_rust_oom ++ [.call 20, .unreachable]`.
+/-- `func28`'s body equals `template_rust_oom 20`.
     Proved by kernel reduction of the WAT-decoded literal. -/
 theorem func28_body_eq :
-    Project.Mergesort.func28 = template_rust_oom ++ [.call 20, .unreachable] := rfl
+    Project.Mergesort.func28 = template_rust_oom 20 := rfl
 
 /-- `RustOOMContractAt` at callee abs-index 20 for Mergesort's `rust_oom`.
     Contextual instantiation: `rustOOM_instantiate` applied at index 20.
