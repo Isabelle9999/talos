@@ -9,6 +9,7 @@ import CodeLib.WordCodec
 import CodeLib.WordCodec.UInt32
 import CodeLib.RustStd.Frame
 import CodeLib.RustStd.Region
+import CodeLib.RustStd.Template
 import CodeLib.RustStd.MemArray
 import CodeLib.RustStd.MemArray.SmallStep
 import CodeLib.RustStd.MemFillLoop

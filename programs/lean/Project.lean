@@ -18,6 +18,7 @@ import Project.FloatRound.Spec
 import Project.FloatReinterpret.Spec
 import Project.FloatMinmax.Spec
 import Project.ByteEcho.Spec
+import Project.ByteEcho.Func11Proof
 import Project.Xor.Spec
 import Project.Mergesort.Spec
 import Project.Mergesort.Representations
@@ -27,3 +28,4 @@ import Project.Mergesort.ContractProofs
 import Project.Mergesort.DriverProof
 import Project.Mergesort.Proof
 import Project.RustVec.Spec
+import Project.Mergesort.Func28Proof
