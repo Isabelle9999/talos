@@ -4,6 +4,14 @@ import CodeLib.SepLogic.SmallStepTotalLifting
 /-!
 # `CodeLib.RustStd.Template`
 
+**Template rule**: a *template* is the function body with every *relocated
+immediate* — call targets (`mod-call` class), data addresses (`const` class),
+and table type indices (`call_indirect`) — abstracted as Lean parameters.  The
+body equations (`func.body = template ... args`) are proved by `rfl`; the
+contracts then hold uniformly across all crates, independent of the specific
+immediates each crate supplies.  The relocated classes are documented in
+`docs/std_inventory.md` under `mod-call` and `const`.
+
 Reusable contract for `_RNvNtCsebHcaeoSrxy_3std5alloc8rust_oom` (class `51821617ff5a`).
 
 The body is identical across every crate that links Rust's `std`, modulo the

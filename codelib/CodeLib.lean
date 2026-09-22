@@ -9,6 +9,8 @@ import CodeLib.WordCodec
 import CodeLib.RustStd.Frame
 import CodeLib.RustStd.Region
 import CodeLib.RustStd.Template
+import CodeLib.RustStd.AllocErrorHandler
+import CodeLib.RustStd.AllocErrorHookDispatch
 import CodeLib.RustStd.MemArray
 import CodeLib.RustStd.MemArray.SmallStep
 import CodeLib.RustStd.MemFillLoop
