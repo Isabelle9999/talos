@@ -93,6 +93,13 @@ inductive ResolvedImport (α : Type) where
   | host : HostFn α → ResolvedImport α
   | wasm : ModuleInstanceId → Nat → ResolvedImport α
 
+/-- Link-time error produced when a module's imports cannot all be resolved. -/
+inductive InstantiationError where
+  | unresolvedImport (module name : String)
+  | signatureMismatch (module name : String) (expected actual : FuncType)
+  | limitMismatch (module name : String)
+deriving Repr, BEq
+
 /-- Identity funcaddr mapping for a module: local function index `i` maps to
 global address `i`. Used as the default for `ModuleInstance.funcaddrs`. -/
 def ModuleInstance.identityFuncaddrs (m : Module) : Array Nat :=
@@ -141,6 +148,215 @@ shared `MachineStore.wasm` state, unlike real Wasm instance isolation. -/
 structure RuntimeEnv (α : Type) where
   instances : Array (ModuleInstance α)
   entry : ModuleInstanceId
+
+/-- Maps module names to instance IDs for cross-module import resolution. -/
+abbrev ImportRegistry := List (String × ModuleInstanceId)
+
+/-- Validate non-function imports (globals, tables, memories, tags) against the
+    exporting instances.  Called by `resolveImports`, so `instantiate` rejects
+    every mismatch.  Uses `limitMismatch` for value-type and mutability mismatches
+    on globals (no additional constructor needed). -/
+def validateNonFunctionImports {α : Type} (registry : ImportRegistry) (m : Module)
+    (instances : Array (ModuleInstance α)) : Except InstantiationError Unit := do
+  -- §4.5.4: global type matching — value type and mutability equal.
+  let _ ← (Array.range m.importedGlobals.length).mapM fun k =>
+    let (modName, impName) := m.importedGlobals[k]!
+    let impDecl? := m.globals[k]?
+    match registry.find? (·.1 = modName) with
+    | some (_, calleeId) =>
+      match instances[calleeId.id]? with
+      | some calleeInst =>
+        match calleeInst.module.globalExports.find? (·.1 = impName) with
+        | some (_, gIdx) =>
+          let actDecl? := calleeInst.module.globals[gIdx]?
+          let impType  := impDecl?.bind (·.declaredType)
+          let actType  := actDecl?.bind (·.declaredType)
+          let impMut   := impDecl?.map (·.isMut) |>.getD false
+          let actMut   := actDecl?.map (·.isMut) |>.getD false
+          if impType == actType && impMut == actMut then .ok ()
+          else .error (.limitMismatch modName impName)
+        | none =>
+          if calleeInst.module.exports.any (·.name = impName)
+              || calleeInst.module.tableExports.any (·.1 = impName)
+              || calleeInst.module.memoryExports.any (·.1 = impName)
+              || calleeInst.module.tagExports.any (·.1 = impName) then
+            .error (.signatureMismatch modName impName {} {})
+          else .error (.unresolvedImport modName impName)
+      | none => .error (.unresolvedImport modName impName)
+    | none => .error (.unresolvedImport modName impName)
+  -- §4.5.4: table type matching — element type, is64, and limits.
+  let _ ← (Array.range m.importedTables.length).mapM fun k =>
+    let (modName, impName) := m.importedTables[k]!
+    let impDecl? := m.tables[k]?
+    match registry.find? (·.1 = modName) with
+    | some (_, calleeId) =>
+      match instances[calleeId.id]? with
+      | some calleeInst =>
+        match calleeInst.module.tableExports.find? (·.1 = impName) with
+        | some (_, tIdx) =>
+          let actDecl? := calleeInst.module.tables[tIdx]?
+          let impElem  := impDecl?.map (·.elemType) |>.getD .funcref
+          let actElem  := actDecl?.map (·.elemType) |>.getD .funcref
+          let impIs64  := impDecl?.map (·.is64) |>.getD false
+          let actIs64  := actDecl?.map (·.is64) |>.getD false
+          let impMin   := impDecl?.map (·.min) |>.getD 0
+          let actMin   := actDecl?.map (·.min) |>.getD 0
+          let impMax   := impDecl?.bind (·.max)
+          let actMax   := actDecl?.bind (·.max)
+          if impElem != actElem || impIs64 != actIs64 then
+            .error (.signatureMismatch modName impName {} {})
+          else if actMin < impMin then
+            .error (.limitMismatch modName impName)
+          else match impMax with
+            | none => .ok ()
+            | some maxN => match actMax with
+              | none         => .error (.limitMismatch modName impName)
+              | some actMaxN =>
+                if actMaxN <= maxN then .ok ()
+                else .error (.limitMismatch modName impName)
+        | none =>
+          if calleeInst.module.exports.any (·.name = impName)
+              || calleeInst.module.globalExports.any (·.1 = impName)
+              || calleeInst.module.memoryExports.any (·.1 = impName)
+              || calleeInst.module.tagExports.any (·.1 = impName) then
+            .error (.signatureMismatch modName impName {} {})
+          else .error (.unresolvedImport modName impName)
+      | none => .error (.unresolvedImport modName impName)
+    | none => .error (.unresolvedImport modName impName)
+  -- §4.5.4: memory type matching — is64 and limits.
+  let _ ← (Array.range m.importedMemories.length).mapM fun k =>
+    let (modName, impName) := m.importedMemories[k]!
+    let impDecl? : Option MemDecl :=
+      if k = 0 then m.memory else m.extraMemories[k - 1]?
+    match registry.find? (·.1 = modName) with
+    | some (_, calleeId) =>
+      match instances[calleeId.id]? with
+      | some calleeInst =>
+        match calleeInst.module.memoryExports.find? (·.1 = impName) with
+        | some (_, mIdx) =>
+          let actDecl? : Option MemDecl :=
+            if mIdx = 0 then calleeInst.module.memory
+            else calleeInst.module.extraMemories[mIdx - 1]?
+          let impIs64  := impDecl?.map (·.is64) |>.getD false
+          let actIs64  := actDecl?.map (·.is64) |>.getD false
+          let impMin   := impDecl?.map (·.pagesMin.toNat) |>.getD 0
+          let actMin   := actDecl?.map (·.pagesMin.toNat) |>.getD 0
+          let impMax   := impDecl?.bind (·.pagesMax) |>.map (·.toNat)
+          let actMax   := actDecl?.bind (·.pagesMax) |>.map (·.toNat)
+          if impIs64 != actIs64 then
+            .error (.signatureMismatch modName impName {} {})
+          else if actMin < impMin then
+            .error (.limitMismatch modName impName)
+          else match impMax with
+            | none => .ok ()
+            | some maxN => match actMax with
+              | none         => .error (.limitMismatch modName impName)
+              | some actMaxN =>
+                if actMaxN <= maxN then .ok ()
+                else .error (.limitMismatch modName impName)
+        | none =>
+          if calleeInst.module.exports.any (·.name = impName)
+              || calleeInst.module.globalExports.any (·.1 = impName)
+              || calleeInst.module.tableExports.any (·.1 = impName)
+              || calleeInst.module.tagExports.any (·.1 = impName) then
+            .error (.signatureMismatch modName impName {} {})
+          else .error (.unresolvedImport modName impName)
+      | none => .error (.unresolvedImport modName impName)
+    | none => .error (.unresolvedImport modName impName)
+  -- §4.5.4: tag type matching — GC type equivalence when both sides record
+  -- their type index; structural FuncType equality otherwise.
+  let _ ← (Array.range m.importedTags.length).mapM fun k =>
+    let (modName, impName) := m.importedTags[k]!
+    let impType? := m.tags[k]?
+    match registry.find? (·.1 = modName) with
+    | some (_, calleeId) =>
+      match instances[calleeId.id]? with
+      | some calleeInst =>
+        match calleeInst.module.tagExports.find? (·.1 = impName) with
+        | some (_, tIdx) =>
+          let actType? := calleeInst.module.tags[tIdx]?
+          let typeOk : Bool :=
+            match m.tagTypeIdxes[k]?, calleeInst.module.tagTypeIdxes[tIdx]? with
+            | some (some impTyIdx), some (some expTyIdx) =>
+              gcTypeEquivCross calleeInst.module expTyIdx m impTyIdx
+            | _, _ => impType? == actType?
+          if typeOk then .ok ()
+          else .error (.signatureMismatch modName impName
+            (impType?.getD {}) (actType?.getD {}))
+        | none =>
+          if calleeInst.module.exports.any (·.name = impName)
+              || calleeInst.module.globalExports.any (·.1 = impName)
+              || calleeInst.module.tableExports.any (·.1 = impName)
+              || calleeInst.module.memoryExports.any (·.1 = impName) then
+            .error (.signatureMismatch modName impName {} {})
+          else .error (.unresolvedImport modName impName)
+      | none => .error (.unresolvedImport modName impName)
+    | none => .error (.unresolvedImport modName impName)
+  return ()
+
+/-- Resolve all imports of `m` against the registry and host environment.
+Wasm function imports look up the exporting instance in `instances` via the
+registry; host imports fall back to `hostEnv`.  Non-function imports (globals,
+tables, memories, tags) are validated by `validateNonFunctionImports`.
+Returns the first error encountered.
+Enforces §4.5.4 external type matching for all import kinds. -/
+def resolveImports {α : Type} (registry : ImportRegistry) (hostEnv : HostEnv α)
+    (m : Module) (instances : Array (ModuleInstance α)) :
+    Except InstantiationError (Array (ResolvedImport α)) :=
+  (Array.range m.imports.length).mapM (fun i =>
+    let imp := m.imports[i]!
+    let impType : FuncType := { params := imp.params, results := imp.results }
+    match registry.find? (·.1 = imp.module) with
+    | some (_, calleeId) =>
+      match instances[calleeId.id]? with
+      | some calleeInst =>
+        match calleeInst.module.findExport imp.name with
+        | some funcIdx =>
+          -- §4.5.4: function external type matching.
+          -- When both sides record their GC type index, use cross-module
+          -- iso-recursive subtyping (export ≤ import).  Fall back to
+          -- structural FuncType equality when either index is absent.
+          match calleeInst.module.funcSig? funcIdx with
+          | none => .error (.unresolvedImport imp.module imp.name)
+          | some exportSig =>
+            let typeOk : Bool :=
+              match calleeInst.module.funcTypeIdx? funcIdx,
+                    m.importTypeIdxes[i]? |>.bind id with
+              | some expTyIdx, some impTyIdx =>
+                gcTypeSubtypeCross calleeInst.module expTyIdx m impTyIdx
+              | _, _ => exportSig == impType
+            if !typeOk then
+              .error (.signatureMismatch imp.module imp.name impType exportSig)
+            else if funcIdx >= calleeInst.module.imports.length then
+              .ok (.wasm calleeId (funcIdx - calleeInst.module.imports.length))
+            else
+              -- Re-exported import: follow callee's already-resolved import.
+              match calleeInst.resolvedImports[funcIdx]? with
+              | some ri => .ok ri
+              | none    => .error (.unresolvedImport imp.module imp.name)
+        | none =>
+          -- §4.5.4: export exists but is a different external kind.
+          if calleeInst.module.globalExports.any (·.1 = imp.name)
+              || calleeInst.module.tableExports.any (·.1 = imp.name)
+              || calleeInst.module.memoryExports.any (·.1 = imp.name)
+              || calleeInst.module.tagExports.any (·.1 = imp.name) then
+            .error (.signatureMismatch imp.module imp.name impType {})
+          else
+            .error (.unresolvedImport imp.module imp.name)
+      | none => .error (.unresolvedImport imp.module imp.name)
+    | none =>
+      -- §4.5.4: host import — function type must match declared params/results.
+      match hostEnv.funcs[i]? with
+      | some fn =>
+        if fn.params == imp.params && fn.results == imp.results then
+          .ok (.host fn)
+        else
+          .error (.signatureMismatch imp.module imp.name impType
+            { params := fn.params, results := fn.results })
+      | none => .error (.unresolvedImport imp.module imp.name)) >>=
+  fun resolved =>
+  validateNonFunctionImports registry m instances >>= fun _ =>
+  .ok resolved
 
 /-- The instance currently executing.
 
@@ -7222,8 +7438,11 @@ def initConfig (instance_ : ModuleInstance α) (entry : Nat) (initial : Store α
 -- and own functions each get a fresh globally-unique funcaddr.
 def instantiate (config : Config α) (newModule : Module)
     (hostEnv : HostEnv α)
-    (resolvedImports : Array (ResolvedImport α)) :
-    Except InternalError (Config α × ModuleInstanceId) :=
+    (registry : ImportRegistry) :
+    Except InstantiationError (Config α × ModuleInstanceId) :=
+  match resolveImports registry hostEnv newModule config.store.runtime.instances with
+  | .error e => .error e
+  | .ok resolvedImports =>
   let newInstanceId : ModuleInstanceId := ⟨config.store.runtime.instances.size⟩
   -- Fresh funcaddrs start above the maximum existing one across all instances.
   let baseAddr : Nat :=

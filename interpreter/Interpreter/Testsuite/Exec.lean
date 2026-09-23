@@ -694,11 +694,9 @@ private def buildEnv (st : ScriptState) (m : Wasm.Module) (fuel : Nat)
               { invoke := fun s _ =>
                   .Trap s s!"unknown import {imp.module}.{imp.name}" }
           | _ =>
-            { invoke := fun s _ =>
-                .Trap s s!"unresolved import {imp.module}.{imp.name}" }
+            HostFn.unresolved imp
         | none =>
-          { invoke := fun s _ =>
-              .Trap s s!"unresolved import {imp.module}.{imp.name}" } }
+          HostFn.unresolved imp }
 
 /-- Spectest's ambient global values. -/
 private def spectestGlobal? : String → Option Wasm.Value
@@ -707,6 +705,41 @@ private def spectestGlobal? : String → Option Wasm.Value
   | "global_f32" => some (.f32 (666.6 : Float).toFloat32.toBits)
   | "global_f64" => some (.f64 (666.6 : Float).toBits)
   | _ => none
+
+/-- Synthetic spectest module for link-time import validation in assert_unlinkable.
+    Provides the declared shapes for all standard spectest exports without running
+    code; used to detect §4.5.4 type mismatches via the wasm registry path. -/
+private def spectestModuleDecl : Wasm.Module := {
+  funcs := [
+    { body := [] },                          -- print ()→()
+    { body := [], params := [.i32] },        -- print_i32
+    { body := [], params := [.i64] },        -- print_i64
+    { body := [], params := [.f32] },        -- print_f32
+    { body := [], params := [.f64] },        -- print_f64
+    { body := [], params := [.i32, .f32] },  -- print_i32_f32
+    { body := [], params := [.f64, .f64] },  -- print_f64_f64
+  ],
+  exports := [
+    { name := "print",         funcIdx := 0 },
+    { name := "print_i32",     funcIdx := 1 },
+    { name := "print_i64",     funcIdx := 2 },
+    { name := "print_f32",     funcIdx := 3 },
+    { name := "print_f64",     funcIdx := 4 },
+    { name := "print_i32_f32", funcIdx := 5 },
+    { name := "print_f64_f64", funcIdx := 6 },
+  ],
+  globals := [
+    { init := .i32 666, declaredType := some .i32, isMut := false },
+    { init := .i64 666, declaredType := some .i64, isMut := false },
+    { init := .f32 0,   declaredType := some .f32, isMut := false },
+    { init := .f64 0,   declaredType := some .f64, isMut := false },
+  ],
+  globalExports := [("global_i32", 0), ("global_i64", 1), ("global_f32", 2), ("global_f64", 3)],
+  tables := [{ min := 10, max := some 20 }],
+  tableExports := [("table", 0)],
+  memory := some { pagesMin := 1, pagesMax := some 2 },
+  memoryExports := [("memory", 0)],
+}
 
 /-- Copy imported entity values (globals/tables/memories) into a fresh
 initial store, then re-apply the module's active element and data
@@ -1507,6 +1540,8 @@ def runCommand
         let st' := { st with modules := st.modules.set! i slot' }
         return (commitSlot st' slot', mk outcome)
   | "assert_uninstantiable" =>
+    -- §4.5.4: start-function or active-segment trap after a successful link
+    -- (imports resolved).  Import-resolution failure is §4.5.3 / assert_unlinkable.
     let filename := jstr? cmd "filename" |>.getD ""
     let expected := jstr? cmd "text" |>.getD ""
     match (← decodeModuleFile s!"{wasmDir}/{filename}") with
@@ -1581,6 +1616,54 @@ def runCommand
               s!"expected instantiation trap `{expected}`, start returned"))
           | .OutOfFuel => return (st, mk .outOfFuel)
           | .Invalid error => return (st, mk (.interpreterError error))
+  | "assert_unlinkable" =>
+    -- §4.5.3: import-resolution failure at link time (not a start-function trap,
+    -- which is §4.5.4 / assert_uninstantiable).
+    let filename := jstr? cmd "filename" |>.getD ""
+    let expected := jstr? cmd "text" |>.getD ""
+    match (← decodeModuleFile s!"{wasmDir}/{filename}") with
+    | .error error =>
+      return (st, mk (.skipped s!"assert_unlinkable decode: {error}"))
+    | .ok m =>
+      -- Build wasm-only instances and registry from the script's registered modules,
+      -- then append a synthetic spectest instance so function-type and non-function
+      -- import checks can use the wasm path for spectest exports.
+      let (instances, registry) :=
+        st.registered.foldl (fun (insts, reg) (name, slotIdx) =>
+          match st.modules[slotIdx]? with
+          | some (.ok rm _ renv) =>
+            let id : Wasm.SmallStep.ModuleInstanceId := ⟨insts.size⟩
+            (insts.push { module := rm, host := renv }, (name, id) :: reg)
+          | _ => (insts, reg))
+        ((#[] : Array (Wasm.SmallStep.ModuleInstance Unit)),
+         ([] : Wasm.SmallStep.ImportRegistry))
+      let spectestId : Wasm.SmallStep.ModuleInstanceId := ⟨instances.size⟩
+      let instances := instances.push { module := spectestModuleDecl, host := {} }
+      let registry  := ("spectest", spectestId) :: registry
+      let linkConfig : Wasm.SmallStep.Config Unit :=
+        { expr := .done [],
+          store := { runtime := { instances := instances, entry := ⟨0⟩ },
+                     wasm := { globals := {}, mem := Wasm.Mem.empty 0, host := () } } }
+      match Wasm.SmallStep.instantiate linkConfig m {} registry with
+      | .error err =>
+        -- Pass when the error kind matches the spec's expected text.
+        -- "unknown import" maps to unresolvedImport; "incompatible import
+        -- type" maps to signatureMismatch / limitMismatch.  Any other
+        -- expected text (no unambiguous constructor mapping) accepts any
+        -- InstantiationError.
+        let textMatch := match expected with
+          | "unknown import" =>
+            match err with | .unresolvedImport .. => true | _ => false
+          | "incompatible import type" =>
+            match err with
+            | .signatureMismatch .. | .limitMismatch .. => true | _ => false
+          | _ => true
+        if textMatch then return (st, mk .pass)
+        else return (st, mk (.fail
+          s!"assert_unlinkable: expected '{expected}', got {repr err}"))
+      | .ok _ =>
+        return (st, mk (.fail
+          s!"assert_unlinkable: expected link failure for '{expected}', module linked"))
   | "assert_invalid" | "assert_malformed" =>
     -- The module is declared ill-formed; we pass when our decoder or the
     -- partial static validator rejects it, and fail only if we accept it.
