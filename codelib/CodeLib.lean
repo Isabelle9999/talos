@@ -12,6 +12,7 @@ import CodeLib.RustStd.Region
 import CodeLib.RustStd.Template
 import CodeLib.RustStd.AllocErrorHandler
 import CodeLib.RustStd.AllocErrorHookDispatch
+import CodeLib.RustStd.RawVec
 import CodeLib.RustStd.FinishGrow
 import CodeLib.RustStd.MemArray
 import CodeLib.RustStd.MemArray.SmallStep

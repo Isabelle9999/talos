@@ -195,7 +195,7 @@ theorem func6_after_alloc_nonempty {hlc : HasLC} {α : Type}
     R ∗ runtimeModuleOwn ⟨0⟩ Project.HexStdio.«module» ∗
       globalPointsToAt 0 0 (.i32 stackPtr) ∗
       pointsTo_u32 0 (stackPtr + 4)
-        (UInt32.ofNat (Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat input)) ∗
+        (UInt32.ofNat (Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat input)) ∗
       pointsTo_u32 0 (stackPtr + 8) output ∗
       pointsTo_u32 0 (stackPtr + 12) 0 ∗
       pointsTo_u32 0 (stackPtr + 16) old16 ∗
@@ -210,7 +210,7 @@ theorem func6_after_alloc_nonempty {hlc : HasLC} {α : Type}
       (R -∗ runtimeModuleOwn ⟨0⟩ Project.HexStdio.«module» -∗
         globalPointsToAt 0 0 (.i32 (stackPtr + 32)) -∗
         pointsTo_u32 0 result
-          (UInt32.ofNat (Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat input)) -∗
+          (UInt32.ofNat (Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat input)) -∗
         pointsTo_u32 0 (result + 4) output -∗
         pointsTo_u32 0 (result + 8)
           (UInt32.ofNat (Project.HexStdio.Spec.encode input).length) -∗
@@ -333,7 +333,7 @@ theorem func6_after_alloc_nonempty {hlc : HasLC} {α : Type}
       (R -∗ runtimeModuleOwn ⟨0⟩ Project.HexStdio.«module» -∗
         globalPointsToAt 0 0 (.i32 (stackPtr + 32)) -∗
         pointsTo_u32 0 result
-          (UInt32.ofNat (Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat input)) -∗
+          (UInt32.ofNat (Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat input)) -∗
         pointsTo_u32 0 (result + 4) output -∗
         pointsTo_u32 0 (result + 8)
           (UInt32.ofNat (Project.HexStdio.Spec.encode input).length) -∗
@@ -389,7 +389,7 @@ theorem func6_after_alloc_nonempty {hlc : HasLC} {α : Type}
       (UInt32.ofNat (2 * state.byteIndex + 1) + 1)
       Project.HexEncodeStdio.TotalIterator.sentinel stackPtr 1 1
       (output + UInt32.ofNat (2 * state.byteIndex + 1)) 0 0
-      (UInt32.ofNat (Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat input)) output
+      (UInt32.ofNat (Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat input)) output
       (Project.HexStdio.Spec.encode input) oldResultPair oldResultLen hstack
       hresult
     isplitl [Hglobal]
