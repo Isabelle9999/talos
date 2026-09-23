@@ -96,7 +96,7 @@ theorem encodeOutputStore_preserves_read32
 theorem encode_allocation_capacity (input : List UInt8)
     (hpos : input ≠ []) (hsmall : 2 * input.length < 2 ^ 31) :
     reserveNewCapacity 0 (UInt32.ofNat input.length <<< 1) 0 =
-      UInt32.ofNat (Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat input) := by
+      UInt32.ofNat (Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat input) := by
   have hlen : input.length < UInt32.size := by
     norm_num [UInt32.size] at hsmall ⊢
     omega
@@ -334,7 +334,7 @@ theorem encode_reserve_after_read
       rw [hnewCapacity]
       apply UInt32.toInt32_not_negative_of_small
       rw [UInt32.toNat_ofNat_of_lt']
-      · simp [Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat]
+      · simp [Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat]
         omega
       · change max 8 (2 * input.length) < UInt32.size
         norm_num [UInt32.size]
@@ -481,7 +481,7 @@ private theorem encode_function_finishes {hlc : HasLC}
     (hentry : store.runtime.entry = ⟨0⟩)
     (hhostOutput : store.wasm.host.stdio.output = [])
     (hcapacityEq : outputCapacity =
-      UInt32.ofNat (Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat input))
+      UInt32.ofNat (Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat input))
     (hcapacityNat : outputCapacity.toNat = max 8 (2 * input.length))
     (hlimitSmall : output.toNat + 2 * input.length < UInt32.size)
     (hinputEnd : inputPtr.toNat + input.length ≤ output.toNat)
@@ -496,7 +496,7 @@ private theorem encode_function_finishes {hlc : HasLC}
       runtimeModuleOwn ⟨0⟩ Project.HexStdio.«module» ∗
       globalPointsToAt 0 0 (.i32 1048512) ∗
       pointsTo_u32 0 (1048512 + 4)
-        (UInt32.ofNat (Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat input)) ∗
+        (UInt32.ofNat (Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat input)) ∗
       pointsTo_u32 0 (1048512 + 8) output ∗
       pointsTo_u32 0 (1048512 + 12) 0 ∗
       pointsTo_u32 0 (1048512 + 16)
@@ -804,7 +804,7 @@ private theorem encode_prefix_finishes {hlc : HasLC}
     (hentry : store.runtime.entry = ⟨0⟩)
     (hhostOutput : store.wasm.host.stdio.output = [])
     (hcapacityEq : outputCapacity =
-      UInt32.ofNat (Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat input))
+      UInt32.ofNat (Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat input))
     (hcapacityNat : outputCapacity.toNat = max 8 (2 * input.length))
     (hlimitSmall : output.toNat + 2 * input.length < UInt32.size)
     (hfinalRuntimeEq : finalStore.runtime = store.runtime)
@@ -956,7 +956,7 @@ private theorem encode_prefix_finishes {hlc : HasLC}
       rw [hfinalRuntimeEq]]
     iexact Hruntime
   ihave HcapCall : pointsTo_u32 0 ((1048512 : UInt32) + 4)
-      (UInt32.ofNat (Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat input)) $$ [Hcap]
+      (UInt32.ofNat (Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat input)) $$ [Hcap]
   · rw [show (1048512 : UInt32) + 4 = 1048516 by decide,
       ← hcapacityEq]
     iexact Hcap
@@ -1009,7 +1009,7 @@ private theorem encode_after_alloc_finish
     (hentry : store.runtime.entry = ⟨0⟩)
     (hhostOutput : store.wasm.host.stdio.output = [])
     (hcapacityEq : outputCapacity =
-      UInt32.ofNat (Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat input))
+      UInt32.ofNat (Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat input))
     (hcapacityNat : outputCapacity.toNat = max 8 (2 * input.length))
     (hlimitSmall : output.toNat + 2 * input.length < UInt32.size)
     (hlimitBound :
@@ -1160,7 +1160,7 @@ theorem encode_after_alloc_terminates
     omega
   have houtput : output = inputBump := allocatorPtr_one_eq _ hinputBumpNe
   have hcapacityEq : outputCapacity =
-      UInt32.ofNat (Project.HexEncodeStdio.TotalEncodeLoop.encodeCapacityNat input) :=
+      UInt32.ofNat (Project.HexEncodeStdio.EncodeLoop.encodeCapacityNat input) :=
     encode_allocation_capacity input hinput (by omega)
   have hcapacityNat : outputCapacity.toNat =
       max 8 (2 * input.length) := by
