@@ -14,6 +14,7 @@ import CodeLib.RustStd.MemFillLoop
 import CodeLib.RustStd.MemCopyLoop
 import CodeLib.RustStd.UInt
 import CodeLib.RustStd.Option
+import CodeLib.RustStd.Idioms
 import CodeLib.RustStd.U64.Basic
 import CodeLib.RustStd.U64.AbsDiff
 import CodeLib.RustStd.U64.Add
