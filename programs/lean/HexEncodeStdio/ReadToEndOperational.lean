@@ -1,3 +1,4 @@
+import CodeLib.RustStd.RawVec
 import HexEncodeStdio.ReadChunkFull
 
 namespace Project.HexEncodeStdio
@@ -380,10 +381,6 @@ def readToEndContinuedAfterAdapterConfig
           control := controls
           returningInstance := store.runtime.entry } :: calls⟩
     store := store }
-
-def readToEndNewCapacity (capacity : UInt32) : UInt32 :=
-  if (32 : UInt32) + capacity > capacity <<< 1 then (32 : UInt32) + capacity
-  else capacity <<< 1
 
 def readToEndGrowthControls : List ControlFrame :=
   blockControl readToEndGrowthCheck (readToEndIteration6.drop 1) ::

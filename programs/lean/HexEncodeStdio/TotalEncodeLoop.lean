@@ -4,12 +4,14 @@ import HexEncodeStdio.Helpers
 import HexEncodeStdio.TotalHelpers
 import HexEncodeStdio.Hex
 import HexEncodeStdio.TotalIterator
+import HexEncodeStdio.EncodeLoop
 
 namespace Project.HexEncodeStdio.TotalEncodeLoop
 
 open Wasm
 open Iris Iris.BI Iris.ProgramLogic Language.Notation Iris.Std
 open Wasm.SepLogic Wasm.SmallStep
+open Project.HexEncodeStdio.EncodeLoop (encodeCapacityNat)
 
 private theorem twp_leU {hlc : HasLC} {α : Type} [WasmSmallStepGS hlc α]
     {s : Stuckness} {E : CoPset}
@@ -93,11 +95,6 @@ abbrev loopLocals (result stackPtr output : UInt32)
     {input : List UInt8} (state : EncodeLoopState input) : Locals :=
   encodeLocals result (UInt32.ofNat (loopPosition state))
     (loopDigit state).toUInt32 stackPtr state.oldLen state.oldAscii state.dest 0 0
-
-/-- Capacity selected by `RawVec::grow_amortized` for an initially empty byte
-vector.  Rust enforces a minimum non-zero allocation of eight bytes. -/
-abbrev encodeCapacityNat (input : List UInt8) : Nat :=
-  max 8 (2 * input.length)
 
 /-- Owned state at the top of one encode-loop iteration.  Only the initialized
 prefix is constrained; the unused allocation tail is deliberately framed. -/

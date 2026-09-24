@@ -1,4 +1,5 @@
 import Project.Mergesort.Func0Proof
+import CodeLib.RustStd.GrowAmortized
 
 /-!
 # Proof of the generated RawVec reserve wrapper
@@ -553,3 +554,14 @@ theorem func1_correct_of [WasmSmallStepGS hlc Universal.State]
         iapply Hoom $$ Hsp' Hreserve Hvec Hbump Hstreams
 
 end Project.Mergesort.Func1Proof
+
+section GrowAmortizedTemplate
+open Wasm Wasm.SmallStep
+
+theorem func1_body_eq : Project.Mergesort.func1 = template_grow_amortized 46 3 := rfl
+
+theorem func1_growAmortized [WasmSmallStepGS hlc α] :
+    GrowAmortizedContractAt (α := α) (hlc := hlc) 46 3 :=
+  growAmortized_instantiate 46 3
+
+end GrowAmortizedTemplate

@@ -1,3 +1,4 @@
+import CodeLib.RustStd.RawVec
 import HexEncodeStdio.VectorGrowOperational
 
 namespace Project.HexEncodeStdio
@@ -8,22 +9,6 @@ open Wasm.SmallStep
 /-! Operational control flow for module function 5 (`func2Def`), the byte
 vector reserve routine used by `read_chunk` and by the decoder's final append.
 -/
-
-def reserveRequired (length additional : UInt32) : UInt32 :=
-  length + additional
-
-def reserveDoubled (capacity : UInt32) : UInt32 :=
-  capacity <<< 1
-
-def reserveCandidate (length additional capacity : UInt32) : UInt32 :=
-  if reserveRequired length additional > reserveDoubled capacity then
-    reserveRequired length additional
-  else reserveDoubled capacity
-
-def reserveNewCapacity (length additional capacity : UInt32) : UInt32 :=
-  if reserveCandidate length additional capacity > 8 then
-    reserveCandidate length additional capacity
-  else 8
 
 def reserveAfterGrow : Program := func2.drop 31
 
@@ -96,11 +81,6 @@ def reserveGrowCall
         control := controls
         returningInstance := store.runtime.entry } :: calls⟩,
     reserveFrameStore store frame⟩
-
-def reserveVectorStore (store : MachineStore Universal.State)
-    (vector data capacity : UInt32) : MachineStore Universal.State :=
-  let mem1 := store.wasm.mem.write32 vector capacity
-  { store with wasm := { store.wasm with mem := mem1.write32 (vector + 4) data } }
 
 def reserveFinishStore (store : MachineStore Universal.State)
     (vector data capacity sp : UInt32) : MachineStore Universal.State :=
