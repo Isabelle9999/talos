@@ -1,4 +1,5 @@
 import Project.Mergesort.ContractProofs
+import CodeLib.RustStd.FinishGrow
 
 /-!
 # Proof of the generated RawVec grow wrapper
@@ -665,5 +666,23 @@ theorem func0_correct_of [WasmSmallStepGS hlc Universal.State]
               isplitr_pureexact hsource
               · iexact Hblock'
             iapply Hoom $$ Hresult Hsource Hbump Hstreams
+
+section FinishGrowTemplate
+
+open Wasm Wasm.SmallStep
+
+/-- `func0`'s body equals `template_finish_grow 11 7 8`.
+    Proved by kernel reduction of the WAT-decoded literal. -/
+theorem func0_body_eq :
+    Project.Mergesort.func0 = template_finish_grow 11 7 8 := rfl
+
+/-- `FinishGrowContractAt` at call-target triple `(11, 7, 8)` for
+    Mergesort's `finish_grow`.  Contextual instantiation:
+    `finishGrow_instantiate` applied at indices 11, 7, 8. -/
+theorem func0_finishGrow [WasmSmallStepGS hlc α] :
+    FinishGrowContractAt (α := α) (hlc := hlc) 11 7 8 :=
+  finishGrow_instantiate 11 7 8
+
+end FinishGrowTemplate
 
 end Project.Mergesort.Func0Proof
