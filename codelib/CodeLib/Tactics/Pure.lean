@@ -8,7 +8,7 @@ namespace CodeLib.Tactics
 /-- Return the last string component of `n` as a fresh simple `Name`.
 Used to turn a fully-qualified constructor name such as
 `Wasm.Instruction.const` into the registry key `Name.mkSimple "const"`. -/
-private def nameLastSimple : Name → Name
+def nameLastSimple : Name → Name
   | .str _ s => .str .anonymous s
   | n        => n
 
@@ -18,7 +18,7 @@ modality key string:
 - `"twp"` for `TotalWp.totalWp`  (notation `WP e @ s; E [{ Φ }]`, WeakestPre.lean:72)
 - `"wp"`  for `Wp.wp`            (notation `WP e @ s; E {{ Φ }}`, WeakestPre.lean:55)
 Throws if neither matches. -/
-private def unwrapIrisGoal (goalTy : Expr) : MetaM (Expr × String) := do
+def unwrapIrisGoal (goalTy : Expr) : MetaM (Expr × String) := do
   let goalTy := goalTy.consumeMData
   let fn := goalTy.getAppFn
   -- Direct case: TotalWp.totalWp or Wp.wp is the head
@@ -49,7 +49,7 @@ where `thread.code` reduces (under default-transparency `whnf`) to a concrete
 `List Instruction`.  Returns `(ctorKey, modality)` where `ctorKey` is the
 unqualified constructor name (e.g. `Name.mkSimple "const"`) and `modality`
 is `"twp"` or `"wp"`. -/
-private def instrHeadKey (goal : MVarId) : MetaM (Name × String) := do
+def instrHeadKey (goal : MVarId) : MetaM (Name × String) := do
   let goalTy ← goal.getType >>= instantiateMVars
   let (wpExpr, modality) ← unwrapIrisGoal goalTy
   let args := wpExpr.getAppArgs
@@ -110,9 +110,13 @@ elab "wasm_pure" : tactic => do
   | none =>
     throwError "wasm_pure: no rule registered for {ctorKey}"
   | some entry =>
+    match entry.kind with
+    | .mem _ =>
+      throwError "wasm_pure: rule for {ctorKey} is a mem rule; use wasm_mem"
+    | .pure needsRfl =>
     let thmTerm : TSyntax `term := ⟨(mkIdent entry.thmName).raw⟩
     let pmt : TSyntax `pmTerm ←
-      if entry.needsRfl then do
+      if needsRfl then do
         let rflTerm : TSyntax `term := ⟨(mkIdent `rfl).raw⟩
         let appExpr ← `($thmTerm $rflTerm)
         `(pmTerm| $appExpr:term)
@@ -147,9 +151,14 @@ private partial def wasmPuresLoop : TacticM Unit := do
     catch _ => pure none
   match maybeEntry with
   | none => return
-  | some _ =>
-    evalTactic (← `(tactic| wasm_pure))
-    wasmPuresLoop
+  | some entry =>
+    match entry.kind with
+    | .mem _ =>
+      evalTactic (← `(tactic| wasm_mem))
+      wasmPuresLoop
+    | .pure _ =>
+      evalTactic (← `(tactic| wasm_pure))
+      wasmPuresLoop
 
 elab "wasm_pures" : tactic => wasmPuresLoop
 

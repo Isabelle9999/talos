@@ -1,5 +1,6 @@
 import CodeLib.Tactics.Rule
 import CodeLib.SepLogic.SmallStepTotalLifting
+import CodeLib.SepLogic.SmallStepTotalLiftingBytes
 import CodeLib.SepLogic.SmallStepLifting
 
 /-!
@@ -14,6 +15,11 @@ The rule-to-constructor correspondence and the `rfl` flag are copied verbatim
 from the `macro_rules` arms at `SmallStepTotalLifting.lean:1664–1728` (twp)
 and `SmallStepLifting.lean:780–833` (wp).
 -/
+
+-- Forward syntax declaration so Pure.lean can quote `wasm_mem` before Mem.lean
+-- defines its elaborator.  The `@[tactic wasm_mem]` attribute in Mem.lean wires
+-- up the implementation; at Pure.lean's compile time, only the syntax is needed.
+syntax (name := wasm_mem) "wasm_mem" ("using" "[" term,* "]")? : tactic
 
 -- ─── TWP rules (modality `twp`, notation `[{ Φ }]`) ──────────────────────────
 
@@ -53,6 +59,27 @@ attribute [wasm_rule twp iff rfl]        Wasm.SmallStep.twp_iff
 
 -- Sentinel for empty-code rule (fires when thread.code = []):
 attribute [wasm_rule twp nil rfl]        Wasm.SmallStep.twp_exitControl
+
+-- ─── TWP memory and global rules ─────────────────────────────────────────────
+-- Registered with `wasm_mem_rule <modality> <head> <width> [<_addr-variant>?]`.
+-- `wasm_mem` uses the _addr variant when the instruction offset is zero.
+attribute [wasm_mem_rule twp load8U  byte Wasm.SmallStep.twp_load8U_addr]
+    Wasm.SmallStep.twp_load8U
+attribute [wasm_mem_rule twp store8  byte Wasm.SmallStep.twp_store8_addr]
+    Wasm.SmallStep.twp_store8
+attribute [wasm_mem_rule twp load32  u32  Wasm.SmallStep.twp_load32_addr]
+    Wasm.SmallStep.twp_load32
+attribute [wasm_mem_rule twp store32 u32  Wasm.SmallStep.twp_store32_addr]
+    Wasm.SmallStep.twp_store32
+-- No _addr variant for load64 in the codebase; the general rule handles offset 0 too.
+attribute [wasm_mem_rule twp load64  u64]
+    Wasm.SmallStep.twp_load64
+attribute [wasm_mem_rule twp store64 u64  Wasm.SmallStep.twp_store64_addr]
+    Wasm.SmallStep.twp_store64
+attribute [wasm_mem_rule twp globalGet global]
+    Wasm.SmallStep.twp_globalGet
+attribute [wasm_mem_rule twp globalSet global]
+    Wasm.SmallStep.twp_globalSet
 
 -- Sentinel for the scalar-float fallback (fires when evalScalarFloat0? succeeds):
 attribute [wasm_rule twp scalarFloat0 rfl] Wasm.SmallStep.twp_scalarFloat0

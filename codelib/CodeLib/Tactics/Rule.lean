@@ -4,28 +4,42 @@ open Lean
 
 namespace CodeLib.Tactics
 
-/-- Data stored for each registered TWP rule. -/
+/-- Extra data for a memory/global step rule registered via `@[wasm_rule … mem …]`. -/
+structure WasmMemRuleInfo where
+  predWidth     : String  -- "u32" | "u64" | "byte" | "global"
+  addrVariantThm : Name   -- offset-zero `_addr` theorem, or .anonymous
+  deriving Inhabited
+
+/-- Kind tag distinguishing pure-step rules from memory/global rules. -/
+inductive WasmRuleKind
+  | pure (needsRfl : Bool)
+  | mem  (info : WasmMemRuleInfo)
+  deriving Inhabited
+
+/-- Data stored for each registered TWP/WP rule. -/
 structure WasmRuleEntry where
-  thmName  : Name  -- fully-qualified theorem name
-  needsRfl : Bool  -- true → `iapply thm rfl`, false → `iapply thm`
+  thmName : Name
+  kind    : WasmRuleKind
   deriving Inhabited
 
 -- NameMap is core Lean (RBMap Name α Name.lt); no extra import needed.
 -- Key combines modality and ctor into one Name: e.g. twp ++ const = `twp.const`.
 abbrev WasmRuleMap := NameMap WasmRuleEntry
 
--- NOTE: SimplePersistentEnvExtension is standard Lean 4 stdlib API, but is not
--- used elsewhere in this repo. All existing attributes in Attrs.lean use
--- registerBuiltinAttribute with no-op `add` callbacks (marker-only storage).
--- Using addEntry here for persistent cross-module state is the one novel API
--- pattern introduced by this file.
-private def wasmRuleAddEntry (m : WasmRuleMap) (entry : Name × Name × Name × Bool) :
-    WasmRuleMap :=
-  let (mod, ctor, thm, rfl_) := entry
-  m.insert (mod ++ ctor) { thmName := thm, needsRfl := rfl_ }
+-- Flat tuple encoding:
+-- (modality, ctor, thm, needsRfl, isMem, predWidth, addrVariant)
+-- Pure rules: (mod, ctor, thm, needsRfl, false, "", .anonymous)
+-- Mem rules:  (mod, ctor, thm, false,    true,  width, addrVariant)
+private def wasmRuleAddEntry (m : WasmRuleMap)
+    (entry : Name × Name × Name × Bool × Bool × String × Name) : WasmRuleMap :=
+  let (mod, ctor, thm, needsRfl, isMem, predWidth, addrVariant) := entry
+  let kind : WasmRuleKind :=
+    if isMem then .mem { predWidth, addrVariantThm := addrVariant }
+    else .pure needsRfl
+  m.insert (mod ++ ctor) { thmName := thm, kind }
 
 initialize wasmRuleExt : SimplePersistentEnvExtension
-    (Name × Name × Name × Bool) WasmRuleMap ←
+    (Name × Name × Name × Bool × Bool × String × Name) WasmRuleMap ←
   registerSimplePersistentEnvExtension {
     addEntryFn    := wasmRuleAddEntry
     addImportedFn := fun nss =>
@@ -33,37 +47,51 @@ initialize wasmRuleExt : SimplePersistentEnvExtension
         ns.foldl wasmRuleAddEntry m) (∅ : WasmRuleMap)
   }
 
-/-- Look up the registered rule for a given modality and instruction constructor
-last-component name (e.g. `Name.mkSimple "const"` for `Instruction.const`).
-Returns `none` if no rule has been registered. -/
+/-- Look up the registered rule for a given modality and instruction constructor. -/
 def getWasmRule (env : Environment) (modality : Name) (ctor : Name) :
     Option WasmRuleEntry :=
   (wasmRuleExt.getState env).find? (modality ++ ctor)
 
-/-- `@[wasm_rule <modality> <head>]` or `@[wasm_rule <modality> <head> rfl]`.
-Register a theorem as the TWP rule for the given instruction constructor.
-`<modality>` is currently always `twp`.
-`<head>` is the unqualified constructor name of `Wasm.Instruction`
-(e.g. `const`, `add`, `localGet`) or a sentinel (`nil` for empty-code rules,
-`scalarFloat0` for the scalar-float fallback). -/
--- `&"rfl"` is the non-reserved keyword form: `rfl` is recognised only in this
--- syntactic position and does not become a globally reserved token in importers.
--- Pattern evidenced by Batteries.Tactic.Lint.Basic:140.
-syntax (name := wasm_rule) "wasm_rule" ident ident (&"rfl")? : attr
+-- Pure form: `@[wasm_rule <modality> <head>]` or `@[wasm_rule <modality> <head> rfl]`
+syntax (name := wasm_rule)     "wasm_rule"     ident ident (&"rfl")? : attr
+-- Mem form:  `@[wasm_mem_rule <modality> <head> <width> [<addrVariantThm>]?]`
+-- Note: we avoid using "mem" as a keyword atom here because Lean 4 registers it
+-- globally, which would break uses of `mem` as a field name elsewhere.
+syntax (name := wasm_mem_rule) "wasm_mem_rule" ident ident  ident   (ident)? : attr
+
+private def wasmRuleAddHandler (thmName : Name) (stx : Syntax) (_ : AttributeKind) : AttrM Unit := do
+  let modality := stx[1].getId
+  let head     := stx[2].getId
+  -- Pure form: stx[3] is optional (&"rfl")
+  let needsRfl := !stx[3].isNone
+  modifyEnv (wasmRuleExt.addEntry · (modality, head, thmName, needsRfl, false, "", .anonymous))
+
+private def wasmMemRuleAddHandler (thmName : Name) (stx : Syntax) (_ : AttributeKind) : AttrM Unit := do
+  -- Mem form: stx[1]=modality, stx[2]=head, stx[3]=predWidth, stx[4]=optional addrVariant
+  let modality  := stx[1].getId
+  let head      := stx[2].getId
+  let predWidth := stx[3].getId.getString!
+  let addrVariant : Name :=
+    if stx[4].isNone then .anonymous
+    else
+      let inner := stx[4].getArgs
+      if inner.size > 0 then inner[0]!.getId else .anonymous
+  modifyEnv (wasmRuleExt.addEntry · (modality, head, thmName, false, true, predWidth, addrVariant))
 
 initialize registerBuiltinAttribute {
   name            := `wasm_rule
-  descr           := "Register a theorem as the TWP rule for an instruction constructor."
+  descr           := "Register a TWP/WP pure-step rule for an instruction constructor."
   applicationTime := .afterCompilation
-  add             := fun thmName stx _ => do
-    -- stx layout: [0] = "wasm_rule" atom, [1] = modality ident,
-    --             [2] = head ident,       [3] = optional (&"rfl")
-    -- Index-based access follows Batteries.Tactic.Lint.Basic:146.
-    let modality := stx[1].getId
-    let head     := stx[2].getId
-    let needsRfl := !stx[3].isNone
-    modifyEnv (wasmRuleExt.addEntry · (modality, head, thmName, needsRfl))
-  erase := fun _ => pure ()
+  add             := wasmRuleAddHandler
+  erase           := fun _ => pure ()
+}
+
+initialize registerBuiltinAttribute {
+  name            := `wasm_mem_rule
+  descr           := "Register a TWP/WP memory/global step rule for an instruction constructor."
+  applicationTime := .afterCompilation
+  add             := wasmMemRuleAddHandler
+  erase           := fun _ => pure ()
 }
 
 end CodeLib.Tactics

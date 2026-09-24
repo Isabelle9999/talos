@@ -1808,6 +1808,36 @@ theorem twp_load32_addr
     wasm_twp_frame
       iapply_exact Htwp with Hword
 
+/-- `i32.store32` at offset 0, phrased directly on `address` rather than
+`address + 0`, keeping Iris's unifier from having to see through the
+offset addition. -/
+theorem twp_store32_addr
+    {params localValues values : List Value}
+    {address value : UInt32} {code : Program} {arity : Nat}
+    {remainder : List Value} {controls : List ControlFrame}
+    {calls : List CallFrame} (oldWord : UInt32)
+    (h1 : (address + 1).toNat = address.toNat + 1)
+    (h2 : (address + 2).toNat = address.toNat + 2)
+    (h3 : (address + 3).toNat = address.toNat + 3) :
+    let current : ThreadState α :=
+      ⟨⟨params, localValues, .i32 value :: .i32 address :: values⟩,
+        .store32 0 :: code, arity, remainder, controls, calls⟩
+    let next : ThreadState α :=
+      ⟨⟨params, localValues, values⟩,
+        code, arity, remainder, controls, calls⟩
+    pointsTo_u32 0 address oldWord -∗
+    (pointsTo_u32 0 address value -∗
+      WP (Expr.running next : Expr α) @ s; E [{ Φ }]) -∗
+      WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
+  dsimp only
+  simpa only [UInt32.add_zero] using
+    (twp_store32 (α := α) (s := s) (E := E) (Φ := Φ)
+      (address := address) (offset := 0) (value := value)
+      (params := params) (localValues := localValues) (values := values)
+      (code := code) (arity := arity) (remainder := remainder)
+      (controls := controls) (calls := calls) oldWord (by simp)
+      (by simpa using h1) (by simpa using h2) (by simpa using h3))
+
 end terminalGenericHelpers
 
 end Wasm.SmallStep
