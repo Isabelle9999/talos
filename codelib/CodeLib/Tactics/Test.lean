@@ -1,6 +1,7 @@
 import CodeLib.SepLogic.SmallStepAdequacyExamples
 import CodeLib.Tactics.Pure
 import CodeLib.Tactics.Mem
+import CodeLib.Tactics.Control
 
 /-!
 # `wasm_pures` regression tests
@@ -299,6 +300,9 @@ theorem test_wasm_mem_arrayAt_store :
 -- ─── Test 15: #guard_msgs — "address in array region but no index found" ──────
 -- Verifies that wasm_mem emits the correct error when the effective address
 -- is in the array region's span but is not aligned to the element stride.
+-- ─── Tests 16–17: #guard_msgs — wasm_loop / wasm_call head errors ────────────
+-- Verify that wasm_loop and wasm_call emit their named errors when the head
+-- instruction is not .loop or .call respectively.
 
 /-- error: wasm_mem: address 9 lies in array region Harray (base 4) but no cell index was found for stride 4 -/
 #guard_msgs in
@@ -309,6 +313,26 @@ example (a b c : UInt32) :
     WP (.running ⟨⟨[], [], [.i32 9]⟩, [.load32 0], 1, [], [], []⟩ : Expr α)
       @ s; E [{ Φ }] := by
   iintro ⟨Harray, Hcont⟩; wasm_mem
+
+-- ─── Test 16: #guard_msgs — wasm_loop head error ─────────────────────────────
+
+/-- error: wasm_loop: head instruction is not .loop (got const) -/
+#guard_msgs in
+example :
+    WP (.running ⟨⟨[], [], []⟩, [.const 0], 1, [], [], []⟩ : Expr α) @ s; E [{ Φ }] ⊢
+    WP (.running ⟨⟨[], [], []⟩, [.const 0], 1, [], [], []⟩ : Expr α) @ s; E [{ Φ }] := by
+  iintro H
+  wasm_loop _ using _, _, _
+
+-- ─── Test 17: #guard_msgs — wasm_call head error ─────────────────────────────
+
+/-- error: wasm_call: head instruction is not .call (got const) -/
+#guard_msgs in
+example :
+    WP (.running ⟨⟨[], [], []⟩, [.const 0], 1, [], [], []⟩ : Expr α) @ s; E [{ Φ }] ⊢
+    WP (.running ⟨⟨[], [], []⟩, [.const 0], 1, [], [], []⟩ : Expr α) @ s; E [{ Φ }] := by
+  iintro H
+  wasm_call _
 
 end wasmPuresTests
 
