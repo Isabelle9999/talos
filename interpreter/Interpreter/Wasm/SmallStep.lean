@@ -1492,14 +1492,6 @@ private def stepPlainChecked?
                   control := []
                   calls := caller :: thread.calls },
                 store⟩))
-      -- Cross-instance dispatch asymmetry: only `.call` and `.callIndirect`
-      -- consult `resolvedImports` and dispatch to another instance's wasm
-      -- function. `returnCall`, `returnCallIndirect`, `callRef`, and
-      -- `returnCallRef` on an import resolved as `.wasm _ _` fall through to
-      -- `.error "unresolved host function"` below.
-      -- TODO(module-linking): extend tail calls and typed function
-      -- references with cross-instance dispatch (needs a tail-call variant
-      -- of the `returningInstance` bookkeeping).
       | .returnCall functionIndex =>
         if functionIndex < store.runtime.currentModule.imports.length then
           match store.runtime.currentModule.imports[functionIndex]?,
@@ -1536,6 +1528,27 @@ private def stepPlainChecked?
                     code := []
                     control := [throwingFrame] },
                   { store with wasm }⟩))
+          | some imp, none =>
+            match store.runtime.currentInstance.resolvedImports[functionIndex]? with
+            | some (.wasm calleeId localIdx) =>
+              match store.runtime.instances[calleeId.id]? with
+              | none => .error ⟨s!"returnCallCrossInstance: instance {calleeId.id} not found"⟩
+              | some calleeInstance =>
+                match calleeInstance.module.funcs[localIdx]? with
+                | none => .error ⟨s!"returnCallCrossInstance: function {localIdx} not found"⟩
+                | some fn =>
+                  let args := (thread.locals.values.take imp.params.length).reverse
+                  .ok (some (.administrative .callCrossInstance,
+                    ⟨.running
+                      { locals := fn.toLocals args
+                        code := fn.body
+                        resultArity := thread.resultArity
+                        callerRemainder := thread.callerRemainder
+                        control := []
+                        calls := thread.calls },
+                      { store with runtime :=
+                          { store.runtime with entry := calleeId } }⟩))
+            | _ => .error ⟨s!"unresolved import: index {functionIndex}"⟩
           | _, _ => .error ⟨s!"unresolved host function: index {functionIndex}"⟩
         else
           match store.runtime.currentModule.funcs[
@@ -1709,74 +1722,111 @@ private def stepPlainChecked?
             | some (.funcref none) =>
               .ok (some (.instruction instr,
                 ⟨.trapped (.uninitializedElement elementIndex), store⟩))
-            | some (.funcref (some functionIndex)) =>
-              if functionIndex < store.runtime.currentModule.imports.length then
-                match store.runtime.currentModule.imports[functionIndex]?,
-                    store.runtime.currentHost.funcs[functionIndex]?,
-                    store.runtime.currentModule.funcSig? functionIndex,
-                    store.runtime.currentModule.types[typeIndex]? with
-                | some imp, some hostFunction, some signature, some expected =>
-                  if store.runtime.currentModule.indirectCallTypeOk
-                      functionIndex typeIndex signature expected = true then
-                    let hostArgs := (values.take imp.params.length).reverse
-                    match hostFunction.invoke store.wasm hostArgs with
-                    | .Return results wasm =>
-                      .ok (some (.host functionIndex,
-                        ⟨.running
-                          { thread with
-                            locals :=
-                              { thread.locals with
-                                values := results.take imp.results.length }
-                            code := []
-                            control := [] },
-                          { store with wasm }⟩))
-                    | .Trap wasm message =>
-                      .ok (some (.host functionIndex,
-                        ⟨.trapped (.host message), { store with wasm }⟩))
-                    | .Throw wasm tag arguments =>
-                      let throwingFrame : ControlFrame :=
-                        { kind := .throwing tag arguments
-                          paramArity := 0
-                          resultArity := 0
-                          body := []
-                          continuation := []
-                          belowStack := [] }
-                      .ok (some (.host functionIndex,
-                        ⟨.running
-                          { thread with
-                            locals := { thread.locals with values := [] }
-                            code := []
-                            control := [throwingFrame] },
-                          { store with wasm }⟩))
+            | some (.funcref (some address)) =>
+              match store.runtime.resolveFunc address with
+              | some (owner, fnIdx) =>
+                if owner ≠ store.runtime.entry then
+                  -- Cross-instance via global funcaddr
+                  match store.runtime.currentModule.types[typeIndex]?,
+                        store.runtime.instances[owner.id]? with
+                  | some expected, some calleeInstance =>
+                    if fnIdx < calleeInstance.module.imports.length then
+                      .error ⟨s!"returnCallIndirect: import slot {fnIdx} in cross-instance dispatch"⟩
+                    else
+                    let localFnIdx := fnIdx - calleeInstance.module.imports.length
+                    match calleeInstance.module.funcs[localFnIdx]? with
+                    | some fn =>
+                      if fn.params == expected.params &&
+                          fn.results == expected.results then
+                        let args := (values.take fn.numParams).reverse
+                        .ok (some (.administrative .callCrossInstance,
+                          ⟨.running
+                            { locals := fn.toLocals args
+                              code := fn.body
+                              resultArity := thread.resultArity
+                              callerRemainder := thread.callerRemainder
+                              control := []
+                              calls := thread.calls },
+                            { store with runtime :=
+                                { store.runtime with entry := owner } }⟩))
+                      else
+                        .ok (some (.instruction instr,
+                          ⟨.trapped .indirectCallTypeMismatch, store⟩))
+                    | none =>
+                      .error ⟨s!"returnCallIndirect funcaddr: function {localFnIdx} not found in instance {owner.id}"⟩
+                  | _, _ =>
+                    .error ⟨"returnCallIndirect funcaddr: invalid type or instance index"⟩
+                else
+                  -- Same-instance dispatch using resolved fnIdx
+                  if fnIdx < store.runtime.currentModule.imports.length then
+                    match store.runtime.currentModule.imports[fnIdx]?,
+                        store.runtime.currentHost.funcs[fnIdx]?,
+                        store.runtime.currentModule.funcSig? fnIdx,
+                        store.runtime.currentModule.types[typeIndex]? with
+                    | some imp, some hostFunction, some signature, some expected =>
+                      if store.runtime.currentModule.indirectCallTypeOk
+                          fnIdx typeIndex signature expected = true then
+                        let hostArgs := (values.take imp.params.length).reverse
+                        match hostFunction.invoke store.wasm hostArgs with
+                        | .Return results wasm =>
+                          .ok (some (.host fnIdx,
+                            ⟨.running
+                              { thread with
+                                locals :=
+                                  { thread.locals with
+                                    values := results.take imp.results.length }
+                                code := []
+                                control := [] },
+                              { store with wasm }⟩))
+                        | .Trap wasm message =>
+                          .ok (some (.host fnIdx,
+                            ⟨.trapped (.host message), { store with wasm }⟩))
+                        | .Throw wasm tag arguments =>
+                          let throwingFrame : ControlFrame :=
+                            { kind := .throwing tag arguments
+                              paramArity := 0
+                              resultArity := 0
+                              body := []
+                              continuation := []
+                              belowStack := [] }
+                          .ok (some (.host fnIdx,
+                            ⟨.running
+                              { thread with
+                                locals := { thread.locals with values := [] }
+                                code := []
+                                control := [throwingFrame] },
+                              { store with wasm }⟩))
+                      else
+                        .ok (some (.instruction instr,
+                          ⟨.trapped .indirectCallTypeMismatch, store⟩))
+                    | _, _, _, _ =>
+                      .error ⟨"indirect host tail call has an invalid function or type index"⟩
                   else
-                    .ok (some (.instruction instr,
-                      ⟨.trapped .indirectCallTypeMismatch, store⟩))
-                | _, _, _, _ =>
-                  .error ⟨"indirect host tail call has an invalid function or type index"⟩
-              else
-                match store.runtime.currentModule.funcs[
-                    functionIndex - store.runtime.currentModule.imports.length]?,
-                    store.runtime.currentModule.funcSig? functionIndex,
-                    store.runtime.currentModule.types[typeIndex]? with
-                | some fn, some signature, some expected =>
-                  if store.runtime.currentModule.indirectCallTypeOk
-                      functionIndex typeIndex signature expected = true then
-                    .ok (some (.instruction instr,
-                      ⟨.running
-                        { locals :=
-                            fn.toLocals
-                              (values.take fn.numParams).reverse
-                          code := fn.body
-                          resultArity := thread.resultArity
-                          callerRemainder := thread.callerRemainder
-                          control := []
-                          calls := thread.calls },
-                        store⟩))
-                  else
-                    .ok (some (.instruction instr,
-                      ⟨.trapped .indirectCallTypeMismatch, store⟩))
-                | _, _, _ =>
-                  .error ⟨"indirect tail call has an invalid function or type index"⟩
+                    match store.runtime.currentModule.funcs[
+                        fnIdx - store.runtime.currentModule.imports.length]?,
+                        store.runtime.currentModule.funcSig? fnIdx,
+                        store.runtime.currentModule.types[typeIndex]? with
+                    | some fn, some signature, some expected =>
+                      if store.runtime.currentModule.indirectCallTypeOk
+                          fnIdx typeIndex signature expected = true then
+                        .ok (some (.instruction instr,
+                          ⟨.running
+                            { locals :=
+                                fn.toLocals
+                                  (values.take fn.numParams).reverse
+                              code := fn.body
+                              resultArity := thread.resultArity
+                              callerRemainder := thread.callerRemainder
+                              control := []
+                              calls := thread.calls },
+                            store⟩))
+                      else
+                        .ok (some (.instruction instr,
+                          ⟨.trapped .indirectCallTypeMismatch, store⟩))
+                    | _, _, _ =>
+                      .error ⟨"indirect tail call has an invalid function or type index"⟩
+              | none =>
+                .error ⟨s!"return_call_indirect: unregistered funcaddr {address}"⟩
             | some _ => .error ⟨"indirect tail call requires a funcref table entry"⟩
           | none, _ => .error ⟨"return_call_indirect requires an integer selector"⟩
           | _, none => .error ⟨s!"table index {tableIndex} is invalid"⟩
@@ -1908,7 +1958,26 @@ private def stepPlainChecked?
           match store.runtime.resolveFunc rawAddr with
           | some (owner, functionIndex) =>
             if owner ≠ store.runtime.entry then
-              .error ⟨"returnCallRef cross-instance: not yet implemented"⟩
+              match store.runtime.instances[owner.id]? with
+              | some calleeInstance =>
+                let localFnIdx := functionIndex - calleeInstance.module.imports.length
+                match calleeInstance.module.funcs[localFnIdx]? with
+                | some fn =>
+                  let args := (values.take fn.numParams).reverse
+                  .ok (some (.administrative .callCrossInstance,
+                    ⟨.running
+                      { locals := fn.toLocals args
+                        code := fn.body
+                        resultArity := thread.resultArity
+                        callerRemainder := thread.callerRemainder
+                        control := []
+                        calls := thread.calls },
+                      { store with runtime :=
+                          { store.runtime with entry := owner } }⟩))
+                | none =>
+                  .error ⟨s!"returnCallRef cross-instance: function {localFnIdx} not found"⟩
+              | none =>
+                .error ⟨s!"returnCallRef cross-instance: instance {owner.id} not found"⟩
             else
               -- Same-instance via global addr: use resolved functionIndex
               if functionIndex < store.runtime.currentModule.imports.length then
@@ -3975,6 +4044,22 @@ inductive Step : Config α → StepKind → Config α → Prop where
           ⟨fn.toLocals (values.take fn.numParams).reverse,
             fn.body, arity, remainder, [], calls⟩,
           store⟩
+  | returnCallCrossInstance
+      (himports : functionIndex < store.runtime.currentModule.imports.length)
+      (himport : store.runtime.currentModule.imports[functionIndex] = imp)
+      (hnoHost : store.runtime.currentHost.funcs.length ≤ functionIndex)
+      (hresolved : store.runtime.currentInstance.resolvedImports[functionIndex]? =
+          some (.wasm calleeId localIdx))
+      (hcallee : store.runtime.instances[calleeId.id]? = some calleeInstance)
+      (hfn : calleeInstance.module.funcs[localIdx]? = some fn) :
+      Step ⟨.running
+          ⟨⟨params, localValues, values⟩, .returnCall functionIndex :: code,
+            arity, remainder, controls, calls⟩, store⟩
+        (.administrative .callCrossInstance)
+        ⟨.running
+          ⟨fn.toLocals (values.take imp.params.length).reverse,
+            fn.body, arity, remainder, [], calls⟩,
+          { store with runtime := { store.runtime with entry := calleeId } }⟩
   | callIndirectUndefined
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
@@ -4189,7 +4274,8 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | returnCallIndirectHostTypeMismatch
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
-      (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
+      (helement : table[elementIndex]? = some (.funcref (some address)))
+      (haddr : store.runtime.resolveFunc address = some (store.runtime.entry, functionIndex))
       (himports : functionIndex < store.runtime.currentModule.imports.length)
       (himport : store.runtime.currentModule.imports[functionIndex] = imp)
       (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
@@ -4205,7 +4291,8 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | returnCallIndirectHostReturn
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
-      (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
+      (helement : table[elementIndex]? = some (.funcref (some address)))
+      (haddr : store.runtime.resolveFunc address = some (store.runtime.entry, functionIndex))
       (himports : functionIndex < store.runtime.currentModule.imports.length)
       (himport : store.runtime.currentModule.imports[functionIndex] = imp)
       (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
@@ -4227,7 +4314,8 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | returnCallIndirectHostTrap
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
-      (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
+      (helement : table[elementIndex]? = some (.funcref (some address)))
+      (haddr : store.runtime.resolveFunc address = some (store.runtime.entry, functionIndex))
       (himports : functionIndex < store.runtime.currentModule.imports.length)
       (himport : store.runtime.currentModule.imports[functionIndex] = imp)
       (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
@@ -4246,7 +4334,8 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | returnCallIndirectHostThrow
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
-      (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
+      (helement : table[elementIndex]? = some (.funcref (some address)))
+      (haddr : store.runtime.resolveFunc address = some (store.runtime.entry, functionIndex))
       (himports : functionIndex < store.runtime.currentModule.imports.length)
       (himport : store.runtime.currentModule.imports[functionIndex] = imp)
       (hhost : store.runtime.currentHost.funcs[functionIndex]? = some hostFunction)
@@ -4276,7 +4365,8 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | returnCallIndirectTypeMismatch
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
-      (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
+      (helement : table[elementIndex]? = some (.funcref (some address)))
+      (haddr : store.runtime.resolveFunc address = some (store.runtime.entry, functionIndex))
       (himports : ¬functionIndex < store.runtime.currentModule.imports.length)
       (hfn : store.runtime.currentModule.funcs[
         functionIndex - store.runtime.currentModule.imports.length]? = some fn)
@@ -4292,7 +4382,8 @@ inductive Step : Config α → StepKind → Config α → Prop where
   | returnCallIndirect
       (hselector : selector.addrNat? = some elementIndex)
       (htable : store.wasm.tables[tableIndex]? = some table)
-      (helement : table[elementIndex]? = some (.funcref (some functionIndex)))
+      (helement : table[elementIndex]? = some (.funcref (some address)))
+      (haddr : store.runtime.resolveFunc address = some (store.runtime.entry, functionIndex))
       (himports : ¬functionIndex < store.runtime.currentModule.imports.length)
       (hfn : store.runtime.currentModule.funcs[
         functionIndex - store.runtime.currentModule.imports.length]? = some fn)
@@ -4308,6 +4399,41 @@ inductive Step : Config α → StepKind → Config α → Prop where
           ⟨fn.toLocals (values.take fn.numParams).reverse,
             fn.body, arity, remainder, [], calls⟩,
           store⟩
+  | returnCallIndirectFuncAddrCrossInstanceTypeMismatch
+      (hselector : selector.addrNat? = some elementIndex)
+      (htable : store.wasm.tables[tableIndex]? = some table)
+      (helement : table[elementIndex]? = some (.funcref (some address)))
+      (haddr : store.runtime.resolveFunc address = some (owner, fnIdx))
+      (howner : owner ≠ store.runtime.entry)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (hcallee : store.runtime.instances[owner.id]? = some calleeInstance)
+      (himports : ¬fnIdx < calleeInstance.module.imports.length)
+      (hfn : calleeInstance.module.funcs[fnIdx - calleeInstance.module.imports.length]? = some fn)
+      (htype : (fn.params == expected.params && fn.results == expected.results) = false) :
+      Step ⟨.running ⟨⟨params, localValues, selector :: values⟩,
+          .returnCallIndirect typeIndex tableIndex :: code,
+          arity, remainder, controls, calls⟩, store⟩
+        (.instruction (.returnCallIndirect typeIndex tableIndex))
+        ⟨.trapped .indirectCallTypeMismatch, store⟩
+  | returnCallIndirectFuncAddrCrossInstance
+      (hselector : selector.addrNat? = some elementIndex)
+      (htable : store.wasm.tables[tableIndex]? = some table)
+      (helement : table[elementIndex]? = some (.funcref (some address)))
+      (haddr : store.runtime.resolveFunc address = some (owner, fnIdx))
+      (howner : owner ≠ store.runtime.entry)
+      (hexpected : store.runtime.currentModule.types[typeIndex]? = some expected)
+      (hcallee : store.runtime.instances[owner.id]? = some calleeInstance)
+      (himports : ¬fnIdx < calleeInstance.module.imports.length)
+      (hfn : calleeInstance.module.funcs[fnIdx - calleeInstance.module.imports.length]? = some fn)
+      (htype : (fn.params == expected.params && fn.results == expected.results) = true) :
+      Step ⟨.running ⟨⟨params, localValues, selector :: values⟩,
+          .returnCallIndirect typeIndex tableIndex :: code,
+          arity, remainder, controls, calls⟩, store⟩
+        (.administrative .callCrossInstance)
+        ⟨.running
+          ⟨fn.toLocals (values.take fn.numParams).reverse,
+            fn.body, arity, remainder, [], calls⟩,
+          { store with runtime := { store.runtime with entry := owner } }⟩
   | refNull :
       Step ⟨.running ⟨⟨params, localValues, values⟩,
           .refNull staticType :: code,
@@ -4509,6 +4635,20 @@ inductive Step : Config α → StepKind → Config α → Prop where
           ⟨fn.toLocals (values.take fn.numParams).reverse,
             fn.body, arity, remainder, [], calls⟩,
           store⟩
+  | returnCallRefCrossInstance
+      (haddr : store.runtime.resolveFunc rawAddr = some (owner, fnIdx))
+      (howner : owner ≠ store.runtime.entry)
+      (hinstance : store.runtime.instances[owner.id]? = some calleeInstance)
+      (hfn : calleeInstance.module.funcs[fnIdx - calleeInstance.module.imports.length]? = some fn) :
+      Step ⟨.running ⟨⟨params, localValues,
+          .funcref (some rawAddr) :: values⟩,
+          .returnCallRef typeIndex :: code,
+          arity, remainder, controls, calls⟩, store⟩
+        (.administrative .callCrossInstance)
+        ⟨.running
+          ⟨fn.toLocals (values.take fn.numParams).reverse,
+            fn.body, arity, remainder, [], calls⟩,
+          { store with runtime := { store.runtime with entry := owner } }⟩
   | refIsNullTrue
       (h : value.isNullRef? = some true) :
       Step ⟨.running ⟨⟨params, localValues, value :: values⟩,
@@ -6566,6 +6706,8 @@ by
             Step.returnCallHostThrow]
         | (apply Step.callCrossInstance <;>
             (first | assumption | simp_all [getElem?_eq_getElem]))
+        | (apply Step.returnCallCrossInstance <;>
+            (first | assumption | simp_all [getElem?_eq_getElem]))
         | (apply Step.call <;> simp_all)
         | (apply Step.returnCall <;> simp_all)
         | (apply Step.callIndirectUndefined <;> first | assumption | omega)
@@ -6580,18 +6722,24 @@ by
         | (apply Step.callIndirectHostReturn <;> first | assumption | omega)
         | (apply Step.callIndirectHostTrap <;> first | assumption | omega)
         | (apply Step.callIndirectHostThrow <;> first | assumption | omega)
-        | (apply Step.returnCallIndirectHostTypeMismatch <;> assumption)
-        | (apply Step.returnCallIndirectHostReturn <;> assumption)
-        | (apply Step.returnCallIndirectHostTrap <;> assumption)
-        | (apply Step.returnCallIndirectHostThrow <;> assumption)
+        | (apply Step.returnCallIndirectHostTypeMismatch <;> first | assumption | simp_all)
+        | (apply Step.returnCallIndirectHostReturn <;> first | assumption | simp_all)
+        | (apply Step.returnCallIndirectHostTrap <;> first | assumption | simp_all)
+        | (apply Step.returnCallIndirectHostThrow <;> first | assumption | simp_all)
         | solve
           | (apply Step.callIndirectTypeMismatch <;> first | assumption | omega)
         | solve
           | (apply Step.callIndirect <;> first | assumption | omega)
         | (apply Step.returnCallIndirectUndefined <;> first | assumption | omega)
         | (apply Step.returnCallIndirectUninitialized <;> assumption)
-        | (apply Step.returnCallIndirectTypeMismatch <;> first | assumption | omega)
-        | (apply Step.returnCallIndirect <;> first | assumption | omega)
+        | solve
+          | (apply Step.returnCallIndirectFuncAddrCrossInstanceTypeMismatch <;>
+              first | assumption | simp_all)
+        | solve
+          | (apply Step.returnCallIndirectFuncAddrCrossInstance <;>
+              first | assumption | simp_all)
+        | (apply Step.returnCallIndirectTypeMismatch <;> first | assumption | simp_all)
+        | (apply Step.returnCallIndirect <;> first | assumption | simp_all)
         | exact Step.refNull
         | exact Step.refNullExtern
         | exact Step.refNullExn
@@ -6615,6 +6763,9 @@ by
         | solve
           | (apply Step.callRef <;> first | assumption | omega)
         | exact Step.returnCallRefNull
+        | solve
+          | (apply Step.returnCallRefCrossInstance <;>
+              first | assumption | simp_all)
         | solve
           | (apply Step.returnCallRef <;> first | assumption | omega)
         | (apply Step.refIsNullTrue <;> assumption)
@@ -6969,8 +7120,14 @@ by
   case returnCallIndirectHostReturn => simp_all [stepChecked?]
   case returnCallIndirectHostTrap => simp_all [stepChecked?]
   case returnCallIndirectHostThrow => simp_all [stepChecked?]
+  case returnCallIndirectFuncAddrCrossInstanceTypeMismatch =>
+    simp_all [stepChecked?, Bool.and_eq_true, -Nat.not_lt]
+  case returnCallIndirectFuncAddrCrossInstance =>
+    simp_all [stepChecked?, Bool.and_eq_true, -Nat.not_lt]
   case callCrossInstance => simp_all [stepChecked?]
+  case returnCallCrossInstance => simp_all [stepChecked?]
   case callRefCrossInstance => simp_all [stepChecked?]
+  case returnCallRefCrossInstance => simp_all [stepChecked?]
   case callRef => simp_all [stepChecked?]
   case returnCallRef => simp_all [stepChecked?]
   case returnFromCallCrossInstanceFallthrough hdiff =>
@@ -7046,6 +7203,9 @@ theorem runtime_preserved {config config' : Config α} {kind}
   case callCrossInstance => exact absurd rfl hnot2
   case callRefCrossInstance => exact absurd rfl hnot2
   case callIndirectFuncAddrCrossInstance => exact absurd rfl hnot2
+  case returnCallCrossInstance => exact absurd rfl hnot2
+  case returnCallRefCrossInstance => exact absurd rfl hnot2
+  case returnCallIndirectFuncAddrCrossInstance => exact absurd rfl hnot2
   case returnFromCallCrossInstanceFallthrough => exact absurd rfl hnot
   case returnFromCallCrossInstanceExplicit => exact absurd rfl hnot
   case catchException => apply prepareCatch_runtime

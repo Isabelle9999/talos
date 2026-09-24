@@ -182,7 +182,7 @@ private theorem throwIndirectTailConfig_steps :
       ⟨.trapped (.uncaughtException 0 [.i32 7]), throwIndirectTailConfig.store⟩ := by
   wasm_steps [.const]
   exact Steps.cons
-    (.returnCallIndirectHostThrow rfl rfl rfl (by decide) rfl rfl rfl rfl (by decide) rfl)
+    (.returnCallIndirectHostThrow (functionIndex := 0) rfl rfl rfl (by decide +kernel) (by decide) rfl rfl rfl rfl (by decide) rfl)
     (Steps.cons (.uncaughtException rfl) (Steps.refl _))
 
 private theorem throwCallRefConfig_steps :
