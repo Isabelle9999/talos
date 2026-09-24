@@ -33,3 +33,5 @@ import Project.RustVec.Spec
 import Project.Mergesort.Func28Proof
 import Project.Mergesort.Func17Proof
 import Project.Mergesort.Func18Proof
+import Project.Mergesort.Func0Proof
+import Project.HexStdio.Func28Proof
