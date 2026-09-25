@@ -297,6 +297,53 @@ theorem test_wasm_mem_arrayAt_store :
   wasm_mem
   iapply Hcont $$ Harray
 
+-- ─── Test 18 ─────────────────────────────────────────────────────────────────
+-- Exercises `wasm_pures using [UInt32.add_zero]` on a code sequence that has
+-- one pure step (`const 4`) followed by a `load32 0` memory step.
+-- The `const 4` fires as a pure step (stack → [.i32 4]); then `wasm_pures`
+-- dispatches `wasm_mem using [UInt32.add_zero]`, which normalises the effective
+-- address `4 + 0` to `4` via `normWithLemmas` before scanning the Iris context.
+-- `memoryFill` (not in the registry) stops the loop.
+
+/-- `wasm_pures using [UInt32.add_zero]` fires the `const 4` pure step, then
+dispatches `wasm_mem using [UInt32.add_zero]` for `load32 0`, forwarding the
+lemma so `normWithLemmas` normalises the effective address `4 + 0` to `4`. -/
+theorem test_wasm_pures_using_load32_addr (word : UInt32) :
+    pointsTo_u32 0 (4 : UInt32) word ∗
+    (pointsTo_u32 0 (4 : UInt32) word -∗
+      WP (.running ⟨⟨[], [], [.i32 word]⟩, [.memoryFill], 1, [], [], []⟩ : Expr α)
+        @ s; E [{ Φ }]) ⊢
+    WP (.running ⟨⟨[], [], []⟩, [.const (4 : UInt32), .load32 0, .memoryFill], 1, [], [], []⟩ : Expr α)
+      @ s; E [{ Φ }] := by
+  iintro ⟨Hword, Hcont⟩
+  wasm_pures using [UInt32.add_zero]
+  iapply Hcont $$ Hword
+
+-- ─── Test 19 ─────────────────────────────────────────────────────────────────
+-- Exercises `wasm_pures using [UInt32.add_zero]` on a `store32 0` memory step
+-- driven by two pure `const` steps.  After `const 4` (pushes address 4) and
+-- `const newWord` (pushes value), `wasm_pures` dispatches
+-- `wasm_mem using [UInt32.add_zero]` for `store32 0`, which normalises the
+-- effective address `4 + 0` to `4` via `normWithLemmas` before scanning the
+-- Iris context.  After the store `Hcont` and the fresh `pointsTo_u32 0 4 newWord`
+-- are in scope; `iapply Hcont $$ Hhold` closes the goal.
+-- `memoryFill` (not in the registry) stops the loop.
+
+/-- `wasm_pures using [UInt32.add_zero]` fires two pure `const` steps then
+dispatches `wasm_mem using [UInt32.add_zero]` for `store32 0`, forwarding the
+lemma so `normWithLemmas` normalises the effective address `4 + 0` to `4`. -/
+theorem test_wasm_pures_using_store32_addr (oldWord newWord : UInt32) :
+    pointsTo_u32 0 (4 : UInt32) oldWord ∗
+    (pointsTo_u32 0 (4 : UInt32) newWord -∗
+      WP (.running ⟨⟨[], [], []⟩, [.memoryFill], 1, [], [], []⟩ : Expr α)
+        @ s; E [{ Φ }]) ⊢
+    WP (.running ⟨⟨[], [], []⟩,
+          [.const (4 : UInt32), .const newWord, .store32 0, .memoryFill], 1, [], [], []⟩ : Expr α)
+      @ s; E [{ Φ }] := by
+  iintro ⟨Hhold, Hcont⟩
+  wasm_pures using [UInt32.add_zero]
+  iapply Hcont $$ Hhold
+
 -- ─── Test 15: #guard_msgs — "address in array region but no index found" ──────
 -- Verifies that wasm_mem emits the correct error when the effective address
 -- is in the array region's span but is not aligned to the element stride.
@@ -333,6 +380,9 @@ example :
     WP (.running ⟨⟨[], [], []⟩, [.const 0], 1, [], [], []⟩ : Expr α) @ s; E [{ Φ }] := by
   iintro H
   wasm_call _
+
+#print axioms test_wasm_pures_using_load32_addr
+#print axioms test_wasm_pures_using_store32_addr
 
 end wasmPuresTests
 

@@ -131,17 +131,32 @@ elab "wasm_pure" : tactic => do
       let sideGoalTy ← g.getType >>= instantiateMVars
       throwError "wasm_pure: unsolved side goal {sideGoalTy}"
 
-/-- Repeat `wasm_pure` until the goal changes to one where no rule is
-registered or the goal is no longer a WP goal.
+/-- Repeat `wasm_pure` and `wasm_mem` until the head instruction has no registered
+rule or the goal is no longer a WP goal.
+
+Dispatches to `wasm_pure` for pure-step rules and to `wasm_mem` for memory and
+global rules, looping until no rule is found for the current head.
+
+With `wasm_pures using [l₁, …, lₙ]`, runs `simp only [l₁, …, lₙ]` on the goal
+at the start of each iteration.  This normalises the code list, locals, and
+arithmetic expressions so that `instrHeadKey` can read the next instruction
+after block/branch/opaque-definition steps.  The same lemma list is forwarded
+to each dispatched `wasm_mem using [l₁, …, lₙ]` call for address normalisation.
 
 The pre-check (`instrHeadKey` + `getWasmRule`) is wrapped in `try … catch`
 so that all expected termination signals (wrong goal type, un-reducible code,
-unregistered head) stop the loop silently.  `evalTactic wasm_pure` is
-deliberately NOT wrapped: errors from it (including "unsolved side goal")
-propagate to the caller rather than being swallowed. -/
-private partial def wasmPuresLoop : TacticM Unit := do
+unregistered head) stop the loop silently.  `evalTactic wasm_pure` and
+`evalTactic wasm_mem` are deliberately NOT wrapped: errors from them propagate
+to the caller rather than being swallowed. -/
+private partial def wasmPuresLoop (usingTerms : Array (TSyntax `term)) : TacticM Unit := do
   let goals ← getGoals
   if goals.isEmpty then return
+  if !usingTerms.isEmpty then
+    let simpLemmas ← usingTerms.mapM fun t => `(Lean.Parser.Tactic.simpLemma| $t:term)
+    try evalTactic (← `(tactic| simp only [$simpLemmas,*]))
+    catch _ => pure ()
+  let goalsNow ← getGoals
+  if goalsNow.isEmpty then return
   let goal ← getMainGoal
   let maybeEntry : Option WasmRuleEntry ← do
     try
@@ -154,12 +169,25 @@ private partial def wasmPuresLoop : TacticM Unit := do
   | some entry =>
     match entry.kind with
     | .mem _ =>
-      evalTactic (← `(tactic| wasm_mem))
-      wasmPuresLoop
+      if usingTerms.isEmpty then
+        evalTactic (← `(tactic| wasm_mem))
+      else
+        evalTactic (← `(tactic| wasm_mem using [$usingTerms,*]))
+      wasmPuresLoop usingTerms
     | .pure _ =>
       evalTactic (← `(tactic| wasm_pure))
-      wasmPuresLoop
+      wasmPuresLoop usingTerms
 
-elab "wasm_pures" : tactic => wasmPuresLoop
+syntax (name := wasm_pures) "wasm_pures" ("using" "[" term,* "]")? : tactic
+
+@[tactic wasm_pures]
+def elabWasmPures : Lean.Elab.Tactic.Tactic := fun stx => do
+  let usingTerms : Array (TSyntax `term) ←
+    if stx[1].isNone then pure #[]
+    else do
+      let inner := stx[1][0]
+      let termsSep := inner[2]
+      pure (termsSep.getSepArgs.map (⟨·⟩))
+  wasmPuresLoop usingTerms
 
 end CodeLib.Tactics
