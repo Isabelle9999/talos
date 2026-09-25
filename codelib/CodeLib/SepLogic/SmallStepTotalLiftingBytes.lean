@@ -7,7 +7,7 @@ Total weakest-precondition lifting rules on top of `SmallStepTotalLifting`,
 factored out of the `hex_stdio` worked examples for reuse:
 
 * byte-granular memory access — `twp_load8U`, `twp_load8U_addr`, `twp_store8`,
-  `twp_store8_addr`, `twp_store32_addr`, `twp_store64_addr`;
+  `twp_store8_addr`, `twp_store64_addr`;
 * the signed comparison `twp_ltS` and `twp_drop`; and
 * `twp_memorySize_framed` / `twp_memoryGrow_framed`, `memory.size` / `memory.grow`
   rules that thread an arbitrary owned resource through the instruction (a

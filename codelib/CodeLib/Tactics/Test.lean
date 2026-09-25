@@ -6,15 +6,10 @@ import CodeLib.Tactics.Control
 /-!
 # `wasm_pures` regression tests
 
-Three theorems taken from `SmallStepAdequacyExamples.lean` that exercise
-`wasm_pures` in place of the original hand-written `wasm_twp_pures [...]` rule
-lists.  The original proof text replaced by `wasm_pures` is quoted in each
-theorem's docstring.
-
-## `#print axioms` status
-
-Each test theorem should print `'<name>' does not depend on any axioms`
-(or only the expected Iris / Classical axioms — no `sorryAx`).
+Eleven theorem tests and nine `#guard_msgs` error-message checks covering
+`wasm_pure`, `wasm_pures`, `wasm_pures using`, `wasm_mem`, `wasm_mem using`,
+`wasm_loop`, and `wasm_call`.  Each named theorem is sourced from an existing
+proof and exercises a specific dispatch path.
 -/
 
 namespace Wasm.SmallStep
@@ -24,7 +19,7 @@ open Wasm.SepLogic
 open CodeLib.Tactics
 
 -- ─── Test 1 ──────────────────────────────────────────────────────────────────
--- Source: SmallStepAdequacyExamples.lean:2068
+-- Source: signedBranch_terminatesWith
 -- Original: wasm_twp_pures [twp_block twp_localGet twp_localGet]
 
 /-- `i32.ge_s` on the two parameters: returns 1 if `a ≥ b` as signed 32-bit
@@ -73,7 +68,7 @@ local instance (priority := high) testTerminalIrisGS :
 variable {s : Stuckness} {E : CoPset} {Φ : Terminal → IProp (WasmHeapGF α)}
 
 -- ─── Test 2 ──────────────────────────────────────────────────────────────────
--- Source: SmallStepAdequacyExamples.lean:2206
+-- Source: fillThenRead_terminatesWith
 -- Original: wasm_twp_pures [twp_const twp_localGet twp_const]
 --
 -- Exercises the same three-step reduction as in fillThenRead_terminatesWith:
@@ -97,7 +92,7 @@ theorem test_fillThenRead_pure_steps (val : UInt32) :
   iexact H
 
 -- ─── Test 3 ──────────────────────────────────────────────────────────────────
--- Source: SmallStepAdequacyExamples.lean:2256
+-- Source: exceptionLifecycle_terminatesWith
 -- Original: wasm_twp_pures [twp_localGet]
 --
 -- Exercises the single localGet step from exceptionLifecycle_terminatesWith:
@@ -148,7 +143,7 @@ example :
 -- ─── Tests 6–8: wasm_mem ─────────────────────────────────────────────────────
 
 -- ─── Test 6 ──────────────────────────────────────────────────────────────────
--- Source: SmallStepTotalLifting.lean:1179 (twp_globalGet)
+-- Source: twp_globalGet
 -- Exercises wasm_mem on a globalGet 0 step.
 -- twp_globalGet has zero explicit args before the wand, so wasm_mem
 -- calls `iapply twp_globalGet $$ Hglob` with no side-condition terms.
@@ -166,7 +161,7 @@ theorem test_wasm_mem_globalGet (globalWord : UInt32) :
   iapply Hcont $$ Hglob
 
 -- ─── Test 7 ──────────────────────────────────────────────────────────────────
--- Source: SmallStepTotalLifting.lean:860 (twp_load32); consumer: Func1Proof.lean:269
+-- Source: twp_load32
 -- Exercises wasm_mem on a load32 with nonzero offset (4).
 -- Supplies hnowrap, h1, h2, h3 as hypotheses; wasm_mem discharges them via omega.
 
@@ -188,7 +183,7 @@ theorem test_wasm_mem_load32_nonzero
   iapply Hcont $$ Hword
 
 -- ─── Test 8 ──────────────────────────────────────────────────────────────────
--- Source: SmallStepTotalLifting.lean:1775 (twp_load32_addr)
+-- Source: twp_load32_addr
 -- Exercises wasm_mem with `using [UInt32.add_zero]` on a load32 0 step.
 -- The addr-variant is selected (offset 0 → twp_load32_addr).
 -- `using [UInt32.add_zero]` normalises the effective address expression before
@@ -297,6 +292,53 @@ theorem test_wasm_mem_arrayAt_store :
   wasm_mem
   iapply Hcont $$ Harray
 
+-- ─── Test 18 ─────────────────────────────────────────────────────────────────
+-- Exercises `wasm_pures using [UInt32.add_zero]` on a code sequence that has
+-- one pure step (`const 4`) followed by a `load32 0` memory step.
+-- The `const 4` fires as a pure step (stack → [.i32 4]); then `wasm_pures`
+-- dispatches `wasm_mem using [UInt32.add_zero]`, which normalises the effective
+-- address `4 + 0` to `4` via `normWithLemmas` before scanning the Iris context.
+-- `memoryFill` (not in the registry) stops the loop.
+
+/-- `wasm_pures using [UInt32.add_zero]` fires the `const 4` pure step, then
+dispatches `wasm_mem using [UInt32.add_zero]` for `load32 0`, forwarding the
+lemma so `normWithLemmas` normalises the effective address `4 + 0` to `4`. -/
+theorem test_wasm_pures_using_load32_addr (word : UInt32) :
+    pointsTo_u32 0 (4 : UInt32) word ∗
+    (pointsTo_u32 0 (4 : UInt32) word -∗
+      WP (.running ⟨⟨[], [], [.i32 word]⟩, [.memoryFill], 1, [], [], []⟩ : Expr α)
+        @ s; E [{ Φ }]) ⊢
+    WP (.running ⟨⟨[], [], []⟩, [.const (4 : UInt32), .load32 0, .memoryFill], 1, [], [], []⟩ : Expr α)
+      @ s; E [{ Φ }] := by
+  iintro ⟨Hword, Hcont⟩
+  wasm_pures using [UInt32.add_zero]
+  iapply Hcont $$ Hword
+
+-- ─── Test 19 ─────────────────────────────────────────────────────────────────
+-- Exercises `wasm_pures using [UInt32.add_zero]` on a `store32 0` memory step
+-- driven by two pure `const` steps.  After `const 4` (pushes address 4) and
+-- `const newWord` (pushes value), `wasm_pures` dispatches
+-- `wasm_mem using [UInt32.add_zero]` for `store32 0`, which normalises the
+-- effective address `4 + 0` to `4` via `normWithLemmas` before scanning the
+-- Iris context.  After the store `Hcont` and the fresh `pointsTo_u32 0 4 newWord`
+-- are in scope; `iapply Hcont $$ Hhold` closes the goal.
+-- `memoryFill` (not in the registry) stops the loop.
+
+/-- `wasm_pures using [UInt32.add_zero]` fires two pure `const` steps then
+dispatches `wasm_mem using [UInt32.add_zero]` for `store32 0`, forwarding the
+lemma so `normWithLemmas` normalises the effective address `4 + 0` to `4`. -/
+theorem test_wasm_pures_using_store32_addr (oldWord newWord : UInt32) :
+    pointsTo_u32 0 (4 : UInt32) oldWord ∗
+    (pointsTo_u32 0 (4 : UInt32) newWord -∗
+      WP (.running ⟨⟨[], [], []⟩, [.memoryFill], 1, [], [], []⟩ : Expr α)
+        @ s; E [{ Φ }]) ⊢
+    WP (.running ⟨⟨[], [], []⟩,
+          [.const (4 : UInt32), .const newWord, .store32 0, .memoryFill], 1, [], [], []⟩ : Expr α)
+      @ s; E [{ Φ }] := by
+  iintro ⟨Hhold, Hcont⟩
+  wasm_pures using [UInt32.add_zero]
+  iapply Hcont $$ Hhold
+
 -- ─── Test 15: #guard_msgs — "address in array region but no index found" ──────
 -- Verifies that wasm_mem emits the correct error when the effective address
 -- is in the array region's span but is not aligned to the element stride.
@@ -347,7 +389,7 @@ variable {s : Stuckness} {E : CoPset}
 variable {Φ : List Value → IProp (WasmHeapGF α)}
 
 -- ─── Test 5 ──────────────────────────────────────────────────────────────────
--- Source: SmallStepLifting.lean:214-225 (wp_const)
+-- Source: wp_const
 -- Tests that wasm_pure dispatches correctly under the `wp` modality
 -- (partial WP, `{{ Φ }}` notation), mirroring Test 2 for the `twp` modality.
 
