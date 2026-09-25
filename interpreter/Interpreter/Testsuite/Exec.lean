@@ -1236,7 +1236,15 @@ def runCommand
         sharedMemories, sharedTables) ← (do
       let res ← decodeModuleFile s!"{wasmDir}/{filename}"
       match res with
-      | .ok m => pure (instantiateModule st m fuel)
+      | .ok m =>
+          -- IirisMigration.md §"Validation and .Invalid": validation failure is a
+          -- front-end outcome in the same category as decode errors.
+          match m.validate with
+          | .error e =>
+              pure (ModuleSlot.unavailable s!"validate: {e}", st.sharedGlobals, st.sharedTags,
+                st.sharedFunctions,
+                st.sharedMemories, st.sharedTables)
+          | .ok () => pure (instantiateModule st m fuel)
       | .error e =>
         pure (ModuleSlot.unavailable e, st.sharedGlobals, st.sharedTags,
           st.sharedFunctions,
