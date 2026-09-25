@@ -151,10 +151,14 @@ theorem heap_globals_runtime_host_store_adequacy
     { instanceElem
       instanceName }
   letI runtimeInstancesElem :
-      ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
-    exists 15
+      ElemG (WasmHeapGF α)
+        (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF
+          (DiscreteO (Array (ModuleInstance α))))))) :=
+    GhostSlot.runtimeInstancesElem
   imod (iOwn_alloc (E := runtimeInstancesElem)
-      (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
+      (ExclAuth.auth (⟨config.store.runtime.instances⟩ : DiscreteO (Array (ModuleInstance α))) •
+       ExclAuth.frag (⟨config.store.runtime.instances⟩ : DiscreteO (Array (ModuleInstance α))))
+      ExclAuth.valid) with
     ⟨%runtimeInstancesName, HruntimeInstances⟩
   letI runtimeInstancesGS : WasmRuntimeInstancesGS α :=
     { runtimeInstancesElem
@@ -195,6 +199,8 @@ theorem heap_globals_runtime_host_store_adequacy
       instanceGS := instanceGS
       runtimeInstances := runtimeInstancesGS }
   iclear Hmeta
+  ihave ⟨HruntimeInstancesState, HruntimeInstancesWP⟩ := iOwn_op.mp $$ HruntimeInstances
+  iclear HruntimeInstancesWP
   imodintro
   iexists (fun store _observations =>
     stateInterp (GF := WasmHeapGF α) store 0 [] 0)
@@ -219,7 +225,7 @@ theorem heap_globals_runtime_host_store_adequacy
       [HmemoryPagesAuth HheapDomain HexceptionInterp]
   · unfold machineAuxInterp
     iframe HmemoryPagesAuth HheapDomain HexceptionInterp
-  isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth' HhostState Hexc]
+  isplitl [Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' HruntimeInstancesState HinstanceState HhostEnvAuth' HhostState Hexc]
   · iapply (stateInterp_eq config.store 0 [] 0).mpr
     iexists σ
     iexists globalσ
@@ -230,9 +236,9 @@ theorem heap_globals_runtime_host_store_adequacy
       config.store.runtime.currentModule)
     iexists (PartialMap.singleton config.store.runtime.entry.id
       config.store.runtime.currentHost)
-    unfold runtimeModuleElem runtimeInstancesOwn hostStateAuth currentInstanceAuth currentInstanceAuthN
+    unfold runtimeModuleElem runtimeInstancesAuth hostStateAuth currentInstanceAuth currentInstanceAuthN
     simp only [BI.BigSepM.bigSepM_singleton.to_eq]
-    iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' # HruntimeInstances HinstanceState HhostEnvAuth' HhostState Hexc
+    iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' # HruntimeInstancesState HinstanceState HhostEnvAuth' HhostState Hexc
     ipureintro
     exact ⟨hagree, hinBounds, hglobals,
       dataSegmentHeapAgrees_empty _,
@@ -414,10 +420,14 @@ theorem heap_globals_runtime_host_store_terminates
       { instanceElem
         instanceName }
     letI runtimeInstancesElem :
-        ElemG (WasmHeapGF α) (constOF (Agree (DiscreteO (Array (ModuleInstance α))))) := by
-      exists 15
+        ElemG (WasmHeapGF α)
+          (Auth.AuthRF (OptionOF (Excl.ExclOF (constOF
+            (DiscreteO (Array (ModuleInstance α))))))) :=
+      GhostSlot.runtimeInstancesElem
     imod (iOwn_alloc (E := runtimeInstancesElem)
-        (toAgree ⟨config.store.runtime.instances⟩) (fun _ => trivial)) with
+        (ExclAuth.auth (⟨config.store.runtime.instances⟩ : DiscreteO (Array (ModuleInstance α))) •
+         ExclAuth.frag (⟨config.store.runtime.instances⟩ : DiscreteO (Array (ModuleInstance α))))
+        ExclAuth.valid) with
       ⟨%runtimeInstancesName, HruntimeInstances⟩
     letI runtimeInstancesGS : WasmRuntimeInstancesGS α :=
       { runtimeInstancesElem
@@ -458,6 +468,8 @@ theorem heap_globals_runtime_host_store_terminates
         instanceGS := instanceGS
         runtimeInstances := runtimeInstancesGS }
     iclear Hmeta
+    ihave ⟨HruntimeInstancesState, HruntimeInstancesWP⟩ := iOwn_op.mp $$ HruntimeInstances
+    iclear HruntimeInstancesWP
     imodintro
     iexists
       (fun store (_ : Nat) (observations : List StepKind) (_ : Nat) =>
@@ -488,7 +500,7 @@ theorem heap_globals_runtime_host_store_terminates
     · unfold machineAuxInterp
       iframe HmemoryPagesAuth HheapDomain HexceptionInterp
     isplitl [Hheap Hglobals Hsegments Htables HelementSegments
-      HruntimeModuleAuth' HruntimeInstances HinstanceState HhostEnvAuth'
+      HruntimeModuleAuth' HruntimeInstancesState HinstanceState HhostEnvAuth'
       HhostState Hexc]
     · iapply (stateInterp_eq config.store 0 [] 0).mpr
       iexists σ
@@ -500,9 +512,9 @@ theorem heap_globals_runtime_host_store_terminates
         config.store.runtime.currentModule)
       iexists (PartialMap.singleton config.store.runtime.entry.id
         config.store.runtime.currentHost)
-      unfold runtimeModuleElem runtimeInstancesOwn hostStateAuth currentInstanceAuth currentInstanceAuthN
+      unfold runtimeModuleElem runtimeInstancesAuth hostStateAuth currentInstanceAuth currentInstanceAuthN
       simp only [BI.BigSepM.bigSepM_singleton.to_eq]
-      iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' # HruntimeInstances HinstanceState HhostEnvAuth' HhostState Hexc
+      iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth' # HruntimeInstancesState HinstanceState HhostEnvAuth' HhostState Hexc
       ipureintro
       exact ⟨hagree, hinBounds, hglobals,
         dataSegmentHeapAgrees_empty _,

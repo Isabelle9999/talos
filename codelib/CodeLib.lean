@@ -55,6 +55,7 @@ import CodeLib.SepLogic.CrossInstanceExample
 import CodeLib.SepLogic.CounterHostExample
 import CodeLib.SepLogic.ImportChainExample
 import CodeLib.SepLogic.SharedMemoryExample
+import CodeLib.SepLogic.CrossInstanceTailCallExample
 
 /-!
 # CodeLib — umbrella import for downstream code
