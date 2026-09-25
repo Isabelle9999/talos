@@ -2878,14 +2878,16 @@ private def parseElemSegment (ctx : Ctx)
   | .atom "func"      :: r => elemType := some .funcref; rest := r
   | .atom "funcref"   :: r => elemType := some .funcref; rest := r
   | .atom "externref" :: r => elemType := some .externref; rest := r
-  -- GC managed-reference element-type keyword (GC proposal): the items are
-  -- constant expressions. Only consume `rest` when this atom really is such
-  -- a keyword — otherwise it is the first funcref item (e.g. `$f0`), which
-  -- the item loop below must still see.
+  -- GC managed-reference element-type keyword (GC proposal §6.6.3): the
+  -- items are constant expressions. Map each keyword to its exact type via
+  -- `atomToValueType?` so the validator's vtCompat check against the table's
+  -- declared element type passes (e.g. `i31ref` → `.ref true .i31`, not `.anyref`).
+  -- Only consume `rest` when this atom really is such a keyword — otherwise it
+  -- is the first funcref item (e.g. `$f0`), which the item loop below must see.
   | .atom t :: r =>
     if t == "i31ref" || t == "anyref" || t == "eqref"
        || t == "structref" || t == "arrayref" || t == "nullref" then
-      isGc := true; elemType := some .anyref; rest := r
+      isGc := true; elemType := atomToValueType? t; rest := r
   -- List type form `(ref null? ht)`: GC when `ht` is a managed heap type.
   | .list (.atom "ref" :: inner) :: r =>
     if elemRefIsGc inner then isGc := true

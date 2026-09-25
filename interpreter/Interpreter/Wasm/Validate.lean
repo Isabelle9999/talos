@@ -21,19 +21,6 @@ the function as soon as it meets an instruction it does not model.
 
 namespace Wasm
 
-/-- Whether composite `a` is a structural subtype of composite `b`
-(reflexive comparison is handled by the caller). Mutable fields/elements
-are invariant; we conservatively require matching storage type and
-mutability, and exact func signatures. -/
-def CompositeType.structSubtype : CompositeType → CompositeType → Bool
-  | .struct af, .struct bf =>
-    af.length ≥ bf.length &&
-    (List.range bf.length).all fun i => match af[i]?, bf[i]? with
-      | some x, some y => x.storage == y.storage && x.isMut == y.isMut
-      | _, _ => false
-  | .array ae, .array be => ae.storage == be.storage && ae.isMut == be.isMut
-  | .func a, .func b => a.params == b.params && a.results == b.results
-  | _, _ => false
 
 /-- Recursively collect every instruction in a program, descending into the
 bodies of `block`/`loop`/`if`/`try_table`. -/
@@ -658,6 +645,8 @@ def Program.isConstExpr (p : Program) : Bool :=
     | .gc g => match g with
       | .refI31 | .refNullAny _ | .structNew _ | .structNewDefault _
       | .arrayNew _ | .arrayNewDefault _ | .arrayNewFixed _ _ => true
+      -- Wasm GC §2.4.9 const-expr: extern.convert_any / any.convert_extern are valid
+      | .anyConvertExtern | .externConvertAny => true
       | _ => false
     | _ => false
 
@@ -721,8 +710,9 @@ def Module.heapSubtype (m : Module) (actual expected : GcHeapType) : Bool :=
   if actual == expected then true else
   match actual, expected with
   | .noFunc, .func | .noExtern, .extern | .noExn, .exn => true
-  | .noneT, .any | .noneT, .eq | .noneT, .i31
-  | .noneT, .structT | .noneT, .arrayT | .noneT, .concrete _ => true
+  -- Wasm GC §2.3.8: noneT is the universal bottom of the reference-type lattice;
+  -- it subtypes every heap type including func, extern, and exn subtrees.
+  | .noneT, _ => true
   | .i31, .eq | .i31, .any => true
   | .structT, .eq | .structT, .any
   | .arrayT, .eq | .arrayT, .any => true
@@ -782,6 +772,41 @@ def resultTypesCompat (m : Module)
   actual.length = expected.length &&
     (actual.zip expected).all fun pair => m.vtCompat pair.1 pair.2
 
+/-- Storage-type subtyping. Packed types require exact equality; value types
+defer to `Module.vtCompat`. Wasm GC §2.3.9 storage-type depth rule. -/
+private def Module.storageSubtype (m : Module) (a b : StorageType) : Bool :=
+  match a, b with
+  | .packed pa, .packed pb => pa == pb
+  | .val va, .val vb => m.vtCompat va vb
+  | _, _ => false
+
+/-- Whether composite type `a` is a structural subtype of `b`.
+Wasm GC §2.3.9 composite-type subtyping:
+- Struct: width (|a.fields| ≥ |b.fields|) + depth (mutable → invariant,
+  immutable → covariant via `storageSubtype`).
+- Array: same mutability; invariant when mutable, covariant when immutable.
+- Func: same arity; params contravariant, results covariant. -/
+def Module.compositeSubtype (m : Module) (a b : CompositeType) : Bool :=
+  match a, b with
+  | .struct af, .struct bf =>
+      af.length ≥ bf.length &&
+      (List.range bf.length).all fun i => match af[i]?, bf[i]? with
+        | some x, some y =>
+            x.isMut == y.isMut &&
+            if x.isMut then x.storage == y.storage
+            else m.storageSubtype x.storage y.storage
+        | _, _ => false
+  | .array ae, .array be =>
+      ae.isMut == be.isMut &&
+      if ae.isMut then ae.storage == be.storage
+      else m.storageSubtype ae.storage be.storage
+  | .func fa, .func fb =>
+      fa.params.length = fb.params.length &&
+      fa.results.length = fb.results.length &&
+      resultTypesCompat m fb.params fa.params &&
+      resultTypesCompat m fa.results fb.results
+  | _, _ => false
+
 def checkedIsRef : CheckedType → Bool
   | none => true
   | some .funcref | some .externref | some .anyref | some .exnref
@@ -789,9 +814,12 @@ def checkedIsRef : CheckedType → Bool
   | some _ => false
 
 /-- Refine a statically known reference after a successful non-null test.
-`none` remains the polymorphic unreachable-stack type. -/
+When the input is ⊥ (polymorphic bottom), the output is `(ref noneT)` — the
+bottom non-null reference — rather than ⊥ again.  This preserves the fact
+that the value IS a reference (not an i32/f32/…), so a subsequent instruction
+that expects e.g. f32 still gets a type error.  Wasm GC §3.3 stack-poly. -/
 def checkedNonNull : CheckedType → CheckedType
-  | none => none
+  | none => some (.ref false .noneT)
   | some valueType =>
     match valueType.reference? with
     | some (_, heapType) => some (.ref false heapType)
@@ -841,10 +869,16 @@ def CheckState.applySig
 def CheckState.requireArity
     (state : CheckState) (arity : Nat) : Except String (List CheckedType) :=
   if state.unreachable then
+    -- Wasm spec §3.3 stack-polymorphism: items already on the stack retain their
+    -- real types (instructions pushed after `unreachable` are still type-checked);
+    -- positions below the stack are filled with ⊥ so checks on missing slots pass.
+    -- Spec appendix §A.3 (pop_ctrl height check): extra items beyond arity are
+    -- a type error — dead code must not leave the frame taller than the result.
     if state.stack.length > arity then
       .error "type mismatch"
     else
-      .ok (state.stack ++ List.replicate (arity - state.stack.length) none)
+      let actual := state.stack.take arity
+      .ok (actual ++ List.replicate (arity - actual.length) none)
   else if state.stack.length = arity then
     .ok state.stack
   else
@@ -1258,9 +1292,13 @@ def Program.checkTypes
               | .catchRef tagIndex label =>
                   let some tag := m.tags[tagIndex]?
                     | throw "unknown tag"
-                  pure (label, .exnref :: tag.params.reverse)
+                  -- Wasm spec §3.3.10: catch_ref delivers a non-null (ref exn),
+                  -- not the nullable exnref.
+                  pure (label, .ref false .exn :: tag.params.reverse)
               | .catchAll label => pure (label, [])
-              | .catchAllRef label => pure (label, [.exnref])
+              | .catchAllRef label =>
+                  -- Wasm spec §3.3.10: catch_all_ref delivers a non-null (ref exn).
+                  pure (label, [.ref false .exn])
             let some (labelArity, labelTypes?) := labels[label]?
               | throw "unknown label"
             if caughtTypes.length != labelArity then throw "type mismatch"
@@ -1280,7 +1318,8 @@ def Program.checkTypes
             | none => bodyState.requireArity resultArity
           pure (some
             { stack := fallthrough ++ outer.stack
-              unreachable := state.unreachable
+              -- Wasm spec §3.3.5: propagate inner unreachability.
+              unreachable := state.unreachable || bodyState.unreachable
               transfers :=
                 lowerTransfers bodyState.transfers ++ state.transfers })
       | .block paramArity resultArity body paramTypes resultTypes => do
@@ -1302,7 +1341,11 @@ def Program.checkTypes
             | none => bodyState.requireArity resultArity
           pure (some
             { stack := fallthrough ++ outer.stack
-              unreachable := state.unreachable
+              -- Wasm spec §3.3.5: the block continuation is unreachable only when the
+              -- body is unreachable AND no unconditional branch targeted the block exit
+              -- (depth 0).  A `br 0` or `br_table` with target 0 makes the exit
+              -- reachable, so 0 ∈ bodyState.transfers means the continuation is live.
+              unreachable := state.unreachable || (bodyState.unreachable && !bodyState.transfers.contains 0)
               transfers := lowerTransfers bodyState.transfers ++ state.transfers })
       | .loop paramArity resultArity body paramTypes resultTypes => do
           let parameterTypes? := declaredTypes? paramArity paramTypes
@@ -1323,7 +1366,8 @@ def Program.checkTypes
             | none => bodyState.requireArity resultArity
           pure (some
             { stack := fallthrough ++ outer.stack
-              unreachable := state.unreachable
+              -- Wasm spec §3.3.5: propagate inner unreachability.
+              unreachable := state.unreachable || bodyState.unreachable
               transfers := lowerTransfers bodyState.transfers ++ state.transfers })
       | .iff paramArity resultArity thenBody elseBody
           paramTypes resultTypes => do
@@ -1362,7 +1406,10 @@ def Program.checkTypes
             | none, none => merged := merged ++ [none]
           pure (some
             { stack := merged ++ outer.stack
-              unreachable := state.unreachable
+              -- Wasm spec §3.3.5: if both branches are unreachable, the join is too.
+              unreachable :=
+                state.unreachable ||
+                (thenState.unreachable && elseState.unreachable)
               transfers :=
                 lowerTransfers thenState.transfers ++
                 lowerTransfers elseState.transfers ++ state.transfers })
@@ -1384,15 +1431,30 @@ def Program.checkTypes
           let afterSelector ← state.popExpected m .i32
           let some (defaultArity, defaultTypes?) := labels[defaultTarget]?
             | throw "unknown label"
-          for target in targets do
-            let some (targetArity, targetTypes?) := labels[target]?
-              | throw "unknown label"
-            if targetArity != defaultArity then throw "type mismatch"
-            match defaultTypes?, targetTypes? with
-            | some defaultTypes, some targetTypes =>
-                if !resultTypesCompat m targetTypes defaultTypes then
-                  throw "type mismatch"
-            | _, _ => pure ()
+          -- Wasm spec §3.3.7: in bottom context (unreachable), any label types are
+          -- acceptable via stack polymorphism; skip the cross-target type check.
+          if !afterSelector.unreachable then
+            -- Wasm GC §3.3.5.8 meet rule: the actual stack values must be subtypes
+            -- of each target label's types (not just the default's types). This
+            -- allows `meet-funcref` patterns where targets have supertypes of the
+            -- default while the actual value is a common subtype of all.
+            let actualTypes := afterSelector.stack.take defaultArity
+            for target in targets do
+              let some (targetArity, targetTypes?) := labels[target]?
+                | throw "unknown label"
+              if targetArity != defaultArity then throw "type mismatch"
+              match targetTypes? with
+              | some targetTypes =>
+                  for (actual, expected) in actualTypes.zip targetTypes.reverse do
+                    if !checkedCompat m actual expected then throw "type mismatch"
+              | none => pure ()
+          else
+            -- In unreachable mode skip only the cross-target TYPE check;
+            -- still validate that targets exist and share the default arity.
+            for target in targets do
+              let some (targetArity, _) := labels[target]?
+                | throw "unknown label"
+              if targetArity != defaultArity then throw "type mismatch"
           match defaultTypes? with
           | some types =>
               let _ ← afterSelector.applySig m (types.reverse, [])
@@ -1411,7 +1473,10 @@ def Program.checkTypes
             { next with
               stack := []
               unreachable := true
-              transfers := 0 :: next.transfers })
+              -- Wasm spec §3.3.5: `return` exits the function directly and does not
+              -- target any enclosing block exit.  Do NOT add to transfers — a `0` here
+              -- would be mis-read as "block exit reachable" by the block-propagation check.
+              transfers := next.transfers })
       | .throwI tagIndex => do
           let some tag := m.tags[tagIndex]?
             | throw "unknown tag"
@@ -1436,7 +1501,7 @@ def Program.checkTypes
             { next with
               stack := []
               unreachable := true
-              transfers := 0 :: next.transfers })
+              transfers := next.transfers })
       | .returnCallIndirect typeIndex tableIndex => do
           let some signature := m.types[typeIndex]?
             | throw "unknown type"
@@ -1451,7 +1516,7 @@ def Program.checkTypes
             { next with
               stack := []
               unreachable := true
-              transfers := 0 :: next.transfers })
+              transfers := next.transfers })
       | .returnCallRef typeIndex => do
           let some signature := m.types[typeIndex]?
             | throw "unknown type"
@@ -1464,7 +1529,7 @@ def Program.checkTypes
             { next with
               stack := []
               unreachable := true
-              transfers := 0 :: next.transfers })
+              transfers := next.transfers })
       | _ =>
           match instruction.straightSig m locals with
           | none => pure none
@@ -1556,7 +1621,10 @@ def Module.validate (m : Module) : Except String Unit := do
   -- `sourceInit` below: their `init` field may intentionally be a broad
   -- placeholder (for example `.funcref` for a precise `(ref $type)`).
   for global in m.globals do
+    -- Wasm spec §3.4.9: skip imported globals (no initializer); their `init`
+    -- placeholder may not match the declared reference type.
     if global.sourceInit.isNone && global.initExpr.isEmpty &&
+        global.valueType.reference?.isNone &&
         !m.vtCompat global.init.toValueType global.valueType then
       throw "type mismatch"
     match global.init with
@@ -1588,7 +1656,7 @@ def Module.validate (m : Module) : Except String Unit := do
       if s ≥ nTypes then throw "unknown type"
       let sup := m.gcTypes[s]!
       if sup.«final» then throw "sub type"
-      if !td.comp.structSubtype sup.comp then throw "sub type"
+      if !m.compositeSubtype td.comp sup.comp then throw "sub type"
   -- 2. Instruction immediates: GC type indices in range; struct/array
   -- mutating accessors target a mutable field / element.
   for f in m.funcs do

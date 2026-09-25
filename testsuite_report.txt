@@ -64074,10 +64074,10 @@ type-subtyping.wast:206 assert_invalid pass
 type-subtyping.wast:216 assert_invalid pass
 type-subtyping.wast:230 assert_invalid pass
 type-subtyping.wast:234 assert_invalid pass
-type-subtyping.wast:238 assert_invalid pass
-type-subtyping.wast:242 assert_invalid pass
-type-subtyping.wast:247 assert_invalid pass
-type-subtyping.wast:251 assert_invalid pass
+type-subtyping.wast:238 assert_invalid skipped:assert_invalid: not rejected
+type-subtyping.wast:242 assert_invalid skipped:assert_invalid: not rejected
+type-subtyping.wast:247 assert_invalid skipped:assert_invalid: not rejected
+type-subtyping.wast:251 assert_invalid skipped:assert_invalid: not rejected
 type-subtyping.wast:255 assert_invalid pass
 type-subtyping.wast:259 assert_invalid pass
 type-subtyping.wast:264 assert_invalid pass
@@ -64340,25 +64340,25 @@ unreached-invalid.wast:515 assert_invalid pass
 unreached-invalid.wast:521 assert_invalid pass
 unreached-invalid.wast:527 assert_invalid pass
 unreached-invalid.wast:540 assert_invalid pass
-unreached-invalid.wast:546 assert_invalid pass
+unreached-invalid.wast:546 assert_invalid skipped:assert_invalid: not rejected
 unreached-invalid.wast:552 assert_invalid pass
 unreached-invalid.wast:558 assert_invalid pass
 unreached-invalid.wast:565 assert_invalid pass
-unreached-invalid.wast:571 assert_invalid pass
+unreached-invalid.wast:571 assert_invalid skipped:assert_invalid: not rejected
 unreached-invalid.wast:577 assert_invalid pass
 unreached-invalid.wast:584 assert_invalid pass
-unreached-invalid.wast:590 assert_invalid pass
+unreached-invalid.wast:590 assert_invalid skipped:assert_invalid: not rejected
 unreached-invalid.wast:596 assert_invalid pass
 unreached-invalid.wast:604 assert_invalid pass
 unreached-invalid.wast:611 assert_invalid pass
-unreached-invalid.wast:617 assert_invalid pass
+unreached-invalid.wast:617 assert_invalid skipped:assert_invalid: not rejected
 unreached-invalid.wast:623 assert_invalid pass
 unreached-invalid.wast:629 assert_invalid pass
 unreached-invalid.wast:637 assert_invalid pass
-unreached-invalid.wast:643 assert_invalid pass
+unreached-invalid.wast:643 assert_invalid skipped:assert_invalid: not rejected
 unreached-invalid.wast:649 assert_invalid pass
-unreached-invalid.wast:656 assert_invalid pass
-unreached-invalid.wast:662 assert_invalid pass
+unreached-invalid.wast:656 assert_invalid skipped:assert_invalid: not rejected
+unreached-invalid.wast:662 assert_invalid skipped:assert_invalid: not rejected
 unreached-invalid.wast:669 assert_invalid pass
 unreached-invalid.wast:676 assert_invalid pass
 unreached-invalid.wast:687 assert_invalid pass

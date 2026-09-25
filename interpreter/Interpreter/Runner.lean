@@ -1,5 +1,6 @@
 import Interpreter.Wasm.SmallStep
 import Interpreter.Wasm.Decoder.Wat
+import Interpreter.Wasm.Validate
 
 /-!
 # `runner` — CLI front-end for the Lean Wasm interpreter
@@ -233,6 +234,11 @@ def runOnce (a : Args) : IO UInt32 := do
   let m ← match decode wat with
     | .ok m => pure m
     | .error msg => IO.eprintln s!"error: {msg}"; return EXIT_ERR
+
+  -- Validate (IirisMigration.md §"Validation and .Invalid": same error category as decode)
+  let () ← match m.validate with
+    | .ok () => pure ()
+    | .error msg => IO.eprintln s!"error: validate: {msg}"; return EXIT_ERR
 
   -- Resolve method
   let idx ← match resolveMethod m a.method with
