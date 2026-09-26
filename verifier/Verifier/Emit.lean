@@ -524,8 +524,8 @@ private def emitDataSegment (d : Wasm.DataSegment) : String :=
 
 private def emitMemDecl (m : Wasm.MemDecl) : String :=
   record <|
-    [field "pagesMin" (emitU32 m.pagesMin)] ++
-    fieldIf m.pagesMax.isSome "pagesMax" (emitOptionU32 m.pagesMax) ++
+    [field "pagesMin" (emitNat m.pagesMin)] ++
+    fieldIf m.pagesMax.isSome "pagesMax" (emitOptionNat m.pagesMax) ++
     fieldIf (!m.data.isEmpty) "data" (recordListAt 2 (m.data.map emitDataSegment)) ++
     fieldIf m.is64 "is64" (reprStr m.is64)
 

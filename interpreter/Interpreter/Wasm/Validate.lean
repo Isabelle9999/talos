@@ -1570,9 +1570,20 @@ def Module.checkConstProgram
     | _ => pure ()
 
 /-- Run the partial structural validator. `throw` on the first violation. -/
+private def MemDecl.checkLimits (d : MemDecl) : Except String Unit := do
+  let maxPages := if d.is64 then 2 ^ 48 else 65536
+  if d.pagesMin > maxPages then throw "memory size must be at most 65536"
+  match d.pagesMax with
+  | none => pure ()
+  | some mx =>
+    if mx > maxPages then throw "memory size must be at most 65536"
+    if d.pagesMin > mx then throw "size minimum must not be greater than maximum"
+
 def Module.validate (m : Module) : Except String Unit := do
   m.checkInterface
   if m.dataWithoutMemory then throw "unknown memory"
+  for decl in m.memory.toList ++ m.extraMemories do
+    decl.checkLimits
   match m.memory with
   | none => pure ()
   | some memory =>

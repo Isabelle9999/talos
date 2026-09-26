@@ -646,8 +646,8 @@ deriving Repr, Inhabited
 default memory; the multi-memory proposal's further memories live in
 `Module.extraMemories`. -/
 structure MemDecl where
-  pagesMin : UInt32
-  pagesMax : Option UInt32 := none
+  pagesMin : Nat
+  pagesMax : Option Nat := none
   data     : List DataSegment := []
   /-- `true` for a 64-bit memory (the wasm 3.0 memory64 address type):
   addresses are popped as `i64`, and `memory.size` / `memory.grow` speak
@@ -974,7 +974,7 @@ def Module.initialStore [Inhabited α] (m : Module) : Store α :=
     match m.memory with
     | none      => (Mem.empty 0, [])
     | some decl =>
-      let mem : Mem := applySegs decl.data 0 (Mem.empty decl.pagesMin.toNat)
+      let mem : Mem := applySegs decl.data 0 (Mem.empty decl.pagesMin)
       let dataSegments : List (Option (List UInt8)) :=
         decl.data.map fun seg => match seg.offset with
           | some _ => none           -- active: auto-dropped after init
@@ -982,7 +982,7 @@ def Module.initialStore [Inhabited α] (m : Module) : Store α :=
       (mem, dataSegments)
   -- Extra memories (multi-memory): memory k = extraMems[k-1].
   let extraMems : List Mem := m.extraMemories.zipIdx.map fun (decl, i) =>
-    applySegs allSegs (i + 1) (Mem.empty decl.pagesMin.toNat)
+    applySegs allSegs (i + 1) (Mem.empty decl.pagesMin)
   -- Allocate tables filled with the element type's null ref at the
   -- declared minimum size.
   let baseTables : List TableInst :=
@@ -1024,7 +1024,7 @@ def Module.initialStore [Inhabited α] (m : Module) : Store α :=
   let memoryCaps : List Nat :=
     (m.memory.toList ++ m.extraMemories).map fun decl =>
       match decl.pagesMax with
-      | some n => Nat.min n.toNat Module.memoryHardCap
+      | some n => Nat.min n Module.memoryHardCap
       | none => Module.memoryHardCap
   let memoryIds := List.range memoryCaps.length
   let tableIds := List.range tables.length
@@ -1047,7 +1047,7 @@ def Module.memoryCap (m : Module) : Nat :=
   match m.memory with
   | some d =>
     match d.pagesMax with
-    | some n => Nat.min n.toNat Module.memoryHardCap
+    | some n => Nat.min n Module.memoryHardCap
     | none   => Module.memoryHardCap
   | none => Module.memoryHardCap
 
@@ -1288,7 +1288,7 @@ def Store.memoryCap (store : Store α) (m : Module) (index : Nat) : Nat :=
       match m.extraMemories[index - 1]? with
       | some decl =>
         match decl.pagesMax with
-        | some n => Nat.min n.toNat Module.memoryHardCap
+        | some n => Nat.min n Module.memoryHardCap
         | none => Module.memoryHardCap
       | none => Module.memoryHardCap
 

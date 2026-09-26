@@ -27,7 +27,7 @@ def «module» : Wasm.Module :=
   exports := [
     { name := "is_even", funcIdx := 0 }
   ],
-  memory := some { pagesMin := (16 : UInt32), pagesMax := none, data := [] },
+  memory := some { pagesMin := 16, pagesMax := none, data := [] },
   globals := [
     { declaredType := some .i32, init := .i32 (1048576 : UInt32) },
     { declaredType := some .i32, init := .i32 (1048576 : UInt32) },
