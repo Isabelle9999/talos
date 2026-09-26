@@ -1605,6 +1605,10 @@ wasm_twp_pure_rule twp_subI64 {lhs rhs : UInt64} :
   .subI64, .i64 rhs :: .i64 lhs :: values =>
     .i64 (lhs - rhs) :: values := Step.subI64
 
+wasm_twp_pure_rule twp_addI64 {lhs rhs : UInt64} :
+  .addI64, .i64 rhs :: .i64 lhs :: values =>
+    .i64 (lhs + rhs) :: values := Step.addI64
+
 wasm_twp_pure_rule twp_mulI64 {lhs rhs : UInt64} :
   .mulI64, .i64 rhs :: .i64 lhs :: values =>
     .i64 (lhs * rhs) :: values := Step.mulI64
@@ -1689,6 +1693,8 @@ macro_rules
       `(tactic| iapply twp_constI64; wasm_twp_pures [$rest:ident*])
   | `(tactic| wasm_twp_pures [twp_subI64 $rest:ident*]) =>
       `(tactic| iapply twp_subI64; wasm_twp_pures [$rest:ident*])
+  | `(tactic| wasm_twp_pures [twp_addI64 $rest:ident*]) =>
+      `(tactic| iapply twp_addI64; wasm_twp_pures [$rest:ident*])
   | `(tactic| wasm_twp_pures [twp_mulI64 $rest:ident*]) =>
       `(tactic| iapply twp_mulI64; wasm_twp_pures [$rest:ident*])
   | `(tactic| wasm_twp_pures [twp_orI64 $rest:ident*]) =>
