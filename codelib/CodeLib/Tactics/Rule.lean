@@ -24,7 +24,9 @@ structure WasmRuleEntry where
 
 -- NameMap is core Lean (RBMap Name α Name.lt); no extra import needed.
 -- Key combines modality and ctor into one Name: e.g. twp ++ const = `twp.const`.
-abbrev WasmRuleMap := NameMap WasmRuleEntry
+-- Each key holds an ordered array; entries are appended in registration order,
+-- so the first entry registered is tried first by wasm_pure / wasm_mem.
+abbrev WasmRuleMap := NameMap (Array WasmRuleEntry)
 
 -- Flat tuple encoding:
 -- (modality, ctor, thm, needsRfl, isMem, predWidth, addrVariant)
@@ -36,7 +38,8 @@ private def wasmRuleAddEntry (m : WasmRuleMap)
   let kind : WasmRuleKind :=
     if isMem then .mem { predWidth, addrVariantThm := addrVariant }
     else .pure needsRfl
-  m.insert (mod ++ ctor) { thmName := thm, kind }
+  let key := mod ++ ctor
+  m.insert key ((m.find? key |>.getD #[]).push { thmName := thm, kind })
 
 initialize wasmRuleExt : SimplePersistentEnvExtension
     (Name × Name × Name × Bool × Bool × String × Name) WasmRuleMap ←
@@ -47,9 +50,10 @@ initialize wasmRuleExt : SimplePersistentEnvExtension
         ns.foldl wasmRuleAddEntry m) (∅ : WasmRuleMap)
   }
 
-/-- Look up the registered rule for a given modality and instruction constructor. -/
+/-- Look up all registered rules for a given modality and instruction constructor,
+    in registration order (first registered = first tried). -/
 def getWasmRule (env : Environment) (modality : Name) (ctor : Name) :
-    Option WasmRuleEntry :=
+    Option (Array WasmRuleEntry) :=
   (wasmRuleExt.getState env).find? (modality ++ ctor)
 
 -- Pure form: `@[wasm_rule <modality> <head>]` or `@[wasm_rule <modality> <head> rfl]`

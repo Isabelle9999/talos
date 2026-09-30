@@ -15,8 +15,8 @@ def nameLastSimple : Name → Name
 /-- Given a Lean expression that is either a WP IProp directly or the iris
 proof-mode wrapper `envs_entails Γ (WP ...)`, return the WP IProp and its
 modality key string:
-- `"twp"` for `TotalWp.totalWp`  (notation `WP e @ s; E [{ Φ }]`, WeakestPre.lean:72)
-- `"wp"`  for `Wp.wp`            (notation `WP e @ s; E {{ Φ }}`, WeakestPre.lean:55)
+- `"twp"` for `TotalWp.totalWp`  (notation `WP e @ s; E [{ Φ }]`)
+- `"wp"`  for `Wp.wp`            (notation `WP e @ s; E {{ Φ }}`)
 Throws if neither matches. -/
 def unwrapIrisGoal (goalTy : Expr) : MetaM (Expr × String) := do
   let goalTy := goalTy.consumeMData
@@ -86,34 +86,14 @@ def instrHeadKey (goal : MVarId) : MetaM (Name × String) := do
     throwError "wasm_pure: instruction head did not reduce to a constructor"
   return (nameLastSimple instrFn.constName!, modality)
 
-/-- Apply one pure-step rule (TWP or WP) determined by the head of `thread.code`.
-
-Looks up the instruction constructor in the `@[wasm_rule]` registry under
-the modality derived from the goal (`twp` for `[{ Φ }]`, `wp` for `{{ Φ }}`).
-Calls iris `iapply` with the theorem as the pmTerm.  For `needsRfl = true`
-rules, the pmTerm is `thm rfl`, which discharges the side condition inline.
-
-After `iapply`, asserts that no extra side goals remain.  If the rule left
-a side goal that normalisation did not close, fails with a named error
-(mirroring the `throwIPMError` pattern in HeapLang/ProofMode.lean:364).
-
-**Errors** (with the instruction name) if:
-- the goal is not a TWP/WP goal (bare or iris-mode-wrapped);
-- `thread.code` cannot be reduced to a concrete instruction;
-- no rule is registered for the head constructor;
-- the applied rule leaves an unsolved side goal. -/
-elab "wasm_pure" : tactic => do
-  let goal ← getMainGoal
-  let (ctorKey, modality) ← instrHeadKey goal
-  let env ← getEnv
-  match getWasmRule env (Name.mkSimple modality) ctorKey with
-  | none =>
-    throwError "wasm_pure: no rule registered for {ctorKey}"
-  | some entry =>
-    match entry.kind with
-    | .mem _ =>
-      throwError "wasm_pure: rule for {ctorKey} is a mem rule; use wasm_mem"
-    | .pure needsRfl =>
+/-- Try each pure-step entry in registration order; return `true` on first
+success, `false` if every entry fails to unify or close its side conditions.
+Infrastructure errors (e.g., `iapply` throwing for reasons other than unification
+failure) propagate normally. -/
+private def tryApplyPureRules (pureEntries : Array WasmRuleEntry) : TacticM Bool := do
+  for entry in pureEntries do
+    let .pure needsRfl := entry.kind | continue
+    let st ← saveState
     let thmTerm : TSyntax `term := ⟨(mkIdent entry.thmName).raw⟩
     let pmt : TSyntax `pmTerm ←
       if needsRfl then do
@@ -122,32 +102,94 @@ elab "wasm_pure" : tactic => do
         `(pmTerm| $appExpr:term)
       else
         `(pmTerm| $thmTerm:term)
-    evalTactic (← `(tactic| iapply $pmt))
-    -- Defensive: detect any side goals the rule left open.
-    -- Pure-step rules produce exactly one new goal (the continuation WP).
-    -- Extra goals indicate a misregistered rule.
-    let newGoals ← getGoals
-    for g in newGoals.drop 1 do
-      let sideGoalTy ← g.getType >>= instantiateMVars
-      throwError "wasm_pure: unsolved side goal {sideGoalTy}"
+    let succeeded ← try
+      evalTactic (← `(tactic| iapply $pmt))
+      let newGoals ← getGoals
+      if newGoals.isEmpty then pure true
+      else
+        let mut continuation : List MVarId := []
+        let mut ok := true
+        for sg in newGoals do
+          let ty ← sg.getType >>= instantiateMVars
+          let headStr := ty.consumeMData.getAppFn.constName?
+                          |>.map Name.getString! |>.getD ""
+          -- Iris proof-mode goals in iris-lean are `Iris.ProofMode.Entails' A B`.
+          if headStr == "Entails'" then
+            continuation := continuation ++ [sg]
+          else if ← Meta.isProp ty then
+            -- Prop-type side condition: close with rfl or decide.
+            -- May assign non-Prop value metavars that appear in it as a side effect.
+            setGoals [sg]
+            try evalTactic (← `(tactic| first | rfl | decide))
+            catch _ => ok := false; break
+            unless (← getGoals).isEmpty do ok := false; break
+          -- Non-Prop value-type metavars are skipped; assigned by rfl on Prop goals.
+        if ok then
+          setGoals continuation
+          try evalTactic (← `(tactic| simp (config := { decide := true }) only [List.take_succ_cons, List.take_zero, List.take_nil, List.nil_append, List.drop_zero, List.drop_nil, List.append_nil, if_true, if_false, if_pos, if_neg, List.length_cons, List.length_nil, List.set_cons_zero, List.set_cons_succ, Nat.sub_zero, Nat.sub_self]))
+          catch _ => pure ()
+        if !ok then restoreState st
+        pure ok
+    catch _ =>
+      restoreState st
+      pure false
+    if succeeded then return true
+  return false
+
+/-- Apply one pure-step rule (TWP or WP) determined by the head of `thread.code`.
+
+Looks up the instruction constructor in the `@[wasm_rule]` registry under
+the modality derived from the goal (`twp` for `[{ Φ }]`, `wp` for `{{ Φ }}`).
+Tries each registered entry in order; the first entry whose `iapply` unifies
+and whose Prop side conditions close with `rfl`/`decide` wins.
+After each successful step the tactic simplifies `List.take`/`List.drop`
+leftovers from branch rules and evaluates closed `if` conditions.
+
+**Errors** (with the instruction name) if:
+- the goal is not a TWP/WP goal (bare or iris-mode-wrapped);
+- `thread.code` cannot be reduced to a concrete instruction;
+- no rule is registered for the head constructor;
+- all registered entries fail to apply. -/
+elab "wasm_pure" : tactic => do
+  let goal ← getMainGoal
+  let (ctorKey, modality) ← instrHeadKey goal
+  let env ← getEnv
+  let entries ← match getWasmRule env (Name.mkSimple modality) ctorKey with
+    | none => throwError "wasm_pure: no rule registered for {ctorKey}"
+    | some arr => pure arr
+  let hasMem := entries.any fun e => match e.kind with | .mem _ => true | _ => false
+  let pureEntries := entries.filter fun e => match e.kind with | .pure _ => true | _ => false
+  if pureEntries.isEmpty then
+    if hasMem then throwError "wasm_pure: rule for {ctorKey} is a mem rule; use wasm_mem"
+    else        throwError "wasm_pure: no rule registered for {ctorKey}"
+  let succeeded ← tryApplyPureRules pureEntries
+  if succeeded then return
+  let triedStr := String.intercalate ", "
+    (pureEntries.toList.map fun e => e.thmName.getString!)
+  throwError m!"wasm_pure: no registered rule applied to {ctorKey} (tried: {triedStr})"
 
 /-- Repeat `wasm_pure` and `wasm_mem` until the head instruction has no registered
 rule or the goal is no longer a WP goal.
 
-Dispatches to `wasm_pure` for pure-step rules and to `wasm_mem` for memory and
-global rules, looping until no rule is found for the current head.
+Dispatches to `tryApplyPureRules` for pure-step rules and to `wasm_mem` for
+memory and global rules, looping until no rule is found for the current head.
+After each successful pure step the tactic simplifies `List.take`/`List.drop`
+leftovers from branch rules and evaluates closed `if` conditions.
 
 With `wasm_pures using [l₁, …, lₙ]`, runs `simp only [l₁, …, lₙ]` on the goal
 at the start of each iteration.  This normalises the code list, locals, and
 arithmetic expressions so that `instrHeadKey` can read the next instruction
 after block/branch/opaque-definition steps.  The same lemma list is forwarded
-to each dispatched `wasm_mem using [l₁, …, lₙ]` call for address normalisation.
+to each `wasm_mem using [l₁, …, lₙ]` call for address normalisation.
 
 The pre-check (`instrHeadKey` + `getWasmRule`) is wrapped in `try … catch`
 so that all expected termination signals (wrong goal type, un-reducible code,
-unregistered head) stop the loop silently.  `evalTactic wasm_pure` and
-`evalTactic wasm_mem` are deliberately NOT wrapped: errors from them propagate
-to the caller rather than being swallowed. -/
+unregistered head) stop the loop silently.  For `.pure` dispatch,
+`tryApplyPureRules` returns `false` when all registered entries fail
+(e.g. `br_if` with a symbolic condition), stopping the loop silently.
+For `.mem` dispatch, errors from `wasm_mem` propagate to the caller —
+a missing or ambiguous ownership hypothesis is a real proof obligation,
+not a loop termination signal. -/
 private partial def wasmPuresLoop (usingTerms : Array (TSyntax `term)) : TacticM Unit := do
   let goals ← getGoals
   if goals.isEmpty then return
@@ -158,16 +200,17 @@ private partial def wasmPuresLoop (usingTerms : Array (TSyntax `term)) : TacticM
   let goalsNow ← getGoals
   if goalsNow.isEmpty then return
   let goal ← getMainGoal
-  let maybeEntry : Option WasmRuleEntry ← do
+  let maybeEntries : Option (Array WasmRuleEntry) ← do
     try
       let (ctorKey, modality) ← instrHeadKey goal
       let env ← getEnv
       pure (getWasmRule env (Name.mkSimple modality) ctorKey)
     catch _ => pure none
-  match maybeEntry with
+  match maybeEntries with
   | none => return
-  | some entry =>
-    match entry.kind with
+  | some entries =>
+    if entries.isEmpty then return
+    match entries[0]!.kind with
     | .mem _ =>
       if usingTerms.isEmpty then
         evalTactic (← `(tactic| wasm_mem))
@@ -175,7 +218,9 @@ private partial def wasmPuresLoop (usingTerms : Array (TSyntax `term)) : TacticM
         evalTactic (← `(tactic| wasm_mem using [$usingTerms,*]))
       wasmPuresLoop usingTerms
     | .pure _ =>
-      evalTactic (← `(tactic| wasm_pure))
+      let pureEntries := entries.filter fun e => match e.kind with | .pure _ => true | _ => false
+      let succeeded ← tryApplyPureRules pureEntries
+      if !succeeded then return
       wasmPuresLoop usingTerms
 
 syntax (name := wasm_pures) "wasm_pures" ("using" "[" term,* "]")? : tactic

@@ -40,14 +40,15 @@ private def matchPredAddr (predWidth : String) (ty : Expr) : Option Expr := do
   | "u32"    => guard (fnStr == "pointsTo_u32");    if args.size >= 2 then some args[args.size - 2]! else none
   | "u64"    => guard (fnStr == "pointsTo_u64");    if args.size >= 2 then some args[args.size - 2]! else none
   | "global" => guard (fnStr == "globalPointsToAt"); if args.size >= 2 then some args[args.size - 2]! else none
-  | "byte"   => guard (fnStr == "pointsTo");        if args.size >= 3 then some args[args.size - 3]! else none
+  | "byte"   => guard (fnStr == "pointsTo"); if args.size >= 3 then (let loc := args[args.size - 3]!; let locArgs := loc.getAppArgs; if locArgs.size >= 2 then some locArgs[locArgs.size - 1]! else some loc) else none
   | _        => none
 
 /-- An `arrayAt` / `array64At` region hypothesis found during scanning. -/
 private structure ArrayCandidate where
   hypName : Name
-  ptr     : Expr   -- base pointer extracted from the hypothesis type
-  isU64   : Bool   -- true for `array64At` (stride 8); false for `arrayAt` (stride 4)
+  ptr     : Expr        -- base pointer extracted from the hypothesis type
+  isU64   : Bool        -- true for `array64At` (stride 8); false for `arrayAt` (stride 4)
+  index   : Option Nat  -- cell index resolved during candidate selection, if known
   deriving Inhabited
 
 section
@@ -74,7 +75,7 @@ private partial def scanIrisHyps
         let args := ty'.consumeMData.getAppArgs
         if args.size >= 3 then
           let ptr := args[args.size - 2]!
-          return ([], [{ hypName := name, ptr, isU64 }])
+          return ([], [{ hypName := name, ptr, isU64, index := none }])
       return ([], [])
     -- Check for direct pointsTo match
     match matchPredAddr predWidth ty' with
@@ -88,6 +89,44 @@ private partial def scanIrisHyps
     let lr ← scanIrisHyps predWidth normEffAddr usingLemmas lhs
     let rr ← scanIrisHyps predWidth normEffAddr usingLemmas rhs
     return (lr.1 ++ rr.1, lr.2 ++ rr.2)
+
+/-- Count list-constructor nodes in a `List α` `Expr`, using `whnfD` at each step
+to reduce through definitions. Works for lists with symbolic elements (e.g.
+`[a, b]` where `a b : UInt32`) where `reduce (List.length xs)` returns
+`Nat.succ` chains rather than `.lit (.natVal n)`. -/
+private partial def countListLen (e : Expr) : MetaM (Option Nat) := do
+  let e' ← whnfD e
+  let fn := e'.consumeMData.getAppFn
+  if !fn.isConst then return none
+  match fn.constName!.getString! with
+  | "nil"  => return some 0
+  | "cons" =>
+    let args := e'.consumeMData.getAppArgs
+    if args.size >= 3 then
+      match ← countListLen args[2]! with
+      | some n => return some (n + 1)
+      | none   => return none
+    else return none
+  | _ => return none
+
+/-- Find the length of the `xs` list in an `arrayAt`/`array64At` hypothesis
+    identified by `hypName` in an Iris `Hyps` tree.  Returns `none` if not found
+    or if the list length cannot be determined. -/
+private partial def findArrayListLen
+    {u : Level} {prop : Q(Type u)} {bi : Q(BI $prop)}
+    (hypName : Name)
+    : ∀ {e : Q($prop)}, Hyps bi e → MetaM (Option Nat)
+  | _, .emp _ => return none
+  | _, .hyp _ name _ivar _bp ty _ => do
+    if name != hypName then return none
+    let args := ty.consumeMData.getAppArgs
+    if args.size < 3 then return none
+    let xs := args[args.size - 1]!
+    countListLen xs
+  | _, .sep _ _ _ _ lhs rhs => do
+    let l ← findArrayListLen hypName lhs
+    if l.isSome then return l
+    findArrayListLen hypName rhs
 
 end  -- open Iris
 
@@ -266,11 +305,12 @@ def elabWasmMem : Lean.Elab.Tactic.Tactic := fun stx => do
   let goal ← getMainGoal
   let (ctorKey, modality) ← instrHeadKey goal
   let env ← getEnv
-  let some entry := getWasmRule env (Name.mkSimple modality) ctorKey
+  let some entries := getWasmRule env (Name.mkSimple modality) ctorKey
     | throwError "wasm_mem: no rule registered for {ctorKey} \
         (is this instruction registered with `@[wasm_mem_rule …]`?)"
-  let .mem info := entry.kind
+  let some entry := entries.find? fun e => match e.kind with | .mem _ => true | _ => false
     | throwError "wasm_mem: rule for {ctorKey} is a pure rule; use wasm_pure"
+  let .mem info := entry.kind | unreachable!
   -- ── Extract effective address and normalise ────────────────────────────────
   -- For non-global rules that have an addr variant, check whether the
   -- instruction offset is zero.  If so we use the _addr theorem (which has
@@ -295,14 +335,55 @@ def elabWasmMem : Lean.Elab.Tactic.Tactic := fun stx => do
   let directCands := scanRes.1
   let arrayCands  := scanRes.2
   -- ── Candidate dispatch ────────────────────────────────────────────────────
-  let allCandCount := directCands.length + arrayCands.length
-  if allCandCount == 0 then
-    throwError "wasm_mem: no {info.predWidth} hypothesis found \
-        for effective address {normEffAddr}; check the Iris context"
-  if allCandCount > 1 then
-    let allNames := directCands ++ arrayCands.map (·.hypName)
+  -- Priority: direct matches first, then resolved array candidates.
+  let (resolvedArrayCands, oobCands) :
+      Array ArrayCandidate × Array (Name × Nat × Nat × Expr) ←
+    if directCands.isEmpty then do
+      let mut resolved : Array ArrayCandidate := #[]
+      let mut oobCands : Array (Name × Nat × Nat × Expr) := #[]
+      for arrayCand in arrayCands do
+        let stride   := if arrayCand.isU64 then 8 else 4
+        let normPtr  ← normWithLemmas arrayCand.ptr usingLemmas
+        match ← findArrayIndex normEffAddr normPtr stride with
+        | none   => pure ()  -- unresolved
+        | some k =>
+          let lenOpt ← findArrayListLen arrayCand.hypName irisGoal.hyps
+          match lenOpt with
+          | some len =>
+            if k < len then
+              resolved := resolved.push { arrayCand with index := some k }
+            else
+              oobCands := oobCands.push (arrayCand.hypName, k, len, normPtr)
+          | none => resolved := resolved.push { arrayCand with index := some k }
+      pure (resolved, oobCands)
+    else pure (#[], #[])
+  match directCands with
+  | [_] => pure ()
+  | _ :: _ :: _ =>
     throwError "wasm_mem: ambiguous — multiple {info.predWidth} \
-        hypotheses match address {normEffAddr}: {allNames}"
+        hypotheses match address {normEffAddr}: {directCands}"
+  | [] =>
+    match resolvedArrayCands.toList with
+    | [_] => pure ()
+    | _ :: _ :: _ =>
+      let names := resolvedArrayCands.toList.map (·.hypName)
+      throwError "wasm_mem: ambiguous — multiple {info.predWidth} \
+          hypotheses match address {normEffAddr}: {names}"
+    | [] =>
+      if arrayCands.isEmpty then
+        throwError "wasm_mem: no {info.predWidth} hypothesis found \
+            for effective address {normEffAddr}; check the Iris context"
+      else if !oobCands.isEmpty then
+        let (hName, _, len, normPtr) := oobCands[0]!
+        throwError "wasm_mem: address {normEffAddr} is past the end of \
+            array region {hName} (base {normPtr}, {len} cells)"
+      else
+        let first    := arrayCands[0]!
+        let stride   : Nat := if first.isU64 then 8 else 4
+        let normPtr  ← normWithLemmas first.ptr usingLemmas
+        throwError "wasm_mem: address {normEffAddr} lies in array region \
+            {first.hypName} (base {normPtr}) but no cell index was found \
+            for stride {stride}"
   -- For store rules, precompute the concrete value syntax so we can pass it both to
   -- the array-focus lemma (preventing a syntheticOpaque metavar in _wasm_mem_close) and
   -- to the step theorem's implicit {value} arg (allowing IntoWand synthesis to unify
@@ -318,20 +399,15 @@ def elabWasmMem : Lean.Elab.Tactic.Tactic := fun stx => do
     match directCands with
     | [n] => pure (n, none)
     | _ =>
-      -- Single array candidate: focus cell and emit ihave preamble
-      let arrayCand := arrayCands[0]!
-      let stride    := if arrayCand.isU64 then 8 else 4
-      let normPtr   ← normWithLemmas arrayCand.ptr usingLemmas
-      let some k    ← findArrayIndex normEffAddr normPtr stride
-        | throwError "wasm_mem: address {normEffAddr} lies in array region \
-              {arrayCand.hypName} (base {normPtr}) but no cell index was found \
-              for stride {stride}"
+      -- Single resolved array candidate: focus cell and emit ihave preamble
+      let arrayCand := resolvedArrayCands[0]!
+      let k         := arrayCand.index.get!
       let arrayHypId := mkIdent arrayCand.hypName
       let cellId     := mkIdent `_wasm_mem_cell
       let closeId    := mkIdent `_wasm_mem_close
       let kTerm      : TSyntax `term := ⟨(Lean.Syntax.mkNumLit (toString k)).raw⟩
       let byDec      : TSyntax `term ←
-        `((by first | decide | (simp only [List.length_cons, List.length_nil]; omega)))
+        `((by first | decide | omega | (simp only [List.length_cons, List.length_nil]; omega)))
       let focusLemma : Name :=
         match arrayCand.isU64, goalInfo.isStore with
         | false, false => ``Wasm.SepLogic.arrayAt_get
@@ -384,7 +460,7 @@ def elabWasmMem : Lean.Elab.Tactic.Tactic := fun stx => do
     mvar.assign pf
   -- ── Reassemble array if cell focusing was used ────────────────────────────
   if let some closeName := arrayCloseOpt then
-    let arrayCand  := arrayCands[0]!
+    let arrayCand  := resolvedArrayCands[0]!
     let closeId    := mkIdent closeName
     let cellId     := mkIdent hypName          -- `_wasm_mem_cell after re-intro
     let arrayHypId := mkIdent arrayCand.hypName
@@ -392,6 +468,6 @@ def elabWasmMem : Lean.Elab.Tactic.Tactic := fun stx => do
     let arrayPat   : TSyntax `icasesPat ← `(icasesPat| $arrayHypId:ident)
     evalTactic (← `(tactic| ihave $arrayPat := $closePmt))
     -- Normalize any List.getElem expressions left in the WP goal by the array focusing.
-    evalTactic (← `(tactic| try simp only [List.getElem_cons_succ, List.getElem_cons_zero]))
+    evalTactic (← `(tactic| simp (config := { failIfUnchanged := false }) only [List.getElem_cons_succ, List.getElem_cons_zero]))
 
 end CodeLib.Tactics
