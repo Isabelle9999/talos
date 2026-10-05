@@ -33,20 +33,13 @@ theorem twp_near_input {hlc : HasLC} [WasmSmallStepGS hlc NearState]
              show ¬ (0 : UInt64) = u64Max from by decide, ite_false] at h
   split_ifs at h with hLim
   · simp at h; obtain ⟨h1, h2⟩ := h; subst h1; subst h2
-    iopen_state Hσ from ⟨HP, Hσ⟩
-    ihave %heq : ⌜store.wasm.host = ns'⌝ $$ [Hstate_auth HP]
-    · iapply (hostStateOwn_agree store.wasm.host ns'); iframe Hstate_auth HP
+    iintro ⟨HP, Hσ⟩
+    imod stateInterp_host_set_expected store ns obs nt ns'
+        (ns'.setRegister 0 ns'.context.input) $$ [$Hσ $HP] with ⟨%heq, Hσ, HP'⟩
     rw [heq]
-    imod hostStateOwn_update ns' (ns'.setRegister 0 ns'.context.input) $$ [$Hstate_auth $HP] with ⟨Hauth', HP'⟩
     imodintro
     isplitl_exact HP'
-    · iapply (stateInterp_eq
-          { store with wasm := { store.wasm with host := ns'.setRegister 0 ns'.context.input } }
-          ns obs nt).mpr
-      iexists σ, globalσ, dataSegmentσ, tableσ, elementSegmentσ, runtimeModuleσ, hostEnvσ
-      iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeModuleBigSep
-        HruntimeInstances HinstanceAuth HhostEnvAuth Hauth' Hexc
-      ipureexact Hfacts
+    · iexact Hσ
 
 /-- Transfer for `read_register(0, 0)`: copies register 0 content into memory at offset 0,
     exchanging ghost ownership of `oldBytes` for `data`. The host state is unchanged. -/
@@ -141,10 +134,9 @@ theorem twp_near_storageWrite {P : IProp (WasmHeapGF NearState)} {hlc : HasLC} [
     have hinvoke := storageWriteFn_invoke_absent store.wasm key val keyLen keyPtr valLen valPtr regId
         hView' hKeyGet hValGet hKeyLim' hValLim' hStorage'
     rw [hinvoke] at h; simp at h; obtain ⟨-, rfl⟩ := h
-    iopen_state Hσ
+    imod stateInterp_host_set_expected store ns obs nt ns''
+        ((ns''.setStorage key val).invalidateIterators) $$ [$Hσ $HP] with ⟨%_, Hσ, HP'⟩
     rw [heq]
-    imod hostStateOwn_update ns'' ((ns''.setStorage key val).invalidateIterators)
-        $$ [$Hstate_auth $HP] with ⟨Hauth', HP'⟩
     have hStorageFacts :
         ((ns''.setStorage key val).invalidateIterators).storage key = some val ∧
           ∀ k, k ≠ key →
@@ -158,14 +150,7 @@ theorem twp_near_storageWrite {P : IProp (WasmHeapGF NearState)} {hlc : HasLC} [
         isplitl_exact HP'
         · ipureexact hStorageFacts
       · iexact HcP
-    · iapply (stateInterp_eq
-          { store with wasm :=
-            { store.wasm with host := (ns''.setStorage key val).invalidateIterators } }
-          ns obs nt).mpr
-      iexists σ, globalσ, dataSegmentσ, tableσ, elementSegmentσ, runtimeModuleσ, hostEnvσ
-      iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeModuleBigSep
-        HruntimeInstances HinstanceAuth HhostEnvAuth Hauth' Hexc
-      ipureexact Hfacts
+    · iexact Hσ
   · -- Present case: old value exists; checkedSetRegister? stores old value in regId.
     have hStorage' : store.wasm.host.storage key = some old := by rw [heq]; exact hStorage
     have hLim' : withinLimit store.wasm.host.config.maxRegisterLen old.length = true := by
@@ -175,16 +160,14 @@ theorem twp_near_storageWrite {P : IProp (WasmHeapGF NearState)} {hlc : HasLC} [
       by_cases hMax : regId = u64Max
       · exact ⟨store.wasm, by simp [hMax]⟩
       · refine ⟨{ store.wasm with host := store.wasm.host.setRegister regId.toNat old }, ?_⟩
-        simp only [hMax, ite_false, if_pos hLim']
+        simp only [hMax, ite_false, ite_eq_left hLim']
     obtain ⟨stReg, hCheckedProof⟩ := hChecked
     have hinvoke := storageWriteFn_invoke_present store.wasm key val old
         keyLen keyPtr valLen valPtr regId stReg
         hView' hKeyGet hValGet hKeyLim' hValLim' hStorage' hCheckedProof
     rw [hinvoke] at h; simp at h; obtain ⟨-, rfl⟩ := h
-    iopen_state Hσ
-    rw [heq]
-    imod hostStateOwn_update ns'' ((stReg.host.setStorage key val).invalidateIterators)
-        $$ [$Hstate_auth $HP] with ⟨Hauth', HP'⟩
+    imod stateInterp_host_set_expected store ns obs nt ns''
+        ((stReg.host.setStorage key val).invalidateIterators) $$ [$Hσ $HP] with ⟨%_, Hσ, HP'⟩
     have hStRegStorage : stReg.host.storage = ns''.storage := by
       rw [← heq]
       simp only [checkedSetRegister?] at hCheckedProof
@@ -213,13 +196,6 @@ theorem twp_near_storageWrite {P : IProp (WasmHeapGF NearState)} {hlc : HasLC} [
         · ipureexact hStorageFacts
       · iexact HcP
     · simp only [hStReg_wasm]
-      iapply (stateInterp_eq
-          { store with wasm :=
-            { store.wasm with host := (stReg.host.setStorage key val).invalidateIterators } }
-          ns obs nt).mpr
-      iexists σ, globalσ, dataSegmentσ, tableσ, elementSegmentσ, runtimeModuleσ, hostEnvσ
-      iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeModuleBigSep
-        HruntimeInstances HinstanceAuth HhostEnvAuth Hauth' Hexc
-      ipureexact Hfacts
+      iexact Hσ
 
 end Wasm.SmallStep
