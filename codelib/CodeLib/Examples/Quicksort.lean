@@ -1,4 +1,5 @@
 import CodeLib.Examples.UInt32Array
+import CodeLib.RustStd.MemArray.SmallStep
 import Interpreter.Wasm.Decoder.ProofEval
 import Mathlib.Data.List.Sort
 
@@ -408,14 +409,9 @@ theorem quicksort_oracle_sorted :
 
 /-! ## Adequacy infrastructure -/
 
-def quicksortHeapAux (σ : WasmHeapMap (Option UInt8)) (base : UInt32) :
-    List UInt32 → WasmHeapMap (Option UInt8)
-  | [] => σ
-  | x :: xs => quicksortHeapAux (store32Heap σ 0 base x) (base + 4) xs
-
 def quicksortHeap (arr : UInt32) (input : List UInt32) :
     WasmHeapMap (Option UInt8) :=
-  quicksortHeapAux ∅ arr input
+  heap32Aux ∅ arr input
 
 def quicksortConfig (arr : UInt32) (input : List UInt32) : Config Unit :=
   let initial := quicksortModule.initialStore (α := Unit)
@@ -426,32 +422,12 @@ def quicksortConfig (arr : UInt32) (input : List UInt32) : Config Unit :=
       { runtime := { instances := #[{ module := quicksortModule, host := {} }], entry := ⟨0⟩ }
         wasm := { initial with mem := writeWordArray initial.mem arr input } } }
 
-theorem quicksortHeapAux_agrees
-    (σ : WasmHeapMap (Option UInt8)) (mem : Mem) (base : UInt32) (xs : List UInt32)
-    (hagree : heapAgreesWithMem σ (fun id => if id = 0 then some mem else none))
-    (hfit : base.toNat + 4 * xs.length ≤ UInt32.size) :
-    heapAgreesWithMem (quicksortHeapAux σ base xs)
-      (fun id => if id = 0 then some (writeWordArray mem base xs) else none) := by
-  induction xs generalizing σ mem base with
-  | nil => simpa [quicksortHeapAux, writeWordArray]
-  | cons x xs ih =>
-    simp only [quicksortHeapAux, writeWordArray, List.length_cons] at *
-    simp only [UInt32.size] at hfit
-    have h4_le : (base + 4 : UInt32).toNat ≤ base.toNat + 4 := by
-      have h := UInt32.toNat_add base 4
-      simp only [show (4 : UInt32).toNat = 4 from by decide] at h
-      rw [h]; exact Nat.mod_le _ _
-    obtain ⟨h1, h2, h3⟩ := UInt32.addSteps4 base (by omega)
-    apply ih
-    · exact store32_sound0 σ mem base x h1 h2 h3 hagree
-    · simp only [UInt32.size]; omega
-
 theorem quicksortHeap_agrees (arr : UInt32) (input : List UInt32)
     (hfit : arr.toNat + 4 * input.length ≤ UInt32.size) :
     heapAgreesWithMem (quicksortHeap arr input)
       (storeResolve (quicksortConfig arr input).store) := by
   unfold quicksortHeap
-  have h := quicksortHeapAux_agrees ∅ (quicksortModule.initialStore (α := Unit)).mem
+  have h := heap32Aux_agrees ∅ (quicksortModule.initialStore (α := Unit)).mem
     arr input
     (by intro key value hget; simp [get?_empty] at hget)
     hfit
@@ -460,36 +436,13 @@ theorem quicksortHeap_agrees (arr : UInt32) (input : List UInt32)
     (show (quicksortModule.initialStore (α := Unit)).extraMems = [] from by decide +kernel)
   rw [heq] at h; exact h
 
-theorem quicksortHeapAux_inBounds
-    (σ : WasmHeapMap (Option UInt8)) (mem : Mem) (base : UInt32) (xs : List UInt32)
-    (hinBounds : heapAddressesInBounds σ (fun id => if id = 0 then some mem else none))
-    (hfit : base.toNat + 4 * xs.length ≤ UInt32.size)
-    (hmem : base.toNat + 4 * xs.length ≤ mem.pages * 65536) :
-    heapAddressesInBounds (quicksortHeapAux σ base xs)
-      (fun id => if id = 0 then some (writeWordArray mem base xs) else none) := by
-  induction xs generalizing σ mem base with
-  | nil => simpa [quicksortHeapAux, writeWordArray]
-  | cons x xs ih =>
-    simp only [quicksortHeapAux, writeWordArray, List.length_cons] at *
-    simp only [UInt32.size] at hfit
-    have h4_le : (base + 4 : UInt32).toNat ≤ base.toNat + 4 := by
-      have h := UInt32.toNat_add base 4
-      simp only [show (4 : UInt32).toNat = 4 from by decide] at h
-      rw [h]; exact Nat.mod_le _ _
-    have hpages : (mem.write32 base x).pages = mem.pages := by simp [Mem.write32]
-    obtain ⟨h1, h2, h3⟩ := UInt32.addSteps4 base (by omega)
-    apply ih
-    · exact store32_inBounds0 σ mem base x h1 h2 h3 (by omega) hinBounds
-    · simp only [UInt32.size]; omega
-    · rw [hpages]; omega
-
 theorem quicksortHeap_inBounds (arr : UInt32) (input : List UInt32)
     (hfit : arr.toNat + 4 * input.length ≤ UInt32.size)
     (hmem : arr.toNat + 4 * input.length ≤ 65536) :
     heapAddressesInBounds (quicksortHeap arr input)
       (storeResolve (quicksortConfig arr input).store) := by
   unfold quicksortHeap
-  have h := quicksortHeapAux_inBounds ∅ (quicksortModule.initialStore (α := Unit)).mem
+  have h := heap32Aux_inBounds ∅ (quicksortModule.initialStore (α := Unit)).mem
     arr input
     (by intro key hget; simp [get?_empty] at hget)
     hfit
@@ -500,67 +453,6 @@ theorem quicksortHeap_inBounds (arr : UInt32) (input : List UInt32)
     (show (quicksortModule.initialStore (α := Unit)).extraMems = [] from by decide +kernel)
   rw [heq] at h; exact h
 
-theorem quicksortHeapAux_pointsTo [WasmHeapGS α]
-    (σ : WasmHeapMap (Option UInt8)) (base : UInt32) (xs : List UInt32)
-    (hdisjoint : ∀ a b, get? σ a = some b → a.addr.toNat < base.toNat)
-    (hfit : base.toNat + 4 * xs.length < UInt32.size) :
-    ([∗map] address ↦ value ∈ quicksortHeapAux σ base xs,
-        pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap) address (DFrac.own 1) value) ⊢
-      arrayAt 0 base xs ∗
-      ([∗map] address ↦ value ∈ σ,
-          pointsTo (GF := WasmHeapGF α) (H := WasmHeapMap) address (DFrac.own 1) value) := by
-  induction xs generalizing σ base with
-  | nil =>
-    simp only [quicksortHeapAux, arrayAt, BI.emp_sep.to_eq]
-    iintro Hσ; iexact Hσ
-  | cons x xs ih =>
-    simp only [quicksortHeapAux, List.length_cons] at *
-    simp only [UInt32.size] at hfit
-    have h4 : (base + 4 : UInt32).toNat = base.toNat + 4 :=
-      UInt32.add_ofNat_toNat_noWrap base 4 (by decide) (by omega)
-    have hfit' : (base + 4).toNat + 4 * xs.length < UInt32.size := by
-      simp only [UInt32.size]; omega
-    obtain ⟨hn1, hn2, hn3⟩ := UInt32.addSteps4 base (by omega)
-    have hget0 : get? σ ⟨0, base⟩ = none := by
-      by_contra h; obtain ⟨v, hget⟩ := Option.ne_none_iff_exists.mp h
-      have hlt := hdisjoint (⟨0, base⟩ : MemoryKey) v hget.symm
-      change base.toNat < base.toNat at hlt; exact absurd hlt (Nat.lt_irrefl _)
-    have hget1 : get? σ ⟨0, base + 1⟩ = none := by
-      by_contra h; obtain ⟨v, hget⟩ := Option.ne_none_iff_exists.mp h
-      have hlt := hdisjoint (⟨0, base + 1⟩ : MemoryKey) v hget.symm
-      change (base + 1).toNat < base.toNat at hlt; rw [hn1] at hlt; omega
-    have hget2 : get? σ ⟨0, base + 2⟩ = none := by
-      by_contra h; obtain ⟨v, hget⟩ := Option.ne_none_iff_exists.mp h
-      have hlt := hdisjoint (⟨0, base + 2⟩ : MemoryKey) v hget.symm
-      change (base + 2).toNat < base.toNat at hlt; rw [hn2] at hlt; omega
-    have hget3 : get? σ ⟨0, base + 3⟩ = none := by
-      by_contra h; obtain ⟨v, hget⟩ := Option.ne_none_iff_exists.mp h
-      have hlt := hdisjoint (⟨0, base + 3⟩ : MemoryKey) v hget.symm
-      change (base + 3).toNat < base.toNat at hlt; rw [hn3] at hlt; omega
-    have hdisjoint' : ∀ a b, get? (store32Heap σ 0 base x) a = some b →
-        a.addr.toNat < (base + 4).toNat := by
-      rw [h4]
-      intro a b hget
-      by_cases h3 : a = ⟨0, base + 3⟩
-      · subst h3; change (base + 3).toNat < base.toNat + 4; rw [hn3]; omega
-      by_cases h2 : a = ⟨0, base + 2⟩
-      · subst h2; change (base + 2).toNat < base.toNat + 4; rw [hn2]; omega
-      by_cases h1 : a = ⟨0, base + 1⟩
-      · subst h1; change (base + 1).toNat < base.toNat + 4; rw [hn1]; omega
-      by_cases h0 : a = ⟨0, base⟩
-      · subst h0; change base.toNat < base.toNat + 4; omega
-      · simp only [store32Heap, get?_insert_ne (Ne.symm h3), get?_insert_ne (Ne.symm h2),
-            get?_insert_ne (Ne.symm h1), get?_insert_ne (Ne.symm h0)] at hget
-        have hlt := hdisjoint a b hget; omega
-    iintro Hheap
-    ihave ⟨Hxs, Hstore32⟩ := ih (store32Heap σ 0 base x) (base + 4) hdisjoint' hfit' $$ Hheap
-    ihave ⟨Hword, Hσ⟩ :=
-      store32Heap_pointsTo σ 0 base x hget0 hget1 hget2 hget3 hn1 hn2 hn3 $$ Hstore32
-    simp only [arrayAt]
-    isplitl [Hword Hxs]
-    · isplitl_exact Hword; iexact Hxs
-    · iexact Hσ
-
 theorem quicksortHeap_pointsTo [WasmHeapGS α]
     (arr : UInt32) (input : List UInt32)
     (hfit : arr.toNat + 4 * input.length < UInt32.size) :
@@ -569,7 +461,7 @@ theorem quicksortHeap_pointsTo [WasmHeapGS α]
       arrayAt 0 arr input := by
   unfold quicksortHeap
   iintro Hheap
-  ihave ⟨Harray, _Hemp⟩ := quicksortHeapAux_pointsTo ∅ arr input
+  ihave ⟨Harray, _Hemp⟩ := heap32Aux_pointsTo ∅ arr input
     (fun a b hget => by simp [get?_empty] at hget) hfit $$ Hheap
   iexact Harray
 

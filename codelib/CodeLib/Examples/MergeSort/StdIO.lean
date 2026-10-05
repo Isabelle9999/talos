@@ -184,14 +184,14 @@ theorem quicksortHeapAux_addresses_lt
     (hfit : base.toNat + 4 * values.length ≤ limit)
     (hlimit : limit < UInt32.size) :
     ∀ address byte,
-      get? (Quicksort.quicksortHeapAux σ base values) address = some byte →
+      get? (heap32Aux σ base values) address = some byte →
       address.addr.toNat < limit := by
   induction values generalizing σ base with
   | nil =>
       intro address byte hget
       exact Nat.lt_of_lt_of_le (hσ address byte hget) (by simpa using hfit)
   | cons value values ih =>
-      simp only [Quicksort.quicksortHeapAux, List.length_cons] at *
+      simp only [heap32Aux, List.length_cons] at *
       have h4 : (base + 4 : UInt32).toNat = base.toNat + 4 :=
         UInt32.add_ofNat_toNat_noWrap base 4 (by decide) (by
           simp only [UInt32.size] at hlimit; omega)
@@ -502,8 +502,8 @@ def scratchValues (input : List UInt32) : List UInt32 :=
 
 /-- Authoritative ghost heap covering both arrays used by merge sort. -/
 def sortHeap (input : List UInt32) : WasmHeapMap (Option UInt8) :=
-  Quicksort.quicksortHeapAux
-    (Quicksort.quicksortHeapAux ∅ source input)
+  heap32Aux
+    (heap32Aux ∅ source input)
     scratch (scratchValues input)
 
 theorem fits_iff (values : List UInt32) :
@@ -531,7 +531,7 @@ theorem afterRead_mem_eq (input : List UInt32) (hfit : Fits input) :
 theorem sortHeap_agrees (input : List UInt32) (hfit : Fits input) :
     heapAgreesWithMem (sortHeap input) (storeResolve (sortConfig input).store) := by
   let initialMem := (initialStore (serialize input)).mem
-  let sourceHeap := Quicksort.quicksortHeapAux ∅ source input
+  let sourceHeap := heap32Aux ∅ source input
   have hempty : heapAgreesWithMem (∅ : WasmHeapMap (Option UInt8))
       (fun id => if id = 0 then some initialMem else none) := by
     intro key v hget
@@ -540,13 +540,13 @@ theorem sortHeap_agrees (input : List UInt32) (hfit : Fits input) :
       (fun id => if id = 0 then some (afterRead input).mem else none) := by
     simp only [afterRead_mem_eq input hfit]
     simpa only [sourceHeap, initialMem] using
-      Quicksort.quicksortHeapAux_agrees ∅ initialMem source input hempty
+      heap32Aux_agrees ∅ initialMem source input hempty
       (by
         rw [fits_iff] at hfit
         simp only [source, UInt32.reduceToNat, Nat.zero_add, UInt32.size]
         change 4 * input.length ≤ 32768 at hfit
         omega)
-  have hscratch := Quicksort.quicksortHeapAux_agrees sourceHeap
+  have hscratch := heap32Aux_agrees sourceHeap
     (afterRead input).mem scratch (scratchValues input) hsource
     (by
       rw [scratchValues_length]
@@ -573,7 +573,7 @@ theorem sortHeap_agrees (input : List UInt32) (hfit : Fits input) :
 theorem sortHeap_inBounds (input : List UInt32) (hfit : Fits input) :
     heapAddressesInBounds (sortHeap input) (storeResolve (sortConfig input).store) := by
   let initialMem := (initialStore (serialize input)).mem
-  let sourceHeap := Quicksort.quicksortHeapAux ∅ source input
+  let sourceHeap := heap32Aux ∅ source input
   have hempty : heapAddressesInBounds
       (∅ : WasmHeapMap (Option UInt8)) (fun id => if id = 0 then some initialMem else none) := by
     intro key hne
@@ -582,7 +582,7 @@ theorem sortHeap_inBounds (input : List UInt32) (hfit : Fits input) :
       (fun id => if id = 0 then some (afterRead input).mem else none) := by
     simp only [afterRead_mem_eq input hfit]
     simpa only [sourceHeap, initialMem] using
-      Quicksort.quicksortHeapAux_inBounds ∅ initialMem source input hempty
+      heap32Aux_inBounds ∅ initialMem source input hempty
       (by
         rw [fits_iff] at hfit
         simp only [source, UInt32.reduceToNat, Nat.zero_add, UInt32.size]
@@ -596,7 +596,7 @@ theorem sortHeap_inBounds (input : List UInt32) (hfit : Fits input) :
         simp only [source, UInt32.reduceToNat, Nat.zero_add]
         change 4 * input.length ≤ 32768 at hfit
         omega)
-  have hscratch := Quicksort.quicksortHeapAux_inBounds sourceHeap
+  have hscratch := heap32Aux_inBounds sourceHeap
     (afterRead input).mem scratch (scratchValues input) hsource
     (by
       rw [scratchValues_length]
@@ -636,7 +636,7 @@ theorem sortHeap_pointsTo [WasmHeapGS Unit]
       pointsTo (GF := WasmHeapGF Unit) (H := WasmHeapMap)
         address (DFrac.own 1) value) ⊢
       arrayAt 0 source input ∗ arrayAt 0 scratch (scratchValues input) := by
-  let sourceHeap := Quicksort.quicksortHeapAux ∅ source input
+  let sourceHeap := heap32Aux ∅ source input
   have hempty : ∀ address byte,
       get? (∅ : WasmHeapMap (Option UInt8)) address = some byte →
       address.addr.toNat < source.toNat := by
@@ -672,9 +672,9 @@ theorem sortHeap_pointsTo [WasmHeapGS Unit]
       simp only [UInt32.size]; omega
   simp only [sortHeap]
   iintro Hheap
-  ihave ⟨Hscratch, HsourceHeap⟩ := Quicksort.quicksortHeapAux_pointsTo
+  ihave ⟨Hscratch, HsourceHeap⟩ := heap32Aux_pointsTo
     sourceHeap scratch (scratchValues input) hdisjoint hscratchFit $$ Hheap
-  ihave ⟨Hsource, _Hempty⟩ := Quicksort.quicksortHeapAux_pointsTo
+  ihave ⟨Hsource, _Hempty⟩ := heap32Aux_pointsTo
     ∅ source input hempty hsourceFit $$ HsourceHeap
   isplitl_exact Hsource
   · iexact Hscratch
