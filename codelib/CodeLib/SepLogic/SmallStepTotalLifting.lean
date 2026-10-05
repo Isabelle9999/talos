@@ -1603,7 +1603,7 @@ theorem twp_callRef
         .callRef typeIndex :: code, arity, remainder, controls, calls⟩
     runtimeModuleOwn callerId callerInst.module -∗
     runtimeInstancesOwn instances -∗
-    (runtimeModuleOwn callerId callerInst.module -∗
+    (runtimeModuleOwn callerId callerInst.module ∗ runtimeInstancesOwn instances -∗
         WP (Expr.running
           ⟨fn.toLocals (values.take fn.numParams).reverse,
             fn.body, fn.results.length, [], [],
@@ -1639,8 +1639,11 @@ theorem twp_callRef
   wasm_twp_step Step.callRef (α := α) haddr' himports' hfn' =>
     simp only [Hentry]
     wasm_twp_frame
-      iapply_splitl_exact Hwp with HruntimeElem
-      · iexact HinstanceOwn
+      iapply Hwp
+      isplitl [HruntimeElem HinstanceOwn]
+      · isplitl_exact HruntimeElem
+        iexact HinstanceOwn
+      · iexact HruntimeInstances
 
 theorem twp_callRefCrossInstance
     (callerId : ModuleInstanceId)
@@ -1649,6 +1652,7 @@ theorem twp_callRefCrossInstance
     (instances : Array (ModuleInstance α))
     (typeIndex : Nat) (rawAddr fnIdx : Nat) (fn : Function)
     (hcalleeLookup : instances[calleeId.id]? = some calleeInst)
+    (himports : ¬fnIdx < calleeInst.module.imports.length)
     (hfn : calleeInst.module.funcs[fnIdx - calleeInst.module.imports.length]? = some fn)
     (haddr : ({ instances, entry := callerId } : RuntimeEnv α).resolveFunc rawAddr =
              some (calleeId, fnIdx))
@@ -1686,7 +1690,7 @@ theorem twp_callRefCrossInstance
   have howner' : calleeId ≠ store.runtime.entry := Hentry ▸ howner
   have hcallee' : store.runtime.instances[calleeId.id]? = some calleeInst :=
     Hinst ▸ hcalleeLookup
-  wasm_twp_step Step.callRefCrossInstance (α := α) haddr' howner' hcallee' hfn =>
+  wasm_twp_step Step.callRefCrossInstance (α := α) haddr' howner' hcallee' himports hfn =>
     simp only [Hentry]
     imod stateInterp_currentInstance_update_of_any store ns [] nt callerId calleeId $$
         [$Hσ $HinstanceOwn] with ⟨Hσ, HinstanceOwn', %_⟩
@@ -1798,7 +1802,8 @@ theorem twp_callIndirect
     runtimeInstancesOwn instances -∗
     tablePointsToAt 0 tableIndex table -∗
     (∀ ri : ModuleInstanceId,
-        runtimeModuleOwn callerId callerInst.module ∗ tablePointsToAt 0 tableIndex table -∗
+        runtimeModuleOwn callerId callerInst.module ∗ tablePointsToAt 0 tableIndex table ∗
+          runtimeInstancesOwn instances -∗
         WP (Expr.running
             ⟨fn.toLocals (values.take fn.numParams).reverse,
               fn.body, fn.results.length, [], [],
@@ -1848,7 +1853,9 @@ theorem twp_callIndirect
       isplitl [HruntimeElem HinstanceOwn]
       · isplitl_exact HruntimeElem
         iexact HinstanceOwn
-      · iexact Htable
+      · isplitl [Htable]
+        · iexact Htable
+        · iexact HruntimeInstances
 
 theorem twp_returnCall
     (runtimeModule : Module) (functionIndex : Nat) (fn : Function)
@@ -1968,7 +1975,7 @@ theorem twp_returnCallRef
         .returnCallRef typeIndex :: code, arity, remainder, controls, calls⟩
     runtimeModuleOwn callerId callerInst.module -∗
     runtimeInstancesOwn instances -∗
-    (runtimeModuleOwn callerId callerInst.module -∗
+    (runtimeModuleOwn callerId callerInst.module ∗ runtimeInstancesOwn instances -∗
         WP (Expr.running
           ⟨fn.toLocals (values.take fn.numParams).reverse,
             fn.body, arity, remainder, [], calls⟩ : Expr α) @ s; E [{ Φ }]) -∗
@@ -1997,8 +2004,11 @@ theorem twp_returnCallRef
     rw [heq, Hentry]; exact haddr
   wasm_twp_step Step.returnCallRef (α := α) haddr' himports' hfn' =>
     wasm_twp_frame
-      iapply_splitl_exact Hwp with HruntimeElem
-      · iexact HinstanceOwn
+      iapply Hwp
+      isplitl [HruntimeElem HinstanceOwn]
+      · isplitl_exact HruntimeElem
+        iexact HinstanceOwn
+      · iexact HruntimeInstances
 
 theorem twp_returnCallRefCrossInstance
     (callerId : ModuleInstanceId)
@@ -2007,6 +2017,7 @@ theorem twp_returnCallRefCrossInstance
     (instances : Array (ModuleInstance α))
     (typeIndex : Nat) (rawAddr fnIdx : Nat) (fn : Function)
     (hcalleeLookup : instances[calleeId.id]? = some calleeInst)
+    (himports : ¬fnIdx < calleeInst.module.imports.length)
     (hfn : calleeInst.module.funcs[fnIdx - calleeInst.module.imports.length]? = some fn)
     (haddr : ({ instances, entry := callerId } : RuntimeEnv α).resolveFunc rawAddr =
              some (calleeId, fnIdx))
@@ -2037,7 +2048,7 @@ theorem twp_returnCallRefCrossInstance
   have howner' : calleeId ≠ store.runtime.entry := Hentry ▸ howner
   have hcallee' : store.runtime.instances[calleeId.id]? = some calleeInst :=
     Hinst ▸ hcalleeLookup
-  wasm_twp_step Step.returnCallRefCrossInstance (α := α) haddr' howner' hcallee' hfn =>
+  wasm_twp_step Step.returnCallRefCrossInstance (α := α) haddr' howner' hcallee' himports hfn =>
     imod stateInterp_currentInstance_update_of_any store ns [] nt callerId calleeId $$
         [$Hσ $HinstanceOwn] with ⟨Hσ, HinstanceOwn', %_⟩
     wasm_twp_frame
@@ -2073,7 +2084,8 @@ theorem twp_returnCallIndirectFuncAddr
     runtimeModuleOwn callerId callerInst.module -∗
     runtimeInstancesOwn instances -∗
     tablePointsToAt 0 tableIndex table -∗
-    (runtimeModuleOwn callerId callerInst.module ∗ tablePointsToAt 0 tableIndex table -∗
+    (runtimeModuleOwn callerId callerInst.module ∗ tablePointsToAt 0 tableIndex table ∗
+          runtimeInstancesOwn instances -∗
         WP (Expr.running
           ⟨fn.toLocals (values.take fn.numParams).reverse,
             fn.body, arity, remainder, [], calls⟩ : Expr α) @ s; E [{ Φ }]) -∗
@@ -2114,7 +2126,9 @@ theorem twp_returnCallIndirectFuncAddr
       isplitl [HruntimeElem HinstanceOwn]
       · isplitl_exact HruntimeElem
         iexact HinstanceOwn
-      · iexact Htable
+      · isplitl [Htable]
+        · iexact Htable
+        · iexact HruntimeInstances
 
 theorem twp_returnCallIndirectFuncAddrCrossInstance
     (callerId : ModuleInstanceId)
@@ -2130,7 +2144,8 @@ theorem twp_returnCallIndirectFuncAddrCrossInstance
     (hexpected : callerInst.module.types[typeIndex]? = some expected)
     (himports : ¬fnIdx < calleeInst.module.imports.length)
     (hfn : calleeInst.module.funcs[fnIdx - calleeInst.module.imports.length]? = some fn)
-    (htype : (fn.params == expected.params && fn.results == expected.results) = true)
+    (htype : calleeInst.module.crossIndirectCallTypeOk fnIdx callerInst.module typeIndex
+      { params := fn.params, results := fn.results } expected = true)
     (haddr : ({ instances, entry := callerId } : RuntimeEnv α).resolveFunc address =
              some (calleeId, fnIdx))
     (howner : calleeId ≠ callerId)
@@ -2178,8 +2193,10 @@ theorem twp_returnCallIndirectFuncAddrCrossInstance
   have hcallee' : store.runtime.instances[calleeId.id]? = some calleeInst :=
     Hinst ▸ hcalleeLookup
   wasm_table_agree Hphysical, tableIndex, table, obs $$ [Hσ Htable]
+  have htype' : calleeInst.module.crossIndirectCallTypeOk fnIdx store.runtime.currentModule
+      typeIndex { params := fn.params, results := fn.results } expected = true := hmod ▸ htype
   wasm_twp_step Step.returnCallIndirectFuncAddrCrossInstance (α := α) hselector Hphysical helement
-      haddr' howner' hexpected' hcallee' himports hfn htype =>
+      haddr' howner' hexpected' hcallee' himports hfn htype' =>
     imod stateInterp_currentInstance_update_of_any store ns [] nt callerId calleeId $$
         [$Hσ $HinstanceOwn] with ⟨Hσ, HinstanceOwn', %_⟩
     wasm_twp_frame
@@ -2644,7 +2661,8 @@ theorem twp_returnCallIndirectFuncAddrCrossInstanceTypeMismatch
     (hexpected : callerInst.module.types[typeIndex]? = some expected)
     (himports : ¬fnIdx < calleeInst.module.imports.length)
     (hfn : calleeInst.module.funcs[fnIdx - calleeInst.module.imports.length]? = some fn)
-    (htype : (fn.params == expected.params && fn.results == expected.results) = false)
+    (htype : calleeInst.module.crossIndirectCallTypeOk fnIdx callerInst.module typeIndex
+      { params := fn.params, results := fn.results } expected = false)
     (haddr : ({ instances, entry := callerId } : RuntimeEnv α).resolveFunc address =
              some (calleeId, fnIdx))
     (howner : calleeId ≠ callerId)
@@ -2688,6 +2706,8 @@ theorem twp_returnCallIndirectFuncAddrCrossInstanceTypeMismatch
   have howner' : calleeId ≠ store.runtime.entry := Hentry ▸ howner
   have hcallee' : store.runtime.instances[calleeId.id]? = some calleeInst :=
     Hinst ▸ hcalleeLookup
+  have htype' : calleeInst.module.crossIndirectCallTypeOk fnIdx store.runtime.currentModule
+      typeIndex { params := fn.params, results := fn.results } expected = false := hmod ▸ htype
   wasm_table_agree Hphysical, tableIndex, table, obs $$ [Hσ Htable]
   iapply fupd_mask_intro Std.LawfulSet.empty_subset
   iintro Hclose
@@ -2696,7 +2716,7 @@ theorem twp_returnCallIndirectFuncAddrCrossInstanceTypeMismatch
   · iintro %κ %e₂ %σ₂ %eₜ %Hstep
     wasm_wp_resolve_step Hstep using
       Step.returnCallIndirectFuncAddrCrossInstanceTypeMismatch (α := α) hselector Hphysical
-        helement haddr' howner' hexpected' hcallee' himports hfn htype
+        helement haddr' howner' hexpected' hcallee' himports hfn htype'
     wasm_twp_frame
       iapply twp_trapped
 

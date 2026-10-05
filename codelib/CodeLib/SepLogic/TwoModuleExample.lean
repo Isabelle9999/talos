@@ -106,7 +106,7 @@ theorem twoModule_partiallyMeets :
           $$ [HinstanceOwn'] HruntimeInstances'
       · inext; iexact HinstanceOwn'
       · inext
-        iintro _HinstanceCaller
+        iintro ⟨_HinstanceCaller, -⟩
         simp only [List.take_zero, List.nil_append]
         wasm_wp_finish_value_rfl
 

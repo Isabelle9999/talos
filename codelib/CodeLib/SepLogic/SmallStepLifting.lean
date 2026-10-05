@@ -4995,7 +4995,8 @@ theorem wp_returnFromCallCrossInstance
         callerCode, callerArity, callerRemainder, callerControls, calls⟩
     ▷ currentInstanceOwn calleeId -∗
     ▷ runtimeInstancesOwn instances -∗
-    ▷ (currentInstanceOwn returningInstance -∗ WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
+    ▷ (currentInstanceOwn returningInstance ∗ runtimeInstancesOwn instances -∗
+        WP (Expr.running next : Expr α) @ s; E {{ Φ }}) -∗
       WP (Expr.running current : Expr α) @ s; E {{ Φ }} := by
   wasm_wp_start_with iintro >HinstanceOwn >HruntimeInstances Hwp
   wasm_current_instance_agree (obs ++ obs'), calleeId $$ [$Hσ $HinstanceOwn]
@@ -5008,7 +5009,8 @@ theorem wp_returnFromCallCrossInstance
     imod stateInterp_currentInstance_update_of_any store ns obs' nt calleeId returningInstance $$
         [$Hσ $HinstanceOwn] with ⟨Hσ, HinstanceOwn', %_⟩
     wasm_wp_frame
-      iapply_exact Hwp with HinstanceOwn'
+      iapply_splitl_exact Hwp with HinstanceOwn'
+      · iexact HruntimeInstances
 
 /-- Call an in-module (non-import) function through a table entry.
 `haddr` ties the table element's global address to the caller instance via
@@ -5045,7 +5047,8 @@ theorem wp_callIndirect
     ▷ runtimeInstancesOwn instances -∗
     ▷ tablePointsToAt 0 tableIndex table -∗
     ▷ (∀ ri : ModuleInstanceId,
-        runtimeModuleOwn callerId callerInst.module ∗ tablePointsToAt 0 tableIndex table -∗
+        runtimeModuleOwn callerId callerInst.module ∗ tablePointsToAt 0 tableIndex table ∗
+          runtimeInstancesOwn instances -∗
         WP (Expr.running
             ⟨fn.toLocals (values.take fn.numParams).reverse,
               fn.body, fn.results.length, [], [],
@@ -5095,7 +5098,9 @@ theorem wp_callIndirect
       isplitl [HruntimeElem HinstanceOwn]
       · isplitl_exact HruntimeElem
         iexact HinstanceOwn
-      · iexact Htable
+      · isplitl [Htable]
+        · iexact Htable
+        · iexact HruntimeInstances
 
 /-! ### WP rules for `call_ref`, `return_call`, `return_call_ref`, `return_call_indirect` -/
 
@@ -5145,7 +5150,7 @@ theorem wp_callRef
         .callRef typeIndex :: code, arity, remainder, controls, calls⟩
     ▷ runtimeModuleOwn callerId callerInst.module -∗
     ▷ runtimeInstancesOwn instances -∗
-    ▷ (runtimeModuleOwn callerId callerInst.module -∗
+    ▷ (runtimeModuleOwn callerId callerInst.module ∗ runtimeInstancesOwn instances -∗
         WP (Expr.running
           ⟨fn.toLocals (values.take fn.numParams).reverse,
             fn.body, fn.results.length, [], [],
@@ -5181,8 +5186,11 @@ theorem wp_callRef
   wasm_wp_step Step.callRef (α := α) haddr' himports' hfn' =>
     simp only [Hentry]
     wasm_wp_frame
-      iapply_splitl_exact Hwp with HruntimeElem
-      · iexact HinstanceOwn
+      iapply Hwp
+      isplitl [HruntimeElem HinstanceOwn]
+      · isplitl_exact HruntimeElem
+        iexact HinstanceOwn
+      · iexact HruntimeInstances
 
 /-- Cross-instance `call_ref` via a non-null funcref.
 Only `currentInstanceOwn callerId` (entry agreement) and
@@ -5196,6 +5204,7 @@ theorem wp_callRefCrossInstance
     (instances : Array (ModuleInstance α))
     (typeIndex : Nat) (rawAddr fnIdx : Nat) (fn : Function)
     (hcalleeLookup : instances[calleeId.id]? = some calleeInst)
+    (himports : ¬fnIdx < calleeInst.module.imports.length)
     (hfn : calleeInst.module.funcs[fnIdx - calleeInst.module.imports.length]? = some fn)
     (haddr : ({ instances, entry := callerId } : RuntimeEnv α).resolveFunc rawAddr =
              some (calleeId, fnIdx))
@@ -5233,7 +5242,7 @@ theorem wp_callRefCrossInstance
   have howner' : calleeId ≠ store.runtime.entry := Hentry ▸ howner
   have hcallee' : store.runtime.instances[calleeId.id]? = some calleeInst :=
     Hinst ▸ hcalleeLookup
-  wasm_wp_step Step.callRefCrossInstance (α := α) haddr' howner' hcallee' hfn =>
+  wasm_wp_step Step.callRefCrossInstance (α := α) haddr' howner' hcallee' himports hfn =>
     simp only [Hentry]
     imod stateInterp_currentInstance_update_of_any store ns obs' nt callerId calleeId $$
         [$Hσ $HinstanceOwn] with ⟨Hσ, HinstanceOwn', %_⟩
@@ -5366,7 +5375,7 @@ theorem wp_returnCallRef
         .returnCallRef typeIndex :: code, arity, remainder, controls, calls⟩
     ▷ runtimeModuleOwn callerId callerInst.module -∗
     ▷ runtimeInstancesOwn instances -∗
-    ▷ (runtimeModuleOwn callerId callerInst.module -∗
+    ▷ (runtimeModuleOwn callerId callerInst.module ∗ runtimeInstancesOwn instances -∗
         WP (Expr.running
           ⟨fn.toLocals (values.take fn.numParams).reverse,
             fn.body, arity, remainder, [], calls⟩ : Expr α) @ s; E {{ Φ }}) -∗
@@ -5395,8 +5404,11 @@ theorem wp_returnCallRef
     rw [heq, Hentry]; exact haddr
   wasm_wp_step Step.returnCallRef (α := α) haddr' himports' hfn' =>
     wasm_wp_frame
-      iapply_splitl_exact Hwp with HruntimeElem
-      · iexact HinstanceOwn
+      iapply Hwp
+      isplitl [HruntimeElem HinstanceOwn]
+      · isplitl_exact HruntimeElem
+        iexact HinstanceOwn
+      · iexact HruntimeInstances
 
 /-- Cross-instance `return_call_ref` via a non-null funcref (tail call).
 Mirrors `wp_callRefCrossInstance` but with inherited `arity`/`remainder`
@@ -5408,6 +5420,7 @@ theorem wp_returnCallRefCrossInstance
     (instances : Array (ModuleInstance α))
     (typeIndex : Nat) (rawAddr fnIdx : Nat) (fn : Function)
     (hcalleeLookup : instances[calleeId.id]? = some calleeInst)
+    (himports : ¬fnIdx < calleeInst.module.imports.length)
     (hfn : calleeInst.module.funcs[fnIdx - calleeInst.module.imports.length]? = some fn)
     (haddr : ({ instances, entry := callerId } : RuntimeEnv α).resolveFunc rawAddr =
              some (calleeId, fnIdx))
@@ -5438,7 +5451,7 @@ theorem wp_returnCallRefCrossInstance
   have howner' : calleeId ≠ store.runtime.entry := Hentry ▸ howner
   have hcallee' : store.runtime.instances[calleeId.id]? = some calleeInst :=
     Hinst ▸ hcalleeLookup
-  wasm_wp_step Step.returnCallRefCrossInstance (α := α) haddr' howner' hcallee' hfn =>
+  wasm_wp_step Step.returnCallRefCrossInstance (α := α) haddr' howner' hcallee' himports hfn =>
     imod stateInterp_currentInstance_update_of_any store ns obs' nt callerId calleeId $$
         [$Hσ $HinstanceOwn] with ⟨Hσ, HinstanceOwn', %_⟩
     wasm_wp_frame
@@ -5540,7 +5553,8 @@ theorem wp_returnCallIndirectFuncAddr
     ▷ runtimeModuleOwn callerId callerInst.module -∗
     ▷ runtimeInstancesOwn instances -∗
     ▷ tablePointsToAt 0 tableIndex table -∗
-    ▷ (runtimeModuleOwn callerId callerInst.module ∗ tablePointsToAt 0 tableIndex table -∗
+    ▷ (runtimeModuleOwn callerId callerInst.module ∗ tablePointsToAt 0 tableIndex table ∗
+          runtimeInstancesOwn instances -∗
         WP (Expr.running
           ⟨fn.toLocals (values.take fn.numParams).reverse,
             fn.body, arity, remainder, [], calls⟩ : Expr α) @ s; E {{ Φ }}) -∗
@@ -5581,7 +5595,9 @@ theorem wp_returnCallIndirectFuncAddr
       isplitl [HruntimeElem HinstanceOwn]
       · isplitl_exact HruntimeElem
         iexact HinstanceOwn
-      · iexact Htable
+      · isplitl [Htable]
+        · iexact Htable
+        · iexact HruntimeInstances
 
 /-- Type-mismatch trap for `return_call_indirect` (same-instance wasm callee). -/
 theorem wp_returnCallIndirectTypeMismatch
@@ -5662,7 +5678,8 @@ theorem wp_returnCallIndirectFuncAddrCrossInstance
     (hexpected : callerInst.module.types[typeIndex]? = some expected)
     (himports : ¬fnIdx < calleeInst.module.imports.length)
     (hfn : calleeInst.module.funcs[fnIdx - calleeInst.module.imports.length]? = some fn)
-    (htype : (fn.params == expected.params && fn.results == expected.results) = true)
+    (htype : calleeInst.module.crossIndirectCallTypeOk fnIdx callerInst.module typeIndex
+      { params := fn.params, results := fn.results } expected = true)
     (haddr : ({ instances, entry := callerId } : RuntimeEnv α).resolveFunc address =
              some (calleeId, fnIdx))
     (howner : calleeId ≠ callerId)
@@ -5710,8 +5727,10 @@ theorem wp_returnCallIndirectFuncAddrCrossInstance
   have hcallee' : store.runtime.instances[calleeId.id]? = some calleeInst :=
     Hinst ▸ hcalleeLookup
   wasm_table_agree Hphysical, tableIndex, table, (obs ++ obs') $$ [Hσ Htable]
+  have htype' : calleeInst.module.crossIndirectCallTypeOk fnIdx store.runtime.currentModule
+      typeIndex { params := fn.params, results := fn.results } expected = true := hmod ▸ htype
   wasm_wp_step Step.returnCallIndirectFuncAddrCrossInstance (α := α) hselector Hphysical helement
-      haddr' howner' hexpected' hcallee' himports hfn htype =>
+      haddr' howner' hexpected' hcallee' himports hfn htype' =>
     imod stateInterp_currentInstance_update_of_any store ns obs' nt callerId calleeId $$
         [$Hσ $HinstanceOwn] with ⟨Hσ, HinstanceOwn', %_⟩
     wasm_wp_frame
@@ -5737,7 +5756,8 @@ theorem wp_returnCallIndirectFuncAddrCrossInstanceTypeMismatch
     (hexpected : callerInst.module.types[typeIndex]? = some expected)
     (himports : ¬fnIdx < calleeInst.module.imports.length)
     (hfn : calleeInst.module.funcs[fnIdx - calleeInst.module.imports.length]? = some fn)
-    (htype : (fn.params == expected.params && fn.results == expected.results) = false)
+    (htype : calleeInst.module.crossIndirectCallTypeOk fnIdx callerInst.module typeIndex
+      { params := fn.params, results := fn.results } expected = false)
     (haddr : ({ instances, entry := callerId } : RuntimeEnv α).resolveFunc address =
              some (calleeId, fnIdx))
     (howner : calleeId ≠ callerId)
@@ -5780,8 +5800,10 @@ theorem wp_returnCallIndirectFuncAddrCrossInstanceTypeMismatch
   have hcallee' : store.runtime.instances[calleeId.id]? = some calleeInst :=
     Hinst ▸ hcalleeLookup
   wasm_table_agree Hphysical, tableIndex, table, (obs ++ obs') $$ [Hσ Htable]
+  have htype' : calleeInst.module.crossIndirectCallTypeOk fnIdx store.runtime.currentModule
+      typeIndex { params := fn.params, results := fn.results } expected = false := hmod ▸ htype
   wasm_wp_step Step.returnCallIndirectFuncAddrCrossInstanceTypeMismatch (α := α)
-      hselector Hphysical helement haddr' howner' hexpected' hcallee' himports hfn htype =>
+      hselector Hphysical helement haddr' howner' hexpected' hcallee' himports hfn htype' =>
     wasm_wp_trap_frame
 
 end Wasm.SmallStep
