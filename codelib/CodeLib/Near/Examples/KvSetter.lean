@@ -12,15 +12,19 @@ NEAR ABI end to end:
    encoding is `le32(key.len) ++ key ++ le32(val.len) ++ val`.
 4. `storage_write(key_len, key_ptr, value_len, value_ptr, 1)` — store it.
 
-The interesting property (`SetSpec`) is a *before/after projection* of the
+The interesting property is a *before/after projection* of the
 NEAR storage trie plus a *frame condition*: after the call the chosen key
 maps to the value, and every other key is unchanged. The `∀ k` in the
 frame is the "iterate over all keys" reasoning the storage-as-a-function
 model makes free — no Wasm enumeration needed.
 
-Following the repo convention (cf. `XorSum/Spec.lean`), `SetSpec` is stated
-as a `def … : Prop` and fully proved (`set_spec`) via the WP layer. The
-kernel-checked regression theorems below additionally validate the *whole pipeline*
+The property is proved against the small-step machine through the Iris
+total-WP layer, starting from `setConfig` — the entry frame of
+`«module».funcs[0]` (the exported `set`, unified index `setIdx`; it has no
+params or locals) over the module's initial store with NEAR state `nearSt`.
+`set_terminatesWith` gives total correctness (`SmallStep.TerminatesWith`) and
+`set_partiallyMeets` the partial-correctness corollary; neither mentions fuel.
+The kernel-checked regression theorems below additionally validate the *whole pipeline*
 — registers, the memory-or-register sentinel, length-prefix parsing, and
 `storage_write` semantics — executes correctly on concrete inputs.
 -/
@@ -339,7 +343,10 @@ theorem storageWrite_invoke_encode_absent (ns : NearState) (key val : List UInt8
   · simpa [storageCallStore, afterInputStore, NearState.setRegister] using hValLim
   · simpa [storageCallStore, afterInputStore, NearState.setRegister] using hOld
 
-/-- Initial machine configuration for the `set` entry. -/
+/-- Initial machine configuration for the `set` entry: the body of
+`«module».funcs[0]` (exported as `set`, unified index `setIdx`) running in an
+empty frame — `set` has no params or locals — over the module's initial
+store with NEAR host state `nearSt`. -/
 def setConfig (nearSt : NearState) : Config NearState :=
   { expr := .running
       { locals := {}
@@ -429,7 +436,7 @@ private theorem storageWriteFn_isReturn
       rw [heq]; exact hMaxReg old hOld
     obtain ⟨stReg, hChecked⟩ : ∃ stReg, checkedSetRegister? st 1 old = some stReg := by
       simp only [checkedSetRegister?, show ¬ (1 : UInt64) = u64Max from by decide,
-                 ite_false, if_pos hLim_host]
+                 ite_false, ite_eq_left hLim_host]
       exact ⟨_, rfl⟩
     exact ⟨_, _, storageWriteFn_invoke_present st key val old
         (UInt64.ofNat klen_u32.toNat) 4
@@ -794,7 +801,7 @@ theorem set_terminatesWith (nearSt : NearState) (key val : List UInt8)
                       ∃ stReg, checkedSetRegister? store.wasm 1 old = some stReg := by
                     simp only [checkedSetRegister?,
                                show ¬ (1 : UInt64) = u64Max from by decide, ite_false,
-                               if_pos hLim_host]
+                               ite_eq_left hLim_host]
                     exact ⟨_, rfl⟩
                   have := storageWriteFn_invoke_present store.wasm key val old
                       (UInt64.ofNat klen_u32.toNat) 4
