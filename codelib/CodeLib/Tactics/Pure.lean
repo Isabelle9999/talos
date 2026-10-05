@@ -126,7 +126,7 @@ private def tryApplyPureRules (pureEntries : Array WasmRuleEntry) : TacticM Bool
           -- Non-Prop value-type metavars are skipped; assigned by rfl on Prop goals.
         if ok then
           setGoals continuation
-          try evalTactic (← `(tactic| simp (config := { decide := true }) only [List.take_succ_cons, List.take_zero, List.take_nil, List.nil_append, List.drop_zero, List.drop_nil, List.append_nil, if_true, if_false, if_pos, if_neg, List.length_cons, List.length_nil, List.set_cons_zero, List.set_cons_succ, Nat.sub_zero, Nat.sub_self]))
+          try evalTactic (← `(tactic| simp (config := { decide := true }) only [List.take_succ_cons, List.take_zero, List.take_nil, List.nil_append, List.drop_zero, List.drop_nil, List.append_nil, ite_true, ite_false, ite_eq_left, ite_eq_right, List.length_cons, List.length_nil, List.set_cons_zero, List.set_cons_succ, Nat.sub_zero, Nat.sub_self]))
           catch _ => pure ()
         if !ok then restoreState st
         pure ok
