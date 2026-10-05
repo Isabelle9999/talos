@@ -29,7 +29,8 @@ def Incr : Program := [.localGet 0, .const 1, .add]
 
 /-- The callee: one function `inc` with type `(param i32) (result i32)`. -/
 def m_a : Module :=
-  { funcs := [{ params := [.i32], body := Incr, results := [.i32] }] }
+  { funcs := [{ params := [.i32], body := Incr, results := [.i32] }]
+    exports := [{ name := "inc", funcIdx := 0 }] }
 
 /-- The caller: imports `inc`, holds it in a table, and exposes four wrappers. -/
 def m_b : Module :=
@@ -49,12 +50,31 @@ def m_b : Module :=
             .returnCallRef 0], results := [.i32] }                        -- 3: via return_call_ref
       ] }
 
-/-- Instance A: no imports, default identity funcaddrs. -/
-def inst_a : ModuleInstance Unit := { module := m_a, host := {} }
+/-- Instance A: no imports; owns function address 0. -/
+def inst_a : ModuleInstance Unit := { module := m_a, host := {}, funcaddrs := #[0] }
 
-/-- Instance B: resolves import 0 to instance 0's function 0. -/
+/-- Instance B: resolves import 0 to instance 0's function 0, so its import
+slot aliases address 0; its own four functions get the fresh addresses 1–4. -/
 def inst_b : ModuleInstance Unit :=
-  { module := m_b, host := {}, resolvedImports := #[.wasm ⟨0⟩ 0] }
+  { module := m_b, host := {}, resolvedImports := #[.wasm ⟨0⟩ 0]
+    funcaddrs := #[0, 1, 2, 3, 4] }
+
+/-- The addresses above are exactly what `instantiate` allocates when it links
+`m_b` against `inst_a`, so the examples below do not rely on the identity
+default (which would make both instances own address 0). -/
+theorem inst_b_from_instantiate :
+    ((instantiate
+        ⟨.done [], { runtime := { instances := #[inst_a], entry := ⟨0⟩ }
+                     wasm := m_b.initialStore }⟩
+        m_b {} [("a", ⟨0⟩)]).toOption.map
+      fun r => (r.2, r.1.store.runtime.instances.map (·.funcaddrs))) =
+      some (⟨1⟩, #[inst_a.funcaddrs, inst_b.funcaddrs]) := by
+  decide +kernel
+
+theorem runtime_wellFormed :
+    ({ instances := #[inst_a, inst_b], entry := ⟨1⟩ } : RuntimeEnv Unit).funcaddrsWellFormed =
+      true := by
+  decide +kernel
 
 /-- The two-instance store with B as the current entry (the caller). -/
 def callerStore : MachineStore Unit :=
@@ -179,7 +199,8 @@ private theorem return_call_ref_steps (n : UInt32) :
       ⟨.done [.i32 (n + 1)], calleeStore⟩ := by
   wasm_steps [(.localGet rfl)]
   apply Steps.cons (Step.refFunc (addr := 0) (by decide +kernel))
-  apply Steps.cons (.returnCallRefCrossInstance (owner := ⟨0⟩) (fnIdx := 0) (by decide +kernel) (by decide) rfl rfl)
+  apply Steps.cons (.returnCallRefCrossInstance (owner := ⟨0⟩) (fnIdx := 0) (by decide +kernel) (by decide) rfl
+    (by decide) rfl)
   wasm_steps [(.localGet rfl), .const, .add, .finish]
   simpa [returnCallRefConfig, callerStore, calleeStore, inst_a, inst_b, m_a, m_b, Incr,
          Function.toLocals, UInt32.add_comm] using
