@@ -1,9 +1,3 @@
-import CodeLib.Tactics.Rule
-import CodeLib.Tactics.Registry
-import CodeLib.Tactics.Pure
-import CodeLib.Tactics.Mem
-import CodeLib.Tactics.Control
-import CodeLib.Tactics.Test
 import CodeLib.Attrs
 import CodeLib.Basic
 import CodeLib.Entry
@@ -12,6 +6,11 @@ import CodeLib.List
 import CodeLib.UInt32
 import CodeLib.UInt64
 import CodeLib.WordCodec
+import CodeLib.Tactics.Rule
+import CodeLib.Tactics.Registry
+import CodeLib.Tactics.Pure
+import CodeLib.Tactics.Mem
+import CodeLib.Tactics.Control
 import CodeLib.RustStd.Frame
 import CodeLib.RustStd.Region
 import CodeLib.RustStd.MemArray
