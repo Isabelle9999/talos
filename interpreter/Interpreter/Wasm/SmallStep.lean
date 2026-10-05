@@ -6572,7 +6572,7 @@ by
             obtain ⟨rfl, rfl⟩ := h
             exact .returnFromCallFallthrough hrc
           · simp [stepChecked?] at h
-            rw [if_neg hrc] at h
+            rw [ite_eq_right hrc] at h
             simp at h
             obtain ⟨rfl, rfl⟩ := h
             exact .returnFromCallCrossInstanceFallthrough hrc
@@ -6997,7 +6997,9 @@ by
 termination_by firstMemOpDepth config
 decreasing_by
   subst_vars
-  simp [firstMemOpDepth, isMemOp] <;> assumption
+  simp only [firstMemOpDepth]
+  simp only [*]
+  simp [isMemOp]
 
 set_option maxHeartbeats 5000000 in
 theorem stepChecked?_complete {config config' : Config α} {kind : StepKind} :
@@ -7131,9 +7133,9 @@ by
   case callRef => simp_all [stepChecked?]
   case returnCallRef => simp_all [stepChecked?]
   case returnFromCallCrossInstanceFallthrough hdiff =>
-    simp [stepChecked?, if_neg hdiff]
+    simp [stepChecked?, ite_eq_right hdiff]
   case returnFromCallCrossInstanceExplicit hdiff =>
-    simp [stepChecked?, if_neg hdiff]
+    simp [stepChecked?, ite_eq_right hdiff]
   all_goals
     simp_all [stepChecked?, returnedValues, globalAt?, canonicalGlobalIndex,
       setGlobal, setMemory,
@@ -7144,7 +7146,9 @@ by
 termination_by firstMemOpDepth config
 decreasing_by
   subst_vars
-  simp [firstMemOpDepth, isMemOp] <;> assumption
+  simp only [firstMemOpDepth]
+  simp only [*]
+  simp [isMemOp]
 
 theorem step_iff {config config' : Config α} {kind : StepKind} :
     stepChecked? config = .ok (some (kind, config')) ↔ Step config kind config' :=
