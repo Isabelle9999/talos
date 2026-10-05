@@ -322,7 +322,6 @@ theorem func8_after_prologue_nonempty {hlc : HasLC}
   have hlength_ne : length ≠ 0 := by
     intro hzero
     have hz : length.toNat = 0 := congrArg UInt32.toNat hzero
-    norm_num at hz
     omega
   iapply twp_block
   rw [writeOuterBody_eq]
