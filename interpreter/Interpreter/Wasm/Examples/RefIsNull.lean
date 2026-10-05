@@ -38,7 +38,7 @@ theorem refReflect_steps (m : Module) (st : Store α)
       ⟨.done [.i32 0, .i32 1], (refReflectConfig m st).store⟩ := by
   wasm_steps [.refNull, (.refIsNullTrue rfl)]
   refine Steps.cons (Step.refFunc (addr := 0) ?_) ?_
-  · simp [if_pos hm]
+  · simp [ite_eq_left hm]
   · wasm_steps [(.refIsNullFalse rfl)]
     exact Steps.cons .finish (Steps.refl _)
 

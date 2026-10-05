@@ -1317,6 +1317,18 @@ def Module.indirectCallTypeOk (m : Module) (fid typeIdx : Nat)
   | some src => m.gcTypeSubtype src typeIdx
   | none => fn.params == ty.params && fn.results == ty.results
 
+/-- Cross-instance counterpart of `Module.indirectCallTypeOk`: the target `fid`
+lives in module `callee` while the call-site type `typeIdx` belongs to
+`caller`. When the target's declared nominal type is recorded it must be a
+cross-module subtype (`gcTypeSubtypeCross`) of the call-site type; otherwise
+the check degrades to the structural signature comparison, exactly as the
+same-instance check does. -/
+def Module.crossIndirectCallTypeOk (callee : Module) (fid : Nat) (caller : Module)
+    (typeIdx : Nat) (fn ty : FuncType) : Bool :=
+  match callee.funcTypeIdx? fid with
+  | some src => gcTypeSubtypeCross callee src caller typeIdx
+  | none => fn.params == ty.params && fn.results == ty.results
+
 /-- Look up the struct/array composite type at index `i`. -/
 def Module.gcComposite? (m : Module) (i : Nat) : Option CompositeType :=
   (m.gcTypes[i]?).map (·.comp)
