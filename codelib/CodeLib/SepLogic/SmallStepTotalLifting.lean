@@ -1,4 +1,5 @@
 import CodeLib.SepLogic.SmallStepState
+import CodeLib.Tactics.Rule
 import Iris.ProgramLogic.TotalLifting
 
 /-!
@@ -174,7 +175,7 @@ macro "wasm_twp_pure_rule " name:ident binders:bracketedBinder* " : "
         "wasm_twp_pure_rule takes implicit value binders and explicit side conditions"
   let valueBinders := binders.filter isValueBinder
   let sideConditions := binders.filter isSideCondition
-  `(command|
+  let thm ← `(command|
     theorem $name:ident
         {params localValues values : List Value}
         $valueBinders:bracketedBinder*
@@ -190,6 +191,10 @@ macro "wasm_twp_pure_rule " name:ident binders:bracketedBinder* " : "
             $instruction :: code, arity, remainder, controls, calls⟩ : Expr α) @ s; E
           [{ Φ }] :=
       twp_pureStep _ _ _ (fun _ => $step))
+  -- Register the rule at its definition site (see `CodeLib.Tactics.wasmPureRuleAttr?`).
+  match ← CodeLib.Tactics.wasmPureRuleAttr? `twp name instruction sideConditions with
+  | some attr => return ⟨Lean.mkNullNode #[thm, attr]⟩
+  | none => return thm
 
 wasm_twp_pure_rule twp_remU {dividend divisor : UInt32}
     (hdivisor : divisor ≠ 0) :
@@ -249,6 +254,7 @@ wasm_twp_pure_rule twp_select
     (h : selected = if condition ≠ 0 then first else second) :
   .select, .i32 condition :: second :: first :: values => selected :: values := Step.select h
 
+@[wasm_rule twp iff rfl]
 theorem twp_iff
     {params localValues values : List Value}
     {condition : UInt32}
@@ -272,6 +278,7 @@ theorem twp_iff
         arity, remainder, controls, calls⟩ : Expr α) @ s; E [{ Φ }] :=
   twp_pureStep _ _ _ (fun _ => Step.iff hselected)
 
+@[wasm_rule twp block]
 theorem twp_block
     {locals : Locals} {paramArity resultArity arity : Nat}
     {body code : Program} {remainder : List Value}
@@ -310,6 +317,7 @@ theorem twp_loop
         arity, remainder, controls, calls⟩ : Expr α) @ s; E [{ Φ }] := by
   dsimp only; exact twp_pureStep _ _ _ (fun _ => Step.loop)
 
+@[wasm_rule twp nil rfl]
 theorem twp_exitControl
     {locals : Locals} {frame : ControlFrame}
     {arity : Nat} {remainder : List Value}
@@ -325,6 +333,7 @@ theorem twp_exitControl
         Expr α) @ s; E [{ Φ }] :=
   twp_pureStep _ _ _ (fun _ => Step.exitControl hkind)
 
+@[wasm_rule twp br_if]
 theorem twp_brIfZero
     {params localValues values : List Value}
     {depth arity : Nat} {code : Program} {remainder : List Value}
@@ -337,6 +346,7 @@ theorem twp_brIfZero
         arity, remainder, controls, calls⟩ : Expr α) @ s; E [{ Φ }] :=
   twp_pureStep _ _ _ (fun _ => Step.brIfZero)
 
+@[wasm_rule twp br_if]
 theorem twp_brIf
     {params localValues values targetValues : List Value}
     {condition : UInt32} {depth arity : Nat}
@@ -354,6 +364,7 @@ theorem twp_brIf
         Expr α) @ s; E [{ Φ }] :=
   twp_pureStep _ _ _ (fun _ => Step.brIf hcondition htarget)
 
+@[wasm_rule twp br rfl]
 theorem twp_br
     {params localValues values targetValues : List Value}
     {depth arity : Nat} {code targetCode : Program}
@@ -369,6 +380,7 @@ theorem twp_br
         arity, remainder, controls, calls⟩ : Expr α) @ s; E [{ Φ }] :=
   twp_pureStep _ _ _ (fun _ => Step.br htarget)
 
+@[wasm_rule twp localGet rfl]
 theorem twp_localGet
     {params localValues values : List Value}
     {index : Nat} {value : Value} {code : Program} {arity : Nat}
@@ -386,6 +398,7 @@ theorem twp_localGet
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only; exact twp_pureStep _ _ _ (fun _ => Step.localGet hget)
 
+@[wasm_rule twp localSet rfl]
 theorem twp_localSet
     {params localValues values : List Value}
     {index : Nat} {value : Value} {locals' : Locals}
@@ -403,6 +416,7 @@ theorem twp_localSet
       WP (Expr.running current : Expr α) @ s; E [{ Φ }] := by
   dsimp only; exact twp_pureStep _ _ _ (fun _ => Step.localSet hset)
 
+@[wasm_rule twp localTee rfl]
 theorem twp_localTee
     {params localValues values : List Value}
     {index : Nat} {value : Value} {locals' : Locals}
@@ -857,6 +871,7 @@ theorem twp_memoryGrow_tracked
       wasm_twp_frame
         iexact HcontNew
 
+@[wasm_mem_rule twp load32 u32 Wasm.SmallStep.twp_load32_addr]
 theorem twp_load32
     {params localValues values : List Value}
     {address offset : UInt32} {code : Program} {arity : Nat}
@@ -896,6 +911,7 @@ theorem twp_load32
     wasm_twp_frame
       iapply_exact Htwp with Hword
 
+@[wasm_mem_rule twp store32 u32 Wasm.SmallStep.twp_store32_addr]
 theorem twp_store32
     {params localValues values : List Value}
     {address offset value : UInt32} {code : Program} {arity : Nat}
@@ -1176,6 +1192,7 @@ wasm_twp_pure_rule twp_ne {lhs rhs result : UInt32}
     (hresult : result = if lhs ≠ rhs then 1 else 0) :
   .ne, .i32 rhs :: .i32 lhs :: values => .i32 result :: values := Step.ne hresult
 
+@[wasm_mem_rule twp globalGet global]
 theorem twp_globalGet
     {params localValues values : List Value}
     {value : Value} {code : Program} {arity : Nat}
@@ -1222,6 +1239,81 @@ wasm_twp_pure_rule twp_scalarFloat2
   instruction, rhs :: lhs :: values => value :: values :=
     Step.scalarFloat2 hzero hunary heval
 
+/-! The generic scalar-float rules take the instruction as a variable, so
+`wasm_twp_pure_rule` cannot key them; register each instruction they serve here,
+next to the rules, for `wasm_pure` / `wasm_pures`. -/
+attribute [
+    wasm_rule twp f32Const rfl,
+    wasm_rule twp f64Const rfl]
+  twp_scalarFloat0
+attribute [
+    wasm_rule twp f32Abs rfl,
+    wasm_rule twp f32Neg rfl,
+    wasm_rule twp f32Sqrt rfl,
+    wasm_rule twp f32Ceil rfl,
+    wasm_rule twp f32Floor rfl,
+    wasm_rule twp f32Trunc rfl,
+    wasm_rule twp f32Nearest rfl,
+    wasm_rule twp f64Abs rfl,
+    wasm_rule twp f64Neg rfl,
+    wasm_rule twp f64Sqrt rfl,
+    wasm_rule twp f64Ceil rfl,
+    wasm_rule twp f64Floor rfl,
+    wasm_rule twp f64Trunc rfl,
+    wasm_rule twp f64Nearest rfl,
+    wasm_rule twp f32ConvertI32S rfl,
+    wasm_rule twp f32ConvertI32U rfl,
+    wasm_rule twp f32ConvertI64S rfl,
+    wasm_rule twp f32ConvertI64U rfl,
+    wasm_rule twp f64ConvertI32S rfl,
+    wasm_rule twp f64ConvertI32U rfl,
+    wasm_rule twp f64ConvertI64S rfl,
+    wasm_rule twp f64ConvertI64U rfl,
+    wasm_rule twp i32TruncSatF32S rfl,
+    wasm_rule twp i32TruncSatF32U rfl,
+    wasm_rule twp i32TruncSatF64S rfl,
+    wasm_rule twp i32TruncSatF64U rfl,
+    wasm_rule twp i64TruncSatF32S rfl,
+    wasm_rule twp i64TruncSatF32U rfl,
+    wasm_rule twp i64TruncSatF64S rfl,
+    wasm_rule twp i64TruncSatF64U rfl,
+    wasm_rule twp f32DemoteF64 rfl,
+    wasm_rule twp f64PromoteF32 rfl,
+    wasm_rule twp i32ReinterpretF32 rfl,
+    wasm_rule twp i64ReinterpretF64 rfl,
+    wasm_rule twp f32ReinterpretI32 rfl,
+    wasm_rule twp f64ReinterpretI64 rfl]
+  twp_scalarFloat1
+attribute [
+    wasm_rule twp f32Add rfl,
+    wasm_rule twp f32Sub rfl,
+    wasm_rule twp f32Mul rfl,
+    wasm_rule twp f32Div rfl,
+    wasm_rule twp f32Min rfl,
+    wasm_rule twp f32Max rfl,
+    wasm_rule twp f32Copysign rfl,
+    wasm_rule twp f64Add rfl,
+    wasm_rule twp f64Sub rfl,
+    wasm_rule twp f64Mul rfl,
+    wasm_rule twp f64Div rfl,
+    wasm_rule twp f64Min rfl,
+    wasm_rule twp f64Max rfl,
+    wasm_rule twp f64Copysign rfl,
+    wasm_rule twp f32Eq rfl,
+    wasm_rule twp f32Ne rfl,
+    wasm_rule twp f32Lt rfl,
+    wasm_rule twp f32Gt rfl,
+    wasm_rule twp f32Le rfl,
+    wasm_rule twp f32Ge rfl,
+    wasm_rule twp f64Eq rfl,
+    wasm_rule twp f64Ne rfl,
+    wasm_rule twp f64Lt rfl,
+    wasm_rule twp f64Gt rfl,
+    wasm_rule twp f64Le rfl,
+    wasm_rule twp f64Ge rfl]
+  twp_scalarFloat2
+
+@[wasm_mem_rule twp f32Load u32]
 theorem twp_f32Load
     {params localValues values : List Value}
     {address offset : UInt32} {code : Program} {arity : Nat}
@@ -1261,6 +1353,7 @@ theorem twp_f32Load
     wasm_twp_frame
       iapply_exact Htwp with Hword
 
+@[wasm_mem_rule twp f32Store u32]
 theorem twp_f32Store
     {params localValues values : List Value}
     {address offset value : UInt32} {code : Program} {arity : Nat}
@@ -1314,6 +1407,7 @@ theorem twp_f32Store
     wasm_twp_frame
       iapply_exact Htwp with Hword
 
+@[wasm_mem_rule twp globalSet global]
 theorem twp_globalSet
     {params localValues values : List Value}
     {oldValue newValue : Value} {code : Program} {arity : Nat}
@@ -1364,6 +1458,7 @@ theorem twp_globalSet
 wasm_twp_pure_rule twp_or {lhs rhs : UInt32} :
   .or, .i32 rhs :: .i32 lhs :: values => .i32 (lhs ||| rhs) :: values := Step.or
 
+@[wasm_mem_rule twp f64Load u64]
 theorem twp_f64Load
     {params localValues values : List Value}
     {address offset : UInt32} {code : Program} {arity : Nat}
@@ -1411,6 +1506,7 @@ theorem twp_f64Load
     wasm_twp_frame
       iapply_exact Htwp with Hword
 
+@[wasm_mem_rule twp f64Store u64]
 theorem twp_f64Store
     {params localValues values : List Value}
     {address offset : UInt32} {value : UInt64}
@@ -1473,6 +1569,7 @@ theorem twp_f64Store
     wasm_twp_frame
       iapply_exact Htwp with Hword
 
+@[wasm_mem_rule twp load64 u64]
 theorem twp_load64
     {params localValues values : List Value}
     {address offset : UInt32} {code : Program} {arity : Nat}
@@ -1520,6 +1617,7 @@ theorem twp_load64
     wasm_twp_frame
       iapply_exact Htwp with Hword
 
+@[wasm_mem_rule twp store64 u64 Wasm.SmallStep.twp_store64_addr]
 theorem twp_store64
     {params localValues values : List Value}
     {address offset : UInt32} {value : UInt64}

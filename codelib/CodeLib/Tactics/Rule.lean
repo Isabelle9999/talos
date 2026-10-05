@@ -82,12 +82,18 @@ private def wasmMemRuleAddHandler (thmName : Name) (stx : Syntax) (_ : Attribute
       if inner.size > 0 then inner[0]!.getId else .anonymous
   modifyEnv (wasmRuleExt.addEntry · (modality, head, thmName, false, true, predWidth, addrVariant))
 
+/-- `attribute [-wasm_rule]` is not supported: the registry is append-only and
+an erased entry would silently survive in every module that imported it. -/
+private def wasmRuleEraseUnsupported (attr : Name) : Name → AttrM Unit := fun decl =>
+  throwError "attribute [-{attr}] is not supported (tried to erase it from {decl}); \
+    the Wasm rule registry is append-only"
+
 initialize registerBuiltinAttribute {
   name            := `wasm_rule
   descr           := "Register a TWP/WP pure-step rule for an instruction constructor."
   applicationTime := .afterCompilation
   add             := wasmRuleAddHandler
-  erase           := fun _ => pure ()
+  erase           := wasmRuleEraseUnsupported `wasm_rule
 }
 
 initialize registerBuiltinAttribute {
@@ -95,7 +101,41 @@ initialize registerBuiltinAttribute {
   descr           := "Register a TWP/WP memory/global step rule for an instruction constructor."
   applicationTime := .afterCompilation
   add             := wasmMemRuleAddHandler
-  erase           := fun _ => pure ()
+  erase           := wasmRuleEraseUnsupported `wasm_mem_rule
 }
+
+/-! ## Definition-site registration for generated pure rules
+
+`wasm_wp_pure_rule` / `wasm_twp_pure_rule` (in `SmallStepLifting` /
+`SmallStepTotalLifting`) already name the instruction the rule retires, so they
+register the generated theorem themselves: the registry is derived from the
+rule definitions instead of being a hand-maintained copy of them.
+-/
+
+/-- The `@[wasm_rule]` registration a generated pure rule should carry, or
+`none` when the instruction is not a literal constructor (e.g. the generic
+`scalarFloat*` rules, whose instruction is a variable; those are registered
+by hand next to their definitions).
+
+* The key is the constructor in `instruction`: `.add` or `.const value`.
+* The `rfl` flag is set when the first side condition is an equation
+  (`result = if … then 1 else 0`, `selected = …`, `… = some bits`): `rfl`
+  both proves it and fixes the result value. Other side conditions
+  (`divisor ≠ 0`, …) are left to `wasm_pure`'s `rfl`/`decide` discharger. -/
+def wasmPureRuleAttr? (modality : Name) (thm : Ident) (instruction : Term)
+    (sideConditions : Array (TSyntax ``Lean.Parser.Term.bracketedBinder)) :
+    MacroM (Option Command) := do
+  let raw := instruction.raw
+  let head := if raw.getKind == ``Lean.Parser.Term.app then raw[0] else raw
+  unless head.getKind == ``Lean.Parser.Term.dotIdent do return none
+  let ctor := mkIdent head[1].getId
+  let modId := mkIdent modality
+  -- explicitBinder: `(` ids (`:` type)? … `)`
+  let isEq (b : TSyntax ``Lean.Parser.Term.bracketedBinder) : Bool :=
+    b.raw[2][1].getKind == ``«term_=_»
+  if (sideConditions[0]?.map isEq).getD false then
+    return some (← `(command| attribute [wasm_rule $modId $ctor rfl] $thm))
+  else
+    return some (← `(command| attribute [wasm_rule $modId $ctor] $thm))
 
 end CodeLib.Tactics

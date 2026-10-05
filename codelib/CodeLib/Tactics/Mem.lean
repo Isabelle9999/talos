@@ -174,7 +174,8 @@ private def extractMemGoalInfo (goal : MVarId) (predWidth : String) : MetaM MemG
   let vArgs := values.getAppArgs
   -- vArgs = [α, head, tail]  (List.cons α head tail)
   let instrName := instr.getAppFn.constName!.getString!
-  let isStore := instrName.startsWith "store"
+  -- `store8`/`store32`/`store64`/… and `f32Store`/`f64Store`.
+  let isStore := instrName.startsWith "store" || instrName.endsWith "Store"
   let stackAddr ←
     if isStore then do
       -- store: top = value being stored, second = address
@@ -268,8 +269,8 @@ private def findArrayIndex
 
 -- ─── `wasm_mem` elaborator ────────────────────────────────────────────────────
 
-/-- Apply one memory or global step rule (TWP modality) using the ownership
-hypothesis found in the spatial Iris context.
+/-- Apply one memory or global step rule (TWP or WP modality) using the
+ownership hypothesis found in the spatial Iris context.
 
     wasm_mem [using [lemma₁, …, lemmaₙ]]
 
@@ -449,6 +450,10 @@ def elabWasmMem : Lean.Elab.Tactic.Tactic := fun stx => do
   let pmt : TSyntax `pmTerm ←
     `(pmTerm| $appTerm:term $$ $hypIdent:ident)
   evalTactic (← `(tactic| iapply $pmt))
+  -- Partial-WP (`wp`) memory rules guard the continuation with a `▷`
+  -- (`▷ P -∗ ▷ (P' -∗ WP …) -∗ WP …`); strip it before re-introducing.
+  if modality == "wp" then
+    evalTactic (← `(tactic| inext))
   -- ── Re-introduce the output hypothesis ────────────────────────────────────
   -- Build IntroPat programmatically to avoid going through IntroPat.parse,
   -- which rejects a raw ident spliced into introPat position at runtime.

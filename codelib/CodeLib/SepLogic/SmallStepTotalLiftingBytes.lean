@@ -31,6 +31,7 @@ variable {Φ : List Value → IProp (WasmHeapGF α)}
 
 
 /-- Total primitive rule for `i32.load8_u`. -/
+@[wasm_mem_rule twp load8U byte Wasm.SmallStep.twp_load8U_addr]
 theorem twp_load8U
     {params localValues values : List Value}
     {address offset : UInt32} {code : Program} {arity : Nat}
@@ -129,6 +130,7 @@ theorem twp_load8U_addr
       (calls := calls) byte (by simp))
 
 /-- Total primitive rule for `i32.store8`. -/
+@[wasm_mem_rule twp store8 byte Wasm.SmallStep.twp_store8_addr]
 theorem twp_store8
     {params localValues values : List Value}
     {address offset value : UInt32} {code : Program} {arity : Nat}
@@ -241,6 +243,7 @@ theorem twp_store8_addr
 
 -- `twp_ltS` is supplied by the imported generic total lifting layer.
 
+@[wasm_rule twp drop]
 theorem twp_drop
     {params localValues values : List Value}
     {value : Value} {code : Program} {arity : Nat}
