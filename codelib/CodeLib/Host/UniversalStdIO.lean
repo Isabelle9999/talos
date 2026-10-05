@@ -84,10 +84,10 @@ private theorem writeBytes_singleton (mem : Mem) (addr : UInt32) (byte : UInt8) 
   by_cases hrange : addr.toNat ≤ i ∧ i < addr.toNat + 1
   · have heq : i = addr.toNat := by omega
     subst heq; simp
-  · simp only [dif_neg hrange]
+  · simp only [dite_eq_right hrange]
     by_cases h : i = addr.toNat
     · subst h; exact absurd ⟨Nat.le_refl _, Nat.lt_succ_self _⟩ hrange
-    · rw [if_neg h]
+    · rw [ite_eq_right h]
 
 private theorem writeBytes_nil (mem : Mem) (addr : UInt32) :
     mem.writeBytes addr.toNat [] = mem := by
@@ -311,10 +311,10 @@ theorem twp_universal_read {hlc : HasLC}
           { store.wasm with
             mem := store.wasm.mem.writeBytes ptr.toNat read
             host := newHost } := by
-      simp only [universalReadHost, HostFn.lift, StdIO.readHost, StdIO.readResult]
-      simp only [Store.focus, Store.mapHost]
-      rw [hhostActual]
-      rw [if_pos (by
+      simp +instances only [universalReadHost, HostFn.lift, StdIO.readHost, StdIO.readResult]
+      simp +instances only [Store.focus, Store.mapHost]
+      simp +instances only [hhostActual]
+      rw [ite_eq_left (by
         simp only [StdIO.rangeInBounds, StdIO.byteCapacity]
         apply decide_eq_true
         simpa only [read, bytesRead] using hcapNat)]
@@ -443,7 +443,7 @@ theorem twp_universal_write {hlc : HasLC}
         .Return [] newWasm := by
       simp only [universalWriteHost, HostFn.lift]
       simp only [StdIO.writeHost, StdIO.writeResult]
-      rw [if_pos]
+      rw [ite_eq_left]
       · simp [Store.focus, Store.mapHost, Store.unfocus, newWasm, newHost,
           afterWrite, hread, hlen, HhostPhysical]
       · simp only [StdIO.rangeInBounds, StdIO.byteCapacity]
