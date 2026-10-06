@@ -25,6 +25,8 @@ roots = [
   "CodeLib.Examples.Gcd",
   "CodeLib.Examples.MergeSort.StdIO",
   "CodeLib.Examples.Quicksort.TotalProof",
+  # Near SmallStep example (not reachable from CodeLib.Near.Proof).
+  "CodeLib.Near.Examples.KvSetter",
   # Tactic regression tests: built and checked here, but kept out of the
   # umbrella so downstream `import CodeLib` does not elaborate them.
   "CodeLib.Tactics.Test",

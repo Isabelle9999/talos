@@ -454,6 +454,12 @@ theorem test_twp_constI64_step (val : UInt64) :
     WP (.running ⟨⟨[], [], []⟩, [.constI64 val], 1, [], [], []⟩ : Expr α) @ s; E [{ Φ }] := by
   iintro H; wasm_pure; iexact H
 
+/-- `wasm_pure` applies `twp_addI64`. -/
+theorem test_twp_addI64_step (lhs rhs : UInt64) :
+    WP (.running ⟨⟨[], [], [.i64 (lhs + rhs)]⟩, [], 1, [], [], []⟩ : Expr α) @ s; E [{ Φ }] ⊢
+    WP (.running ⟨⟨[], [], [.i64 rhs, .i64 lhs]⟩, [.addI64], 1, [], [], []⟩ : Expr α) @ s; E [{ Φ }] := by
+  iintro H; wasm_pure; iexact H
+
 /-- `wasm_pure` applies `twp_subI64`. -/
 theorem test_twp_subI64_step (lhs rhs : UInt64) :
     WP (.running ⟨⟨[], [], [.i64 (lhs - rhs)]⟩, [], 1, [], [], []⟩ : Expr α) @ s; E [{ Φ }] ⊢
@@ -1810,7 +1816,9 @@ def intentionallyUnregistered : List Name :=
   [
     -- Control flow with its own tactic (`wasm_loop`, `wasm_call`) or needing a
     -- caller-chosen branch target / handler / return shape
-    ``Wasm.SmallStep.twp_call, ``Wasm.SmallStep.twp_callHost, ``Wasm.SmallStep.twp_loop,
+    ``Wasm.SmallStep.twp_call, ``Wasm.SmallStep.twp_callHost,
+    ``Wasm.SmallStep.twp_callHost_return, ``Wasm.SmallStep.twp_callHost_return_fupd,
+    ``Wasm.SmallStep.twp_loop,
     ``Wasm.SmallStep.twp_loop_wf_family, ``Wasm.SmallStep.twp_returnFromCallExplicit,
     ``Wasm.SmallStep.twp_returnFromFunction, ``Wasm.SmallStep.twp_throwI,
     ``Wasm.SmallStep.twp_tryTable, ``Wasm.SmallStep.wp_brOnNonNullBranch,
