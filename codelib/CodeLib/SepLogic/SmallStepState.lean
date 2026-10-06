@@ -1101,9 +1101,9 @@ theorem stateInterp_alloc_freshRange [g : WasmGS hlc GF α]
   iunfold heapDomainInterp at Hdomain
   icases Hdomain with
     ⟨%actualFrontier, HfrontierAuth, %Hbelow⟩
-  icombine HfrontierAuth HfrontierOwn gives %hfrontierValid
-  have hfrontierEq : actualFrontier = frontier :=
-      congrArg DiscreteO.car (ExclAuth.agree (A := DiscreteO Nat) hfrontierValid)
+  ihave %hfrontierEq : ⌜actualFrontier = frontier⌝ $$ [HfrontierAuth HfrontierOwn]
+  · iapply heapFrontierOwn_agree actualFrontier frontier
+    iframe
   subst actualFrontier
   let bytes := physicalBytes store.wasm.mem base size
   have hbytesLength : bytes.length = size := by
@@ -1116,8 +1116,7 @@ theorem stateInterp_alloc_freshRange [g : WasmGS hlc GF α]
   imod genHeap_alloc_freshBytes σ base bytes hbelowBase (by
       rw [hbytesLength]; exact hnowrap) $$ Hheap with
     ⟨Hheap, Hbytes, %HbelowFinal⟩
-  imod heapFrontierOwn_update
-      frontier (base.toNat + size) $$
+  imod heapFrontierOwn_update frontier (base.toNat + size) $$
       [HfrontierAuth HfrontierOwn] with
     ⟨HfrontierAuth, HfrontierOwn⟩
   · iframe
@@ -1788,6 +1787,35 @@ theorem stateInterp_host_set [g : WasmGS hlc GF α]
       elementSegmentσ, runtimeModuleσ, hostEnvσ
     iframe Hheap Hglobals Hsegments Htables HelementSegments HruntimeModuleAuth HruntimeModuleBigSep HruntimeInstances HinstanceAuth HhostEnvAuth Hauth' Hexc
     ipureexact Hfacts
+  · iexact HP'
+
+/-- Simultaneously learn that the client host fragment describes the physical
+host and update both sides.  The agreement fact is returned alongside the
+updated ownership, so callers can calculate the concrete host result without
+discarding the exclusive fragment. -/
+theorem stateInterp_host_set_expected {hlc : HasLC} {α : Type}
+    [WasmSmallStepGS hlc α]
+    (store : MachineStore α) (steps : Nat)
+    (observations : List StepKind) (threads : Nat) (expected newHost : α) :
+    stateInterp (GF := WasmHeapGF α) store steps observations threads ∗
+      hostStateOwn expected ==∗
+      ⌜store.wasm.host = expected⌝ ∗
+      stateInterp (GF := WasmHeapGF α)
+        { store with wasm := { store.wasm with host := newHost } }
+        steps observations threads ∗
+      hostStateOwn newHost := by
+  iintro ⟨Hstate, HP⟩
+  ihave %heq : ⌜store.wasm.host = expected⌝ $$ [Hstate HP]
+  · iapply stateInterp_host_agree store steps observations threads expected
+    iframe
+  subst expected
+  imod stateInterp_host_set store steps observations threads newHost $$
+      [$Hstate $HP] with ⟨Hstate', HP'⟩
+  imodintro
+  isplit
+  · ipureintro; rfl
+  isplitl [Hstate']
+  · iexact Hstate'
   · iexact HP'
 
 /-- Owned global state determines the corresponding physical instantiated
