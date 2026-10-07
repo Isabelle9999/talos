@@ -58,8 +58,7 @@ Tracks migration of legacy `TerminatesWith env` theorems to
 
 - `SwapElementsOpt3Spec` defined as `SmallStep.TerminatesWith`, registered
   under `@[spec_of "rust-exported"]`.
-- Delegates to existing `opt3_func0_distinct_store_terminatesWith` from
-  `SmallStepEquivalence.lean`.
+- Whole-array observation restored: `SwapElementsOpt3Spec` is restated over `Runs` and `SwapOptEquiv` observes `Mem.words64` over the caller's slice, via `opt3_func0_store_terminatesWith_array` and `opt3_initialStore_terminatesWith_array` (`SmallStepEquivalence.lean`); the distinct-cell `opt3_func0_distinct_store_terminatesWith` is kept.
 - Equivalence proof ported to `SmallStep.ObservationallyEquivOn.of_common_outcome`.
 
 ### NumInteger
@@ -82,7 +81,6 @@ NumIntegerOpt3, RustU64, RustU64Tests, RustArray, RustArrayTests, TotalVariation
 | ~~`SwapElements/Spec.lean` legacy~~ | Resolved in M8: Spec.lean fully migrated to small-step. |
 | FloatMinmax | Stub (`True`), spec never written. |
 | Near layer (2,996 lines) | Blocked on `wp_callHost` (module-linking). |
-| SwapElementsOpt3 whole-array observation | The small-step `SwapOptEquiv` observes only the two swapped elements; the retired big-step theorem observed the whole caller array (`Mem.words64 ptr len.toNat`). Restoring it needs both builds' store-level adequacy theorems re-derived with a parametric per-element `pointsTo_u64` footprint for the unswapped words plus a `Mem.words64` reconstruction. Documented in `SwapElementsOpt3/Equivalence.lean`. |
 | Program-specific TWP lemmas in codelib | `twp_swapElementsFunc2Prefix` / `…Alias` / `…Func3` (hard-coded addresses) live in `codelib/CodeLib/SepLogic/SmallStepTotalLifting.lean` rather than under `programs/`; pre-existing precedent (the WP counterparts live there too). Candidate M9 relocation. |
 
 ## TWP infrastructure added
